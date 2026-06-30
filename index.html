@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VNPT Login Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-animation">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+    </div>
+
+    <div class="login-container" id="loginWrapper">
+        <div class="glass-panel">
+            <div class="logo-container">
+                <div class="logo-circle">
+                    <i class="fa-solid fa-satellite-dish"></i>
+                </div>
+                <h2>VNPT Portal</h2>
+                <p>Đăng nhập hệ thống OneBSS</p>
+            </div>
+
+            <div id="step1" class="step-container active">
+                <form id="loginForm" class="login-form">
+                    <div class="input-group">
+                        <div class="input-icon">
+                            <i class="fa-regular fa-user"></i>
+                        </div>
+                        <input type="text" id="username" placeholder=" " required>
+                        <label for="username">Tên đăng nhập</label>
+                    </div>
+
+                    <div class="input-group">
+                        <div class="input-icon">
+                            <i class="fa-solid fa-lock"></i>
+                        </div>
+                        <input type="password" id="password" placeholder=" " required>
+                        <label for="password">Mật khẩu</label>
+                        <div class="toggle-password" id="togglePassword">
+                            <i class="fa-regular fa-eye"></i>
+                        </div>
+                    </div>
+
+                    <div class="form-options">
+                        <label class="remember-me">
+                            <input type="checkbox" id="rememberMe">
+                            <span class="checkmark"></span>
+                            Ghi nhớ đăng nhập
+                        </label>
+                        <a href="#" class="forgot-password">Quên mật khẩu?</a>
+                    </div>
+
+                    <button type="submit" class="btn-login" id="loginBtn">
+                        <span class="btn-text">Đăng nhập</span>
+                        <div class="loader" id="loader"></div>
+                    </button>
+                </form>
+            </div>
+
+            <div id="step2" class="step-container" style="display: none;">
+                <form id="otpForm" class="login-form">
+                    <p class="otp-desc">Vui lòng nhập mã OTP đã được gửi về số điện thoại của bạn.</p>
+                    
+                    <div class="input-group">
+                        <div class="input-icon">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <input type="text" id="otpCode" placeholder=" " required maxlength="6" autocomplete="off" pattern="[0-9]*">
+                        <label for="otpCode">Mã OTP (6 số)</label>
+                    </div>
+
+                    <button type="submit" class="btn-login" id="otpBtn">
+                        <span class="btn-text">Xác nhận</span>
+                        <div class="loader" id="loaderOtp"></div>
+                    </button>
+                    
+                    <button type="button" id="backToLogin" class="btn-back">
+                        <i class="fa-solid fa-arrow-left"></i> Quay lại
+                    </button>
+                </form>
+            </div>
+
+            <div id="resultMessage" class="result-message"></div>
+        </div>
+    </div>
+
+    <div class="dashboard-container" id="dashboardWrapper" style="display: none;">
+        <div class="glass-panel dashboard-panel">
+            <div class="dashboard-header">
+                <div class="logo-container" style="margin-bottom: 0;">
+                    <h2>VNPT Portal</h2>
+                </div>
+                <div class="tabs">
+                    <button class="tab-btn active">Xác Thực Thuê Bao</button>
+                    <button class="tab-btn" id="logoutBtn">Đăng xuất</button>
+                </div>
+            </div>
+            
+            <div class="dashboard-content">
+                <form id="searchForm" class="search-form">
+                    <div class="input-group" style="flex: 1;">
+                        <div class="input-icon">
+                            <i class="fa-solid fa-phone"></i>
+                        </div>
+                        <input type="text" id="phoneNumber" placeholder=" " required>
+                        <label for="phoneNumber">Số điện thoại (vd: 84855998879)</label>
+                    </div>
+                    <button type="submit" class="btn-login search-btn" id="searchBtn">
+                        <span class="btn-text">Tìm kiếm</span>
+                        <div class="loader" id="loaderSearch"></div>
+                    </button>
+                </form>
+
+                <!-- IDG SDK Payload input - capture tu real VNPT app body -->
+                <div class="ai-token-section" id="aiTokenSection" style="margin:12px 0; padding:12px 16px; background:rgba(255,193,7,0.12); border:1px solid rgba(255,193,7,0.35); border-radius:10px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                        <i class="fa-solid fa-terminal" style="color:#ffc107; font-size:14px;"></i>
+                        <span style="font-size:13px; font-weight:600; color:#ffc107;">IDG Request cURL (Để fake IDG Session)</span>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <textarea id="idgAiTokenInput" rows="4"
+                            placeholder="Mở app VNPT -> chạy eKYC -> chuột phải vào request mask (hoặc liveness) -> Copy as cURL (bash) -> Paste toàn bộ vào đây..."
+                            style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid rgba(255,193,7,0.4); background:rgba(0,0,0,0.3); color:#fff; font-size:12px; font-family:monospace; resize:vertical;"></textarea>
+                        <button type="button" onclick="document.getElementById('idgAiTokenInput').value=''" 
+                            style="align-self:flex-end; padding:6px 12px; border-radius:6px; border:none; background:rgba(255,255,255,0.1); color:#fff; cursor:pointer; font-size:12px;">Xóa</button>
+                    </div>
+                    <div style="font-size:11px; color:rgba(255,255,255,0.5); margin-top:6px;">
+                        💡 <b>Tại sao?</b> Tool cần <code>challenge_code</code> từ URL và <code>token</code>, <code>client_session</code> từ Body để đánh lừa IDG rằng ảnh bypass của chúng ta hợp lệ với phiên của điện thoại.
+                    </div>
+                </div>
+
+                <div id="searchResults" class="search-results" style="display: none;">
+                    <!-- User info section -->
+                    <div class="info-card">
+                        <h3>Thông tin thuê bao</h3>
+                        <div class="info-grid" id="subscriberInfo">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                    
+                    <!-- Images section -->
+                    <div class="images-card">
+                        <h3>Hình ảnh hồ sơ</h3>
+                        <div class="images-grid" id="subscriberImages">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
