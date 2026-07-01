@@ -254,7 +254,9 @@ document.addEventListener('DOMContentLoaded', () => {
         otpCodeInput.value = '';
         usernameInput.value = '';
         passwordInput.value = '';
-        searchResults.style.display = 'none';
+        document.getElementById('searchResultsLeft').style.display = 'none';
+        document.getElementById('searchResultsRight').style.display = 'none';
+        if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'flex';
         localStorage.removeItem('vnpt_access_token');
         localStorage.removeItem('vnpt_refresh_token');
     });
@@ -271,7 +273,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         subscriberInfo.innerHTML = '';
         subscriberImages.innerHTML = '';
-        searchResults.style.display = 'none';
+        document.getElementById('searchResultsLeft').style.display = 'none';
+        document.getElementById('searchResultsRight').style.display = 'none';
+        if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'flex';
         
         const accessToken = localStorage.getItem('vnpt_access_token') || 'demo_token';
         
@@ -337,7 +341,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function renderDashboardData(infoData, imgData, phone, isDemo = false) {
-        searchResults.style.display = 'grid';
+        document.getElementById('searchResultsLeft').style.display = 'block';
+        document.getElementById('searchResultsRight').style.display = 'block';
+        if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'none';
         
         // Demo Data Injection
         if (isDemo || (!infoData && !imgData)) {
@@ -424,7 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <a href="${src}" download="${fileName}" class="btn-download" title="Tải ảnh này">
                                     <i class="fa-solid fa-download"></i>
                                 </a>
-                                <button type="button" class="btn-verify" style="background:linear-gradient(135deg,#00c896,#00a876);" data-src="${src}" onclick="bypassEkyc('${phone}', this, true)" title="Xác thực (Fast Mode)">
+                                <button type="button" class="btn-verify glowing" data-src="${src}" onclick="bypassEkyc('${phone}', this, true)" title="Xác thực (Fast Mode)">
                                     <i class="fa-solid fa-bolt"></i> Xác thực
                                 </button>
                                 

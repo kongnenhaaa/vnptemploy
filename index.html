@@ -103,51 +103,79 @@
             </div>
             
             <div class="dashboard-content">
-                <form id="searchForm" class="search-form">
-                    <div class="input-group" style="flex: 1;">
-                        <div class="input-icon">
-                            <i class="fa-solid fa-phone"></i>
+                <div class="dashboard-layout">
+                    <!-- Column 1: Left -->
+                    <div class="dashboard-col col-left">
+                        <div class="card-section search-card glass-panel-inner">
+                            <form id="searchForm" class="search-form" style="margin-bottom: 0;">
+                                <div class="input-group" style="flex: 1;">
+                                    <div class="input-icon">
+                                        <i class="fa-solid fa-phone"></i>
+                                    </div>
+                                    <input type="text" id="phoneNumber" placeholder=" " required>
+                                    <label for="phoneNumber">Số điện thoại (vd: 84855998879)</label>
+                                </div>
+                                <button type="submit" class="btn-login search-btn" id="searchBtn" style="margin-top: 0;">
+                                    <span class="btn-text">Tìm kiếm</span>
+                                    <div class="loader" id="loaderSearch"></div>
+                                </button>
+                            </form>
                         </div>
-                        <input type="text" id="phoneNumber" placeholder=" " required>
-                        <label for="phoneNumber">Số điện thoại (vd: 84855998879)</label>
-                    </div>
-                    <button type="submit" class="btn-login search-btn" id="searchBtn">
-                        <span class="btn-text">Tìm kiếm</span>
-                        <div class="loader" id="loaderSearch"></div>
-                    </button>
-                </form>
 
-                <!-- IDG SDK Payload input - capture tu real VNPT app body -->
-                <div class="ai-token-section" id="aiTokenSection" style="margin:12px 0; padding:12px 16px; background:rgba(255,193,7,0.12); border:1px solid rgba(255,193,7,0.35); border-radius:10px;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                        <i class="fa-solid fa-terminal" style="color:#ffc107; font-size:14px;"></i>
-                        <span style="font-size:13px; font-weight:600; color:#ffc107;">IDG Request cURL (Để fake IDG Session)</span>
-                    </div>
-                    <div style="display:flex; flex-direction:column; gap:8px;">
-                        <textarea id="idgAiTokenInput" rows="4"
-                            placeholder="Mở app VNPT -> chạy eKYC -> chuột phải vào request mask (hoặc liveness) -> Copy as cURL (bash) -> Paste toàn bộ vào đây..."
-                            style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid rgba(255,193,7,0.4); background:rgba(0,0,0,0.3); color:#fff; font-size:12px; font-family:monospace; resize:vertical;"></textarea>
-                        <div style="display:flex; gap:8px; justify-content: flex-end;">
-                            <button type="button" onclick="document.getElementById('idgAiTokenInput').value=''" 
-                                style="padding:6px 12px; border-radius:6px; border:none; background:rgba(255,255,255,0.1); color:#fff; cursor:pointer; font-size:12px;">Xóa</button>
+                        <!-- IDG SDK Payload input -->
+                        <div class="card-section terminal-card glass-panel-inner" id="aiTokenSection">
+                            <div class="terminal-header">
+                                <div class="mac-dots">
+                                    <span class="dot red"></span>
+                                    <span class="dot yellow"></span>
+                                    <span class="dot green"></span>
+                                </div>
+                                <span class="terminal-title">idg-session-injector.sh</span>
+                                <div class="terminal-actions">
+                                    <button type="button" onclick="document.getElementById('idgAiTokenInput').value=''" class="btn-terminal-clear" title="Clear">
+                                        <i class="fa-solid fa-eraser"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="terminal-body">
+                                <div class="terminal-comment">
+                                    # Mở app VNPT -> chạy eKYC -> chuột phải vào request mask/liveness<br>
+                                    # Copy as cURL (bash) -> Paste toàn bộ vào đây
+                                </div>
+                                <div class="terminal-prompt-wrapper">
+                                    <span class="terminal-prompt">$</span>
+                                    <textarea id="idgAiTokenInput" rows="4" placeholder="Paste cURL request here..." class="terminal-input"></textarea>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
 
-                <div id="searchResults" class="search-results" style="display: none;">
-                    <!-- User info section -->
-                    <div class="info-card">
-                        <h3>Thông tin thuê bao</h3>
-                        <div class="info-grid" id="subscriberInfo">
-                            <!-- Populated via JS -->
+                        <!-- User info section -->
+                        <div id="searchResultsLeft" style="display: none;">
+                            <div class="card-section info-card glass-panel-inner">
+                                <h3><i class="fa-regular fa-address-card"></i> Thông tin thuê bao</h3>
+                                <div class="info-grid" id="subscriberInfo">
+                                    <!-- Populated via JS -->
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    
-                    <!-- Images section -->
-                    <div class="images-card">
-                        <h3>Hình ảnh hồ sơ</h3>
-                        <div class="images-grid" id="subscriberImages">
-                            <!-- Populated via JS -->
+
+                    <!-- Column 2: Right -->
+                    <div class="dashboard-col col-right">
+                        <div id="searchResultsRight" style="display: none; height: 100%;">
+                            <div class="card-section images-card glass-panel-inner" style="height: 100%;">
+                                <h3><i class="fa-regular fa-image"></i> Hình ảnh hồ sơ</h3>
+                                <div class="images-grid" id="subscriberImages">
+                                    <!-- Populated via JS -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="emptyState" class="empty-state glass-panel-inner">
+                            <div class="empty-icon">
+                                <i class="fa-solid fa-satellite-dish"></i>
+                            </div>
+                            <p>Nhập số điện thoại để tra cứu<br><small>Hệ thống tự động mock dữ liệu cho mục đích demo</small></p>
                         </div>
                     </div>
                 </div>
