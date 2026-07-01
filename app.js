@@ -637,18 +637,11 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
             img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                if (fastMode) {
-                    // Fast Mode: khong crop - dung toan bo anh goc
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                } else {
-                    // Normal Mode: cat 15% tren cung (watermark/header)
-                    const cropY = img.height * 0.15;
-                    canvas.width = img.width;
-                    canvas.height = img.height - cropY;
-                    ctx.drawImage(img, 0, cropY, img.width, canvas.height, 0, 0, canvas.width, canvas.height);
-                }
+                // LUÔN LUÔN cắt 15% trên cùng (để xóa dòng thời gian chụp bị in chết trên ảnh)
+                const cropY = img.height * 0.15;
+                canvas.width = img.width;
+                canvas.height = img.height - cropY;
+                ctx.drawImage(img, 0, cropY, img.width, canvas.height, 0, 0, canvas.width, canvas.height);
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
                 canvas.toBlob((blob) => resolve({ blob, dataUrl }), 'image/jpeg', 0.95);
             };
