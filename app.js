@@ -863,11 +863,11 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
         btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 13/13: Xac thuc hinh anh...';
 
         // Thu truoc voi format 84XXXXXXXXX
-        console.log(`[xacthuc_hinhanh] Thu format E164: ${phoneE164} | hash=${p_image_hash}`);
+        console.log(`[xacthuc_hinhanh] Thu format E164: ${phoneE164} | hash=${idgVerifyHash}`);
         let xacthucRes = await fetch('https://api-onebss.vnpt.vn/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
             method: 'POST',
             headers: { ...baseHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_so_tb: phoneE164, p_image_hash: p_image_hash, client_session: clientSession, menu_id: 810241 })
+            body: JSON.stringify({ p_so_tb: phoneE164, p_image_hash: idgVerifyHash, client_session: clientSession, menu_id: 810241 })
         });
         let xacthucData = await xacthucRes.json();
         console.log(`[xacthuc_hinhanh] ${phoneE164}:`, xacthucData.error_code, xacthucData.message?.substring(0,80));
@@ -881,7 +881,7 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
             xacthucRes = await fetch('https://api-onebss.vnpt.vn/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
                 method: 'POST',
                 headers: { ...baseHeaders, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ p_so_tb: phone0, p_image_hash: p_image_hash, client_session: clientSession, menu_id: 810241 })
+                body: JSON.stringify({ p_so_tb: phone0, p_image_hash: idgVerifyHash, client_session: clientSession, menu_id: 810241 })
             });
             xacthucData = await xacthucRes.json();
             console.log(`[xacthuc_hinhanh] ${phone0}:`, xacthucData.error_code, xacthucData.message?.substring(0,80));
