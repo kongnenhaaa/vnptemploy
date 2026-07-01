@@ -666,13 +666,28 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
         const challengeCode = realChallengeCode || Array.from(crypto.getRandomValues(new Uint8Array(128)))
             .map(b => b.toString(16).padStart(2, '0')).join('');
 
+        // Bóc tách Token-id và Token-key từ cURL hoặc Text thô
+        let idgTokenId = '04c0a953-7fb8-5461-e063-62199f0aeda6';
+        let idgTokenKey = 'MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAKjy7FK9SegSCW0cuUIbEDUsbRZOcoxijNPLMfvgX+8/XA7HebHXMN4/PO5c5mwK31Yk31RKuMXYLLp6x6oZPDkCAwEAAQ==';
+        
+        const tokenIdMatch = idgPayloadRaw.match(/(?:-H\s+['"]?)?Token-id:\s*\r?\n?\s*([^'"\n\r]+)['"]?/i);
+        if (tokenIdMatch && tokenIdMatch[1]) {
+            idgTokenId = tokenIdMatch[1].trim();
+            console.log('[IDG SDK Payload] ✅ Tìm thấy Token-id:', idgTokenId);
+        }
+        
+        const tokenKeyMatch = idgPayloadRaw.match(/(?:-H\s+['"]?)?Token-key:\s*\r?\n?\s*([^'"\n\r]+)['"]?/i);
+        if (tokenKeyMatch && tokenKeyMatch[1]) {
+            idgTokenKey = tokenKeyMatch[1].trim();
+            console.log('[IDG SDK Payload] ✅ Tìm thấy Token-key!');
+        }
 
         const idgHeaders = {
             'Authorization': idgToken, // token tu token_ekyc (da hoat dong truoc)
             'Connection': 'Keep-Alive',
             'mac-address': deviceId,
-            'Token-id': '04c0a953-7fb8-5461-e063-62199f0aeda6',
-            'Token-key': 'MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAKjy7FK9SegSCW0cuUIbEDUsbRZOcoxijNPLMfvgX+8/XA7HebHXMN4/PO5c5mwK31Yk31RKuMXYLLp6x6oZPDkCAwEAAQ==',
+            'Token-id': idgTokenId,
+            'Token-key': idgTokenKey,
             'User-Agent': 'okhttp/4.11.0'
         };
 
