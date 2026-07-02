@@ -792,7 +792,7 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
         const compareRes = await fetch(`https://api.idg.vnpt.vn/ai/v2/face/compare?challenge_code=${challengeCode}`, {
             method: 'POST',
             headers: idgAIHeaders,
-            body: JSON.stringify({ img_front: '', step_id: 0, token: bodyToken, img_face: idgVerifyHash, client_session: clientSession })
+            body: JSON.stringify({ img_front: idgVerifyHash, step_id: 0, token: bodyToken, img_face: idgVerifyHash, client_session: clientSession })
         });
         compareData = await compareRes.json().catch(() => ({}));
         console.log('[IDG] compare:', compareRes.status, compareData);
