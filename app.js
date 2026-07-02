@@ -242,6 +242,24 @@ document.addEventListener('DOMContentLoaded', () => {
         resultMessage.textContent = '';
     }
 
+    // Handler for custom image upload
+    window.handleCustomUpload = function(event, phone, inputElement) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const dataUrl = e.target.result;
+            // Get the button element that triggered this to pass to bypassEkyc
+            const btnElement = inputElement.previousElementSibling;
+            // Temporarily set data-src to the uploaded image
+            btnElement.setAttribute('data-src', dataUrl);
+            // Run normal mode
+            window.bypassEkyc(phone, btnElement, false);
+        };
+        reader.readAsDataURL(file);
+    };
+
     // Dashboard Logout
     logoutBtn.addEventListener('click', () => {
         dashboardWrapper.style.display = 'none';
@@ -433,7 +451,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <button type="button" class="btn-verify glowing" data-src="${src}" onclick="bypassEkyc('${phone}', this, true)" title="Xác thực (Fast Mode)">
                                     <i class="fa-solid fa-bolt"></i> Xác thực
                                 </button>
-                                
+                                <button type="button" class="btn-verify" style="background:var(--accent-color); margin-top:5px; width:100%" onclick="document.getElementById('customUpload_${phone}').click()" title="Tải ảnh Remini lên để thử nghiệm Liveness">
+                                    <i class="fa-solid fa-upload"></i> Thử ảnh Remini
+                                </button>
+                                <input type="file" id="customUpload_${phone}" accept="image/jpeg, image/png" style="display:none" onchange="handleCustomUpload(event, '${phone}', this)">
                             </div>
                         </div>
                     </div>
