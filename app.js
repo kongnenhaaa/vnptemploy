@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const usernameInput = document.getElementById('username');
     const passwordInput = document.getElementById('password');
     const togglePassword = document.getElementById('togglePassword');
+    const toggleAccountsBtn = document.getElementById('toggleAccountsBtn');
+    const savedAccountsDropdown = document.getElementById('savedAccountsDropdown');
     const loginBtn = document.getElementById('loginBtn');
     const resultMessage = document.getElementById('resultMessage');
 
@@ -54,12 +56,150 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Saved Accounts Logic (Sync giữa localStorage và file saved_accounts.json)
+    function getSavedAccounts() {
+        let list = [];
+        try {
+            if (typeof require !== 'undefined') {
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(__dirname, 'saved_accounts.json');
+                if (fs.existsSync(filePath)) {
+                    list = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    localStorage.setItem('vnpt_saved_accounts', JSON.stringify(list));
+                    return list;
+                }
+            }
+        } catch (e) { console.error('Error reading saved_accounts.json:', e); }
+
+        try {
+            list = JSON.parse(localStorage.getItem('vnpt_saved_accounts') || '[]');
+        } catch (e) {}
+        return list;
+    }
+
+    function saveLoggedAccount(username, pwd) {
+        if (!username || !pwd) return;
+        try {
+            let list = getSavedAccounts();
+            list = list.filter(item => item.username.toLowerCase() !== username.toLowerCase());
+            list.unshift({ username: username, password: pwd, savedAt: Date.now() });
+            if (list.length > 30) list = list.slice(0, 30);
+            localStorage.setItem('vnpt_saved_accounts', JSON.stringify(list));
+
+            if (typeof require !== 'undefined') {
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(__dirname, 'saved_accounts.json');
+                fs.writeFileSync(filePath, JSON.stringify(list, null, 2), 'utf8');
+            }
+        } catch (e) {
+            console.error('Error saving account:', e);
+        }
+    }
+
+    function deleteSavedAccount(username) {
+        try {
+            let list = getSavedAccounts();
+            list = list.filter(item => item.username.toLowerCase() !== username.toLowerCase());
+            localStorage.setItem('vnpt_saved_accounts', JSON.stringify(list));
+
+            if (typeof require !== 'undefined') {
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(__dirname, 'saved_accounts.json');
+                fs.writeFileSync(filePath, JSON.stringify(list, null, 2), 'utf8');
+            }
+        } catch (e) {
+            console.error('Error deleting account:', e);
+        }
+    }
+
+    function renderSavedAccounts(showIfEmpty = false) {
+        if (!savedAccountsDropdown) return;
+        const list = getSavedAccounts();
+
+        if (list.length === 0 && !showIfEmpty) {
+            savedAccountsDropdown.classList.remove('show');
+            return;
+        }
+
+        savedAccountsDropdown.innerHTML = '';
+        if (list.length === 0) {
+            savedAccountsDropdown.innerHTML = `<div class="saved-accounts-empty">Chưa có tài khoản nào được lưu</div>`;
+        } else {
+            list.forEach((item) => {
+                const div = document.createElement('div');
+                div.className = 'saved-account-item';
+                div.innerHTML = `
+                    <div class="saved-account-info">
+                        <i class="fa-solid fa-user-check"></i>
+                        <span>${item.username}</span>
+                    </div>
+                    <span class="saved-account-del" title="Xóa khỏi danh sách" data-user="${item.username}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </span>
+                `;
+                div.addEventListener('click', (e) => {
+                    if (e.target.closest('.saved-account-del')) return;
+                    usernameInput.value = item.username;
+                    passwordInput.value = item.password || '';
+                    savedAccountsDropdown.classList.remove('show');
+                    if (item.password) {
+                        loginBtn.focus();
+                    } else {
+                        passwordInput.focus();
+                    }
+                });
+                savedAccountsDropdown.appendChild(div);
+            });
+
+            savedAccountsDropdown.querySelectorAll('.saved-account-del').forEach(delBtn => {
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const u = delBtn.getAttribute('data-user');
+                    deleteSavedAccount(u);
+                    renderSavedAccounts(true);
+                });
+            });
+        }
+        savedAccountsDropdown.classList.add('show');
+    }
+
+    if (toggleAccountsBtn) {
+        toggleAccountsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (savedAccountsDropdown.classList.contains('show')) {
+                savedAccountsDropdown.classList.remove('show');
+            } else {
+                renderSavedAccounts(true);
+            }
+        });
+    }
+
+    usernameInput.addEventListener('focus', () => {
+        renderSavedAccounts(false);
+    });
+    usernameInput.addEventListener('click', (e) => {
+        e.stopPropagation();
+        renderSavedAccounts(false);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#savedAccountsDropdown') && !e.target.closest('#toggleAccountsBtn') && e.target !== usernameInput) {
+            savedAccountsDropdown?.classList.remove('show');
+        }
+    });
+
     // Form Submission
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
         // Clear previous messages
         hideMessage();
+        
+        // Clear old app_secret to avoid using stale tokens
+        localStorage.removeItem('vnpt_app_secret');
 
         const username = usernameInput.value.trim();
         const password = passwordInput.value;
@@ -104,6 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok && data.error_code === "BSS-00000000") {
                 // Success
+                saveLoggedAccount(username, password);
                 const userData = data.data;
                 currentSecretCode = userData.secretCode || '';
                 
@@ -133,6 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  console.log("CORS error detected. The API server doesn't allow cross-origin requests from the browser.");
                  // Optionally simulate success for the UI demo based on the provided credentials
                  if (username === 'PHATNT1.HCM' && password === 'P#n8cmsy') {
+                     saveLoggedAccount(username, password);
                      setTimeout(() => {
                         currentSecretCode = '39:313717380623020260654302077959085784:85784:0115273:2::007866:BUW162692:3:1g9b3e2gc1b40742:';
                         
@@ -197,13 +339,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (response.ok && data.access_token) {
+                saveLoggedAccount(usernameInput.value.trim(), passwordInput.value);
                 localStorage.setItem('vnpt_access_token', data.access_token);
                 if (data.refresh_token) {
                     localStorage.setItem('vnpt_refresh_token', data.refresh_token);
                 }
                 // Nếu API có trả về app_secret, tự động lưu lại để dùng cho Dashboard
                 if (data.app_secret) {
+                    console.log('✅ Đã nhận được app_secret từ server:', data.app_secret);
                     localStorage.setItem('vnpt_app_secret', data.app_secret);
+                } else {
+                    console.log('⚠️ Server KHÔNG trả về app_secret. Sẽ phải tự tạo giả lập.');
                 }
                 
                 showMessage('Xác thực OTP thành công! Đang tải dữ liệu...', 'success');
@@ -216,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if(error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
                  if (otp === '928427') {
+                     saveLoggedAccount(usernameInput.value.trim(), passwordInput.value);
                      setTimeout(() => {
                         showMessage('Xác thực OTP thành công (Mô phỏng)! Đang tải dữ liệu...', 'success');
                         setTimeout(showDashboard, 800);
@@ -277,6 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'flex';
         localStorage.removeItem('vnpt_access_token');
         localStorage.removeItem('vnpt_refresh_token');
+        localStorage.removeItem('vnpt_app_secret');
     });
 
     // Handle Subscriber Search
@@ -289,28 +437,74 @@ document.addEventListener('DOMContentLoaded', () => {
         searchBtn.classList.add('loading');
         searchBtn.disabled = true;
         
-        subscriberInfo.innerHTML = '';
-        subscriberImages.innerHTML = '';
-        document.getElementById('searchResultsLeft').style.display = 'none';
-        document.getElementById('searchResultsRight').style.display = 'none';
-        if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'flex';
+        await fetchAndRenderPhone(phone, false);
+        
+        searchBtn.classList.remove('loading');
+        searchBtn.disabled = false;
+    });
+
+    const importFileInput = document.getElementById('importFile');
+    if (importFileInput) {
+        importFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const text = await file.text();
+            const phones = text.split(/\r?\n/).map(p => p.trim()).filter(p => p);
+            
+            if (phones.length === 0) return;
+            
+            // clear old content
+            document.getElementById('searchResultsLeft').style.display = 'block';
+            document.getElementById('searchResultsRight').style.display = 'block';
+            if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'none';
+            
+            subscriberInfo.innerHTML = '';
+            subscriberImages.innerHTML = '';
+            
+            importFileInput.value = ''; // Reset
+            
+            const importBtn = document.getElementById('importBtn');
+            const originalHtml = importBtn.innerHTML;
+            importBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang tải...';
+            importBtn.disabled = true;
+            
+            for (const phone of phones) {
+                await fetchAndRenderPhone(phone, true);
+            }
+            
+            importBtn.innerHTML = originalHtml;
+            importBtn.disabled = false;
+        });
+    }
+
+    async function fetchAndRenderPhone(phone, append = false) {
+        if (!append) {
+            subscriberInfo.innerHTML = '';
+            subscriberImages.innerHTML = '';
+            document.getElementById('searchResultsLeft').style.display = 'none';
+            document.getElementById('searchResultsRight').style.display = 'none';
+            if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'flex';
+        }
         
         const accessToken = localStorage.getItem('vnpt_access_token') || 'demo_token';
         
-        // Tự động sinh app-secret từ device_id (Mô phỏng lại cơ chế của App Mobile)
-        const deviceId = localStorage.getItem('vnpt_device_id') || "0f8c2d3fb0c51653";
-        const appSecretObj = {
-            "device_id": deviceId,
-            "device_ip": "Unknown",
-            "device_name": "Web-Browser",
-            "mac_address": "Unknown",
-            "mobile_id": "web-generated-id",
-            "app_id": "1",
-            "app_version": "1.5.40.132",
-            "os_version": navigator.userAgent.substring(0, 50)
-        };
-        // Mã hóa JSON thành Base64 để tạo ra chuỗi app-secret (Bắt đầu bằng eyJkZXZ...)
-        const appSecret = btoa(unescape(encodeURIComponent(JSON.stringify(appSecretObj))));
+        // Ưu tiên dùng app_secret từ server trả về lúc đăng nhập OTP
+        let appSecret = localStorage.getItem('vnpt_app_secret');
+        if (!appSecret) {
+            const deviceId = localStorage.getItem('vnpt_device_id') || "0f8c2d3fb0c51653";
+            const appSecretObj = {
+                "device_id": deviceId,
+                "device_ip": "Unknown",
+                "device_name": "Web-Browser",
+                "mac_address": "Unknown",
+                "mobile_id": "web-generated-id",
+                "app_id": "1",
+                "app_version": "1.5.40.174",
+                "os_version": navigator.userAgent.substring(0, 50)
+            };
+            appSecret = btoa(unescape(encodeURIComponent(JSON.stringify(appSecretObj))));
+        }
         
         const headers = {
             'Content-Type': 'application/json',
@@ -346,19 +540,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 imgData = await imgRes.json();
             }
             
-            renderDashboardData(infoData, imgData, phone);
+            renderDashboardData(infoData, imgData, phone, false, append);
             
         } catch(error) {
             console.error(error);
             // Demo fallback
-            renderDashboardData(null, null, phone, true);
-        } finally {
-            searchBtn.classList.remove('loading');
-            searchBtn.disabled = false;
+            renderDashboardData(null, null, phone, true, append);
         }
-    });
+    }
 
-    function renderDashboardData(infoData, imgData, phone, isDemo = false) {
+    function renderDashboardData(infoData, imgData, phone, isDemo = false, append = false) {
         document.getElementById('searchResultsLeft').style.display = 'block';
         document.getElementById('searchResultsRight').style.display = 'block';
         if (document.getElementById('emptyState')) document.getElementById('emptyState').style.display = 'none';
@@ -392,6 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Render Info
+        let infoHtml = `<div style="grid-column: 1 / -1; margin-top: 15px; padding-bottom: 5px; border-bottom: 1px dashed rgba(255,255,255,0.1); color: var(--accent);"><strong>SĐT: ${phone}</strong></div>`;
         if (infoData && infoData.data) {
             const data = infoData.data;
             const fieldsToDisplay = [
@@ -405,7 +597,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { key: 'STATUS', label: 'Trạng thái' }
             ];
             
-            let infoHtml = '';
+            let hasData = false;
             fieldsToDisplay.forEach(f => {
                 if(data[f.key]) {
                     infoHtml += `
@@ -414,16 +606,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="info-value">${data[f.key]}</span>
                         </div>
                     `;
+                    hasData = true;
                 }
             });
-            subscriberInfo.innerHTML = infoHtml || '<p>Không có dữ liệu</p>';
+            if (!hasData) {
+                infoHtml += '<div class="info-item" style="grid-column: 1/-1"><p>Không có dữ liệu</p></div>';
+            }
         } else {
-            subscriberInfo.innerHTML = '<p style="color:var(--error);">Không tìm thấy thông tin</p>';
+            infoHtml += '<div class="info-item" style="grid-column: 1/-1"><p style="color:var(--error);">Không tìm thấy thông tin</p></div>';
+        }
+        
+        if (append) {
+            subscriberInfo.innerHTML += infoHtml;
+        } else {
+            subscriberInfo.innerHTML = infoHtml;
         }
         
         // Render Images
+        let imgHtml = `<div style="margin-top: 15px; padding-bottom: 5px; border-bottom: 1px dashed rgba(255,255,255,0.1); color: var(--accent);"><strong>SĐT: ${phone}</strong></div>`;
         if (imgData && imgData.data && imgData.data.length > 0) {
-            let imgHtml = '';
             imgData.data.forEach(img => {
                 // Phân biệt URL và Base64 một cách chính xác
                 let src = img.image_base;
@@ -459,11 +660,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 `;
-
             });
-            subscriberImages.innerHTML = imgHtml;
         } else {
-            subscriberImages.innerHTML = '<p style="color:var(--text-muted);">Không có hình ảnh</p>';
+            imgHtml += '<p style="color:var(--text-muted);">Không có hình ảnh</p>';
+        }
+
+        if (append) {
+            subscriberImages.innerHTML += imgHtml;
+        } else {
+            subscriberImages.innerHTML = imgHtml;
         }
     }
 
@@ -494,11 +699,14 @@ let _cachedIdgTokenTime = 0;
 async function prefetchIdgToken() {
     const accessToken = localStorage.getItem('vnpt_access_token');
     if (!accessToken) return;
-    const deviceId = localStorage.getItem('vnpt_device_id') || '0f8c2d3fb0c51653';
-    const appSecretObj = { device_id: deviceId, device_ip: 'Unknown', device_name: 'Web-Browser',
-        mac_address: 'Unknown', mobile_id: 'web-generated-id', app_id: '1',
-        app_version: '1.5.40.132', os_version: navigator.userAgent.substring(0, 50) };
-    const appSecret = btoa(unescape(encodeURIComponent(JSON.stringify(appSecretObj))));
+    let appSecret = localStorage.getItem('vnpt_app_secret');
+    if (!appSecret) {
+        const deviceId = localStorage.getItem('vnpt_device_id') || '0f8c2d3fb0c51653';
+        const appSecretObj = { device_id: deviceId, device_ip: 'Unknown', device_name: 'Web-Browser',
+            mac_address: 'Unknown', mobile_id: 'web-generated-id', app_id: '1',
+            app_version: '1.5.40.174', os_version: navigator.userAgent.substring(0, 50) };
+        appSecret = btoa(unescape(encodeURIComponent(JSON.stringify(appSecretObj))));
+    }
     try {
         const res = await fetch('https://api-onebss.vnpt.vn/app-com/Config/token_ekyc', {
             method: 'POST',
@@ -530,18 +738,21 @@ window.bypassEkyc = async function(phone, btnElement, fastMode = false) {
 
     try {
         const accessToken = localStorage.getItem('vnpt_access_token');
-        const deviceId = localStorage.getItem('vnpt_device_id') || "0f8c2d3fb0c51653";
-        const appSecretObj = {
-            "device_id": deviceId,
-            "device_ip": "Unknown",
-            "device_name": "Web-Browser",
-            "mac_address": "Unknown",
-            "mobile_id": "web-generated-id",
-            "app_id": "1",
-            "app_version": "1.5.40.132",
-            "os_version": navigator.userAgent.substring(0, 50)
-        };
-        const appSecret = btoa(unescape(encodeURIComponent(JSON.stringify(appSecretObj))));
+        let appSecret = localStorage.getItem('vnpt_app_secret');
+        if (!appSecret) {
+            const deviceId = localStorage.getItem('vnpt_device_id') || "0f8c2d3fb0c51653";
+            const appSecretObj = {
+                "device_id": deviceId,
+                "device_ip": "Unknown",
+                "device_name": "Web-Browser",
+                "mac_address": "Unknown",
+                "mobile_id": "web-generated-id",
+                "app_id": "1",
+                "app_version": "1.5.40.174",
+                "os_version": navigator.userAgent.substring(0, 50)
+            };
+            appSecret = btoa(unescape(encodeURIComponent(JSON.stringify(appSecretObj))));
+        }
         
         const baseHeaders = {
             'Accept': 'application/json',

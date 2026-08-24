@@ -32,8 +32,12 @@
                         <div class="input-icon">
                             <i class="fa-regular fa-user"></i>
                         </div>
-                        <input type="text" id="username" placeholder=" " required>
+                        <input type="text" id="username" placeholder=" " required autocomplete="off">
                         <label for="username">Tên đăng nhập</label>
+                        <div class="toggle-password" id="toggleAccountsBtn" title="Danh sách tài khoản đã đăng nhập">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </div>
+                        <div id="savedAccountsDropdown" class="saved-accounts-dropdown"></div>
                     </div>
 
                     <div class="input-group">
@@ -107,18 +111,22 @@
                     <!-- Column 1: Left -->
                     <div class="dashboard-col col-left">
                         <div class="card-section search-card glass-panel-inner">
-                            <form id="searchForm" class="search-form" style="margin-bottom: 0;">
-                                <div class="input-group" style="flex: 1;">
+                            <form id="searchForm" class="search-form" style="margin-bottom: 0; display: flex; gap: 10px; align-items: stretch;">
+                                <div class="input-group" style="flex: 1; margin-bottom: 0;">
                                     <div class="input-icon">
                                         <i class="fa-solid fa-phone"></i>
                                     </div>
-                                    <input type="text" id="phoneNumber" placeholder=" " required>
+                                    <input type="text" id="phoneNumber" placeholder=" ">
                                     <label for="phoneNumber">Số điện thoại (vd: 84855998879)</label>
                                 </div>
-                                <button type="submit" class="btn-login search-btn" id="searchBtn" style="margin-top: 0;">
+                                <button type="submit" class="btn-login search-btn" id="searchBtn" style="margin-top: 0; white-space: nowrap; padding: 0 20px;">
                                     <span class="btn-text">Tìm kiếm</span>
                                     <div class="loader" id="loaderSearch"></div>
                                 </button>
+                                <button type="button" class="btn-login search-btn" id="importBtn" style="margin-top: 0; white-space: nowrap; padding: 0 20px; background: var(--accent-color);" onclick="document.getElementById('importFile').click()">
+                                    <i class="fa-solid fa-file-import"></i> Import TXT
+                                </button>
+                                <input type="file" id="importFile" accept=".txt" style="display: none;">
                             </form>
                         </div>
 

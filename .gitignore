@@ -1,0 +1,67 @@
+# ==========================================
+# VNPT Root - Git Ignore Rules (Source Code Only)
+# ==========================================
+
+# Node modules & dependencies
+node_modules/
+package-lock.json
+.package-lock.json
+
+# APKs, zips, binaries & decompiler outputs
+*.apk
+*.zip
+*.tar
+*.gz
+*.rar
+jadx/
+jadx.zip
+blutter/
+blutter_out/
+VNPT_Employee_Prod_src/
+video_frames/
+dist/
+build/
+.http-mitm-proxy/
+
+# PyInstaller / Python executables
+*.spec
+*.exe
+build_*/
+release_*/
+build_logs/
+
+# Python cache & venv
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# Temporary text & dump files
+api_inventory_full.md
+api_list.txt
+dart_api_strings.txt
+login_api_detail.txt
+parse_preview.txt
+request_bodies.md
+request_body_full.txt
+*.log
+*.tmp
+
+# Employ subfolder build/test junk (in case ignored here too)
+employ/build/
+employ/dist/
+employ/release/
+employ/release_*/
+employ/build_*/
+employ/flask_sessions/
+employ/*_test*/
+employ/*_smoke*/
+employ/*smoke*
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,192 @@
+{% extends 'layout.html' %}
+{% block title %}Đăng nhập – VNPT Employee{% endblock %}
+
+{% block extra_style %}
+body{display:flex;align-items:center;justify-content:center;min-height:100vh;
+  background:radial-gradient(ellipse at 60% 20%,#0d2a4a 0%,#0d1117 60%)}
+
+/* Animated background shapes */
+.bg-shape{position:fixed;border-radius:50%;filter:blur(60px);opacity:.15;animation:float 8s infinite}
+.bg-shape:nth-child(1){width:400px;height:400px;background:#1f6feb;top:-100px;left:-100px;animation-delay:0s}
+.bg-shape:nth-child(2){width:300px;height:300px;background:#58a6ff;bottom:-80px;right:-80px;animation-delay:-3s}
+.bg-shape:nth-child(3){width:200px;height:200px;background:#3fb950;top:50%;left:70%;animation-delay:-6s}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(20px,20px) scale(1.05)}}
+
+.login-wrap{width:100%;max-width:420px;padding:16px;position:relative;z-index:1}
+
+.logo-area{text-align:center;margin-bottom:28px}
+.logo-circle{
+  width:64px;height:64px;border-radius:18px;
+  background:linear-gradient(135deg,#1f6feb,#58a6ff);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:28px;margin-bottom:12px;
+  box-shadow:0 8px 32px rgba(31,111,235,.4);
+}
+.logo-area h1{font-size:22px;font-weight:700}
+.logo-area p{font-size:12px;color:var(--text2);margin-top:4px}
+.server-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.2);
+  border-radius:20px;padding:3px 10px;font-size:11px;color:var(--accent);
+  margin-top:8px;font-family:'JetBrains Mono',monospace;
+}
+.server-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+
+.card{
+  background:rgba(22,27,34,.85);backdrop-filter:blur(20px);
+  border:1px solid var(--border);border-radius:16px;padding:28px 28px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+
+.form-group{margin-bottom:14px;position:relative}
+.form-group label{display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.form-group input{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  border-radius:9px;padding:10px 14px;color:var(--text);font-size:14px;
+  outline:none;transition:border-color .2s,box-shadow .2s;font-family:'Inter',sans-serif;
+}
+.form-group input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.12)}
+.form-group input::placeholder{color:var(--text3)}
+
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:42px}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:0}
+.pw-toggle:hover{color:var(--text2)}
+
+/* Saved accounts are encrypted by the desktop app, not kept in browser storage. */
+.saved-accounts{margin-bottom:18px}
+.saved-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
+.saved-list{display:grid;gap:7px;max-height:190px;overflow-y:auto}
+.saved-login-form{margin:0}
+.saved-login-btn{
+  width:100%;display:flex;align-items:center;gap:10px;text-align:left;
+  padding:10px 12px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:9px;color:var(--text);cursor:pointer;transition:.15s;
+}
+.saved-login-btn:hover{border-color:var(--accent);background:rgba(88,166,255,.08);transform:translateY(-1px)}
+.saved-avatar{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(88,166,255,.12);color:var(--accent)}
+.saved-name{font-size:13px;font-weight:650;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.saved-hint{margin-left:auto;font-size:10px;color:var(--text3);white-space:nowrap}
+.saved-login-btn:hover .saved-hint{color:var(--accent)}
+
+.submit-btn{
+  width:100%;background:linear-gradient(135deg,#1f6feb,#58a6ff);
+  border:none;color:#fff;border-radius:9px;padding:11px;
+  font-size:14px;font-weight:700;cursor:pointer;
+  transition:.2s;letter-spacing:.3px;margin-top:8px;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.submit-btn:hover{opacity:.9;transform:translateY(-1px)}
+.submit-btn:active{transform:none}
+.submit-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.submit-btn.loading .spinner{display:inline-block}
+.submit-btn.loading .btn-text{opacity:.7}
+
+.divider{height:1px;background:var(--border);margin:18px 0}
+.info-row{display:flex;justify-content:space-between;font-size:11px;color:var(--text3)}
+.info-row span{display:flex;align-items:center;gap:4px}
+.info-row .val{color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:10px}
+{% endblock %}
+
+{% block body %}
+<div class="bg-shape"></div>
+<div class="bg-shape"></div>
+<div class="bg-shape"></div>
+
+<div class="login-wrap">
+  <div class="logo-area">
+    <div class="logo-circle">📡</div>
+    <h1>VNPT Employee</h1>
+    <p>Hệ thống quản lý nội bộ OneBSS</p>
+    <div class="server-badge"><span class="dot"></span>api-onebss.vnpt.vn</div>
+  </div>
+
+  <div class="card">
+    {% if saved_accounts %}
+    <div class="saved-accounts">
+      <div class="saved-title">Tài khoản Employee đã lưu</div>
+      <div class="saved-list">
+        {% for account in saved_accounts %}
+        <form method="POST" action="{{ url_for('login_saved') }}" class="saved-login-form">
+          <input type="hidden" name="account_id" value="{{ account.id }}">
+          <button type="submit" class="saved-login-btn">
+            <span class="saved-avatar">👤</span>
+            <span class="saved-name">{{ account.username }}</span>
+            <span class="saved-hint">Bấm để đăng nhập →</span>
+          </button>
+        </form>
+        {% endfor %}
+      </div>
+      <div class="divider"></div>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/login" id="login-form" autocomplete="off">
+      <!-- Manual login; saved only after OTP succeeds. -->
+      <div class="form-group">
+        <label>Tên đăng nhập</label>
+        <input name="username" type="text" id="username-input" required
+               placeholder="Nhập tài khoản..."
+               value="{{ request.form.get('username','') }}"
+               autocomplete="off">
+      </div>
+
+      <!-- Password -->
+      <div class="form-group">
+        <label>Mật khẩu</label>
+        <div class="pw-wrap">
+          <input name="password" type="password" id="pw-input" required
+                 placeholder="••••••••" autocomplete="current-password">
+          <button type="button" class="pw-toggle" onclick="togglePw()">👁</button>
+        </div>
+      </div>
+
+      <button type="submit" class="submit-btn" id="login-btn">
+        <span class="spinner"></span>
+        <span class="btn-text">🔐 Đăng nhập</span>
+      </button>
+    </form>
+
+    <div class="divider"></div>
+    <div class="info-row">
+      <span>🔒 client_id <span class="val">clientapp</span></span>
+      <span>🌐 selectedmenu <span class="val">810241</span></span>
+    </div>
+    <div class="info-row" style="margin-top:6px">
+      <span>📦 app-version <span class="val">{{ app_version }}</span></span>
+      <span>🔑 grant_type <span class="val">password</span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Password toggle ──
+function togglePw() {
+  const i = document.getElementById('pw-input');
+  i.type = i.type === 'password' ? 'text' : 'password';
+}
+
+// ── Loading state ──
+document.getElementById('login-form').addEventListener('submit', function() {
+  const btn = document.getElementById('login-btn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+});
+
+// Saved-account buttons must also be single-submit: a second click would
+// request a second OTP and invalidate the first secretCode.
+document.querySelectorAll('.saved-login-form').forEach(form => {
+  form.addEventListener('submit', function() {
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Đang gửi OTP...'; }
+  });
+});
+
+// Never reuse the plaintext account cache created by old desktop builds.
+try { localStorage.removeItem('vnpt_saved_accounts'); } catch (_) {}
+
+</script>
+{% endblock %}

@@ -1,0 +1,96 @@
+# ==========================================
+# VNPT Employ - Git Ignore Rules (Source Code Only)
+# ==========================================
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# PyInstaller / Build & Release outputs
+*.spec
+*.exe
+build/
+build_*/
+build_logs/
+dist/
+release/
+release_*/
+*.manifest
+
+# Smoke test, benchmark & temporary test directories
+*_test*/
+*_smoke*/
+*smoke*
+account_migration_test_*/
+account_store_test_*/
+batch_*_test*/
+batch_*_smoke*/
+direct_launch_test/
+exe_account_migration_*/
+final_batch_dashboard_test/
+icoc_*_test*/
+icoc_*_smoke*/
+icoc_smoke_data/
+js_render_test/
+no_default_exe_test_*/
+runtime_smoke_exe_*/
+sim_batch_pacing_test/
+storage_smoke_*/
+
+# Flask sessions & runtime data
+flask_sessions/
+*.session
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Databases & local storage
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Excel, CSV & export data
+*.csv
+*.xlsx
+*.xls
+*.json_out
+uploads/
+downloads/
+
+# IDEs & Editor configurations
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

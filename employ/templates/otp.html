@@ -1,0 +1,143 @@
+{% extends 'layout.html' %}
+{% block title %}Xác thực OTP – VNPT Employee{% endblock %}
+{% block extra_style %}
+body{display:flex;align-items:center;justify-content:center;min-height:100vh;
+  background:radial-gradient(ellipse at 40% 30%,#0a2a14 0%,#0d1117 60%)}
+.bg-shape{position:fixed;border-radius:50%;filter:blur(60px);opacity:.12;animation:float 8s infinite}
+.bg-shape:nth-child(1){width:350px;height:350px;background:#3fb950;top:-80px;right:-80px;animation-delay:-2s}
+.bg-shape:nth-child(2){width:250px;height:250px;background:#1f6feb;bottom:-50px;left:-50px;animation-delay:-5s}
+@keyframes float{0%,100%{transform:translate(0,0)}50%{transform:translate(15px,15px)}}
+
+.otp-wrap{width:100%;max-width:380px;padding:16px;position:relative;z-index:1}
+.logo-area{text-align:center;margin-bottom:24px}
+.logo-circle{width:60px;height:60px;border-radius:16px;
+  background:linear-gradient(135deg,#1a4a2a,#3fb950);
+  display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:10px;
+  box-shadow:0 8px 28px rgba(63,185,80,.35)}
+.logo-area h1{font-size:20px;font-weight:700}
+.logo-area p{font-size:12px;color:var(--text2);margin-top:4px}
+
+.card{background:rgba(22,27,34,.88);backdrop-filter:blur(20px);
+  border:1px solid var(--border);border-radius:16px;padding:26px 28px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5)}
+
+.step-info{background:rgba(63,185,80,.07);border:1px solid rgba(63,185,80,.2);
+  border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2);
+  margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.step-info .icon{font-size:16px;flex-shrink:0}
+
+.otp-inputs{display:flex;gap:8px;justify-content:center;margin:16px 0}
+.otp-digit{
+  width:46px;height:54px;background:var(--bg3);border:2px solid var(--border);
+  border-radius:10px;text-align:center;font-size:22px;font-weight:700;
+  color:var(--text);outline:none;transition:.2s;font-family:'JetBrains Mono',monospace;
+}
+.otp-digit:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(63,185,80,.18)}
+.otp-digit.filled{border-color:rgba(63,185,80,.5)}
+
+.btn-confirm{width:100%;background:linear-gradient(135deg,#1a4a2a,#3fb950);
+  border:none;color:#fff;border-radius:9px;padding:11px;font-size:14px;
+  font-weight:700;cursor:pointer;transition:.2s;display:flex;align-items:center;
+  justify-content:center;gap:8px}
+.btn-confirm:hover{opacity:.9}
+.btn-confirm:disabled{opacity:.6;cursor:not-allowed}
+
+.btn-back{width:100%;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text2);border-radius:9px;padding:9px;font-size:13px;cursor:pointer;
+  transition:.2s;margin-top:8px}
+.btn-back:hover{border-color:var(--text2);color:var(--text)}
+
+.countdown{font-size:12px;color:var(--text3);text-align:center;margin-top:10px}
+.countdown b{color:var(--orange)}
+.user-info{font-size:12px;color:var(--text3);text-align:center;margin-bottom:6px}
+.user-info b{color:var(--accent)}
+{% endblock %}
+
+{% block body %}
+<div class="bg-shape"></div>
+<div class="bg-shape"></div>
+
+<div class="otp-wrap">
+  <div class="logo-area">
+    <div class="logo-circle">🔑</div>
+    <h1>Xác thực OTP</h1>
+    <p>Bước 2 / 2 — Xác minh danh tính</p>
+  </div>
+
+  <div class="card">
+    <div class="user-info">
+      Đang đăng nhập: <b>{{ session.get('username', '---') }}</b>
+    </div>
+    <div class="step-info">
+      <span class="icon">📲</span>
+      <span>Mã OTP đã được gửi về số điện thoại đăng ký với tài khoản của bạn.</span>
+    </div>
+
+    <form method="POST" action="/otp" id="otp-form">
+      <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">
+        Nhập mã OTP (6 chữ số)
+      </label>
+      <div class="otp-inputs">
+        {% for i in range(6) %}
+        <input class="otp-digit" type="text" maxlength="1" inputmode="numeric"
+               id="d{{ i }}" data-idx="{{ i }}" autocomplete="off">
+        {% endfor %}
+      </div>
+      <input type="hidden" name="otp" id="otp-hidden">
+
+      <button type="submit" class="btn-confirm" id="confirm-btn" onclick="return collectOtp()">
+        ✅ Xác nhận
+      </button>
+    </form>
+
+    <a href="/logout">
+      <button class="btn-back">← Quay lại đăng nhập</button>
+    </a>
+
+    <div class="countdown" id="countdown-wrap" style="display:none">
+      Gửi lại sau <b id="countdown-num">60</b>s
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 6-digit OTP input ──
+const digits = document.querySelectorAll('.otp-digit');
+digits.forEach((el, idx) => {
+  el.addEventListener('input', () => {
+    el.value = el.value.replace(/\D/g, '').slice(-1);
+    if (el.value) { el.classList.add('filled'); if (idx < digits.length-1) digits[idx+1].focus(); }
+    else el.classList.remove('filled');
+  });
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Backspace' && !el.value && idx > 0) { digits[idx-1].focus(); }
+    if (e.key === 'Enter') document.getElementById('otp-form').requestSubmit();
+  });
+  el.addEventListener('paste', e => {
+    const paste = e.clipboardData.getData('text').replace(/\D/g, '');
+    paste.split('').forEach((c, i) => {
+      if (digits[idx+i]) { digits[idx+i].value = c; digits[idx+i].classList.add('filled'); }
+    });
+    e.preventDefault();
+    const next = digits[Math.min(idx + paste.length, digits.length - 1)];
+    if (next) next.focus();
+  });
+});
+
+function collectOtp() {
+  const otp = [...digits].map(d => d.value).join('');
+  if (otp.length < 6) { showToast('Vui lòng nhập đủ 6 chữ số'); return false; }
+  document.getElementById('otp-hidden').value = otp;
+  const btn = document.getElementById('confirm-btn');
+  // Submit programmatically first
+  document.getElementById('otp-form').submit();
+  // Then disable button to prevent double click
+  btn.disabled = true; 
+  btn.textContent = '⏳ Đang xác thực...';
+  return false;
+}
+
+// Auto focus digit 0
+digits[0].focus();
+</script>
+{% endblock %}

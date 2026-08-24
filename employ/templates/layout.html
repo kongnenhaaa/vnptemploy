@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}VNPT Employee{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#30363d;
+  --border:#30363d;--text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
+  --accent:#58a6ff;--accent2:#1f6feb;
+  --green:#3fb950;--red:#f85149;--orange:#d29922;--purple:#bc8cff;
+  --sidebar-w:260px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+
+/* Flash messages */
+.flash-container{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.flash{padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;max-width:360px;animation:slideIn .3s ease}
+.flash.success{background:#1a3a2a;border:1px solid #2d6a4f;color:#3fb950}
+.flash.error{background:#3a1a1a;border:1px solid #6a1f1f;color:#f85149}
+.flash.info{background:#1a2a4a;border:1px solid #1f4e79;color:#58a6ff}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:none;opacity:1}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:10px}
+
+/* Toast */
+#toast{position:fixed;bottom:24px;right:24px;z-index:9999;
+  background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  padding:10px 18px;font-size:13px;transform:translateY(80px);opacity:0;
+  transition:.3s;pointer-events:none}
+#toast.show{transform:none;opacity:1}
+
+{% block extra_style %}{% endblock %}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- Flash messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-container" id="flash-container">
+  {% for cat, msg in messages %}
+  <div class="flash {{ cat }}" onclick="this.remove()">{{ msg }}</div>
+  {% endfor %}
+</div>
+<script>setTimeout(()=>{document.getElementById('flash-container')?.remove()},4000)</script>
+{% endif %}
+{% endwith %}
+
+<div id="toast"></div>
+
+{% block body %}{% endblock %}
+
+<script>
+function showToast(msg, dur=2500){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),dur);
+}
+function fallbackCopyText(txt){
+  const area=document.createElement('textarea');
+  area.value=String(txt??'');
+  area.setAttribute('readonly','');
+  area.style.position='fixed';area.style.left='-9999px';area.style.top='0';
+  document.body.appendChild(area);
+  area.focus();area.select();
+  let ok=false;
+  try{ok=document.execCommand('copy');}catch(e){ok=false;}
+  document.body.removeChild(area);
+  return ok ? Promise.resolve() : Promise.reject(new Error('Trình duyệt không cho phép sao chép'));
+}
+function copyToClipboard(txt){
+  const value=String(txt??'');
+  if(typeof navigator!=='undefined' && navigator.clipboard && typeof navigator.clipboard.writeText==='function'){
+    return navigator.clipboard.writeText(value).catch(()=>fallbackCopyText(value));
+  }
+  return fallbackCopyText(value);
+}
+function copyText(txt){
+  copyToClipboard(txt).then(()=>showToast('Copied!')).catch(e=>showToast('Copy lỗi: '+e.message));
+}
+{% block base_js %}{% endblock %}
+</script>
+</body>
+</html>
