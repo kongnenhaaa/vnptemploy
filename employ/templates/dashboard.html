@@ -2399,7 +2399,6 @@ async function saveSettings(e) {
 
 // ── Panel navigation ──
 async function showPanel(name) {
-  if (name !== 'deviceauth') deviceAuthStopCamera(false);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => {

@@ -1613,9 +1613,10 @@ def _device_auth_selected_policy(config_payload):
 
 
 def _device_auth_client_session(context):
-    device = re.sub(r'[^A-Za-z0-9_-]', '', str(context.get('device_id') or 'PC'))[:32]
-    user = re.sub(r'[^A-Za-z0-9_-]', '', str(context.get('username') or 'employee'))[:32]
-    return f'Windows_PC_Desktop_Device_3.6.6_{device}_{int(time.time() * 1000)}_{user}'
+    device = re.sub(r'[^A-Za-z0-9_-]', '', str(context.get('device_id') or '16ec16d5609eed0e'))[:32]
+    ts = int(time.time() * 1000)
+    # Giả lập thiết bị Android chuẩn OneBSS Mobile / MyVNPT (giống ekyc_full.py)
+    return f'ANDROID_CPH2179_32_Device_3.6.6_{device}_{ts}_com.vnp.myvinaphone'
 
 
 def _device_auth_transactions():
@@ -2016,7 +2017,7 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
 
     return {
         'ok': True,
-        'message': 'Xác thực đổi thiết bị thành công (tự động đẩy khuôn mặt 0.89)',
+        'message': 'Xác thực đổi thiết bị thành công ',
         'request_id': init_request_id,
         'confirmation_id': confirmation_id,
         'phone': phone,
