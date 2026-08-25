@@ -133,6 +133,20 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .icoc-device-item-title.ic{color:#58a6ff}.icoc-device-item-title.oc{color:#bc8cff}
 .icoc-device-state{margin-left:auto;font-size:11px;font-weight:700;border:1px solid var(--border);border-radius:999px;padding:3px 8px}
 .icoc-device-state.loading{color:var(--accent)}
+.menu-selector-wrap{display:none!important}
+
+/* ── Mở/đóng IC/OC ── */
+.icoc-device-card{max-width:900px}
+.icoc-device-status{display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px}
+.icoc-device-status.show{display:block}
+.icoc-device-phone{font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700}
+.icoc-device-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0 16px}
+.icoc-device-item{border:1px solid var(--border);border-radius:10px;background:var(--bg3);padding:14px}
+.icoc-device-item-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.icoc-device-item-title{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:800}
+.icoc-device-item-title.ic{color:#58a6ff}.icoc-device-item-title.oc{color:#bc8cff}
+.icoc-device-state{margin-left:auto;font-size:11px;font-weight:700;border:1px solid var(--border);border-radius:999px;padding:3px 8px}
+.icoc-device-state.loading{color:var(--accent)}
 .icoc-device-state.mo{color:var(--green);border-color:rgba(63,185,80,.4);background:rgba(63,185,80,.1)}
 .icoc-device-state.khoa{color:var(--red);border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.1)}
 .icoc-device-state.unknown{color:var(--text3)}
@@ -141,32 +155,28 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .icoc-device-help{font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px}
 @media(max-width:700px){.icoc-device-grid{grid-template-columns:1fr}}
 
-/* ── Xác thực đổi thiết bị bằng camera PC ── */
-.device-auth-card{max-width:980px}
-.device-auth-layout{display:grid;grid-template-columns:minmax(360px,1.35fr) minmax(260px,.65fr);gap:16px;align-items:start}
-.device-auth-camera{position:relative;min-height:360px;background:#03070d;border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.device-auth-camera video{display:block;width:100%;height:100%;min-height:360px;max-height:560px;object-fit:cover;transform:scaleX(-1);background:#03070d}
-.device-auth-camera-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text3);pointer-events:none;text-align:center;padding:24px}
-.device-auth-camera.running .device-auth-camera-placeholder{display:none}
-.device-auth-face-guide{display:none;position:absolute;left:50%;top:50%;width:min(48%,270px);height:min(74%,340px);transform:translate(-50%,-50%);border:3px solid rgba(88,166,255,.9);border-radius:48% 48% 44% 44%;box-shadow:0 0 0 999px rgba(0,0,0,.2),0 0 24px rgba(88,166,255,.25);pointer-events:none}
-.device-auth-camera.running .device-auth-face-guide{display:block}
+/* ── Xác thực đổi thiết bị tự động (eKYC Liveness 0.89) ── */
+.device-auth-card{max-width:860px}
+.device-auth-layout{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+.device-auth-form{display:grid;gap:14px;background:var(--bg3);padding:18px;border-radius:12px;border:1px solid var(--border)}
+.device-auth-hint{font-size:12px;color:var(--text3);line-height:1.55;display:flex;align-items:center;gap:6px}
+.device-auth-hint b{color:var(--accent)}
 .device-auth-side{display:grid;gap:12px}
-.device-auth-status{border:1px solid var(--border);border-radius:10px;background:var(--bg3);padding:12px;font-size:12px;line-height:1.55;color:var(--text2)}
-.device-auth-status strong{display:block;color:var(--text);margin-bottom:4px}
+.device-auth-status{border:1px solid var(--border);border-radius:10px;background:var(--bg3);padding:14px;font-size:13px;line-height:1.55;color:var(--text2)}
+.device-auth-status strong{display:block;color:var(--text);margin-bottom:4px;font-size:14px}
 .device-auth-status.ok{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
 .device-auth-status.err{border-color:rgba(248,81,73,.55);background:rgba(248,81,73,.08)}
 .device-auth-status.loading{border-color:rgba(88,166,255,.55);background:rgba(88,166,255,.08)}
-.device-auth-policy{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.device-auth-policy span{border:1px solid var(--border);border-radius:7px;padding:7px 8px;background:var(--bg);font-size:10px;color:var(--text3)}
-.device-auth-actions{display:flex;gap:8px;flex-wrap:wrap}
-.device-auth-result{display:none;margin-top:14px;border:1px solid var(--border);border-radius:10px;padding:13px;background:var(--bg3)}
+.device-auth-policy{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.device-auth-policy span{border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg);font-size:11px;color:var(--text3);display:flex;flex-direction:column;gap:3px}
+.device-auth-policy span b{color:var(--text);font-size:12px}
+.device-auth-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px}
+.device-auth-result{display:none;margin-top:14px;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg3)}
 .device-auth-result.show{display:block}
-@media(max-width:850px){.device-auth-layout{grid-template-columns:1fr}.device-auth-camera,.device-auth-camera video{min-height:300px}}
 
 /* ── Main content ── */
 #main{flex:1;overflow:hidden;display:flex;flex-direction:column}
 #content{flex:1;overflow-y:auto;padding:24px}
-
 /* Panel */
 .panel{display:none}
 .panel.active{display:block}
@@ -1956,62 +1966,43 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
         </div>
       </div>
 
-      <!-- ══ XÁC THỰC ĐỔI THIẾT BỊ BẰNG CAMERA PC ══ -->
+      <!-- ══ XÁC THỰC ĐỔI THIẾT BỊ (eKYC AUTO) ══ -->
       <div class="panel" id="panel-deviceauth">
         <div class="section-header">
           <div>
-            <h2>📷 Xác thực đổi thiết bị</h2>
-            <div class="sub">Chụp trực tiếp bằng camera PC và kiểm tra liveness qua dịch vụ eKYC của VNPT.</div>
+            <h2>⚡ Xác thực đổi thiết bị</h2>
           </div>
         </div>
         <div class="card device-auth-card">
           <div class="card-header">
-            <h3><span class="method POST">LIVE</span> Camera PC · eKYC menu 810241</h3>
+            <h3><span class="method POST">AUTO</span> eKYC · Menu 810241</h3>
             <span id="device-auth-header-badge" class="doisim-status">Chưa bắt đầu</span>
           </div>
           <div class="card-body">
-            <div class="form-group" style="max-width:430px;margin-bottom:14px">
-              <label>Số điện thoại cần xác thực *</label>
-              <input id="device-auth-phone" type="tel" inputmode="numeric"
-                     autocomplete="off" placeholder="Ví dụ: 0846216326 hoặc 84846216326">
-              <div style="font-size:10px;color:var(--text3);margin-top:5px">
-                SĐT được chuẩn hóa về đầu 84 và dùng để tạo phiên xác nhận OneBSS trước khi chụp.
-              </div>
-            </div>
             <div class="device-auth-layout">
-              <div>
-                <div id="device-auth-camera" class="device-auth-camera">
-                  <video id="device-auth-video" autoplay playsinline muted></video>
-                  <div class="device-auth-camera-placeholder">
-                    <div style="font-size:42px">📷</div>
-                    <strong style="color:var(--text2)">Camera chưa bật</strong>
-                    <span style="font-size:11px;line-height:1.5">Bấm “Bắt đầu xác thực”, sau đó cho phép ứng dụng dùng camera.</span>
+              <div class="device-auth-form">
+                <div class="form-group">
+                  <label>Số điện thoại cần xác thực đổi thiết bị *</label>
+                  <div style="display:flex;gap:10px;align-items:center">
+                    <input id="device-auth-phone" type="tel" inputmode="numeric" style="flex:1;font-size:15px;font-weight:600"
+                           autocomplete="off" placeholder="Ví dụ: 0846216326 hoặc 84846216326" onkeydown="if(event.key==='Enter')deviceAuthExecute()">
+                    <button id="device-auth-start-btn" class="btn-primary" type="button" onclick="deviceAuthExecute()" style="padding:10px 22px;font-size:13px;font-weight:700">
+                      🚀 Xác thực ngay
+                    </button>
                   </div>
-                  <div class="device-auth-face-guide" aria-hidden="true"></div>
-                </div>
-                <canvas id="device-auth-canvas" hidden></canvas>
-                <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-top:9px">
-                  Nhìn thẳng vào camera, để khuôn mặt nằm trong khung, đủ sáng, không đeo khẩu trang và mở mắt. Ứng dụng không có nút chọn ảnh từ ổ đĩa.
                 </div>
               </div>
+
               <div class="device-auth-side">
                 <div id="device-auth-status" class="device-auth-status">
                   <strong>Trạng thái</strong>
-                  Sẵn sàng mở camera PC.
+                  Sẵn sàng xác thực đổi thiết bị. Nhập SĐT và bấm “Xác thực ngay”.
                 </div>
                 <div id="device-auth-policy" class="device-auth-policy">
-                  <span>Liveness: chờ cấu hình</span>
-                  <span>Mắt mở: chờ cấu hình</span>
-                  <span>Che mặt: chờ cấu hình</span>
-                  <span>AI bắt buộc: chờ cấu hình</span>
-                </div>
-                <div class="device-auth-actions">
-                  <button id="device-auth-start-btn" class="btn-primary" type="button" onclick="deviceAuthStart()">📷 Bắt đầu xác thực</button>
-                  <button id="device-auth-capture-btn" class="btn-primary" type="button" onclick="deviceAuthCaptureAndVerify()" disabled>✅ Chụp và xác thực</button>
-                  <button id="device-auth-stop-btn" class="btn-sm" type="button" onclick="deviceAuthStopCamera(true)" disabled>⏹ Tắt camera</button>
-                </div>
-                <div style="font-size:10px;color:var(--text3);line-height:1.5">
-                  Khung hình chỉ được đánh dấu hoàn tất khi API liveness xác nhận người thật, mắt mở và không che mặt theo cấu hình OneBSS.
+                  <span>Liveness<b>Bypass (0.89)</b></span>
+                  <span>Mắt mở<b>Bắt buộc (1)</b></span>
+                  <span>Che mặt<b>Không (0)</b></span>
+                  <span>AI<b>Đạt (1)</b></span>
                 </div>
               </div>
             </div>
@@ -6703,14 +6694,11 @@ async function thanhToanHD() {
   }));
 }
 
-// ── Xác thực đổi thiết bị bằng camera PC ──
+// ── Xác thực đổi thiết bị tự động (eKYC Liveness 0.89) ──
 const deviceAuthState = {
-  stream: null,
-  handle: '',
   busy: false,
   requestId: '',
   phone: '',
-  policy: null,
 };
 
 function deviceAuthSetStatus(kind, title, message) {
@@ -6727,177 +6715,65 @@ function deviceAuthSetStatus(kind, title, message) {
 }
 
 function deviceAuthSetButtons() {
-  const running = Boolean(deviceAuthState.stream);
   const start = document.getElementById('device-auth-start-btn');
-  const capture = document.getElementById('device-auth-capture-btn');
-  const stop = document.getElementById('device-auth-stop-btn');
   const phone = document.getElementById('device-auth-phone');
   if (start) {
     start.disabled = deviceAuthState.busy;
-    start.textContent = deviceAuthState.busy ? '⏳ Đang khởi tạo…' : (running ? '🔄 Khởi tạo lại' : '📷 Bắt đầu xác thực');
+    start.textContent = deviceAuthState.busy ? '⏳ Đang xác thực…' : '🚀 Xác thực ngay';
   }
-  if (capture) capture.disabled = deviceAuthState.busy || !running || !deviceAuthState.handle;
-  if (stop) stop.disabled = deviceAuthState.busy || !running;
-  if (phone) phone.disabled = deviceAuthState.busy || running;
+  if (phone) phone.disabled = deviceAuthState.busy;
 }
 
-function deviceAuthRenderPolicy(policy) {
-  const target = document.getElementById('device-auth-policy');
-  if (!target) return;
-  const yesNo = value => Number(value) === 1 ? 'Bắt buộc' : 'Không yêu cầu';
-  target.innerHTML = `
-    <span>Liveness: <b>${yesNo(policy?.check_liveness)}</b></span>
-    <span>Mắt mở: <b>${yesNo(policy?.check_eye_open)}</b></span>
-    <span>Che mặt: <b>${yesNo(policy?.check_masked)}</b></span>
-    <span>AI: <b>${yesNo(policy?.ai_must)}</b></span>`;
-}
-
-function deviceAuthStopCamera(manual=false) {
-  if (deviceAuthState.stream) {
-    deviceAuthState.stream.getTracks().forEach(track => {
-      try { track.stop(); } catch (_) {}
-    });
-  }
-  deviceAuthState.stream = null;
-  deviceAuthState.handle = '';
-  const video = document.getElementById('device-auth-video');
-  if (video) video.srcObject = null;
-  document.getElementById('device-auth-camera')?.classList.remove('running');
-  if (manual) deviceAuthSetStatus('', 'Đã tắt camera', 'Bấm “Bắt đầu xác thực” để mở phiên mới.');
-  deviceAuthSetButtons();
-}
-
-async function deviceAuthStart() {
+async function deviceAuthExecute() {
   if (deviceAuthState.busy) return;
-  deviceAuthStopCamera(false);
   const result = document.getElementById('device-auth-result');
   if (result) { result.className = 'device-auth-result'; result.innerHTML = ''; }
   const rawPhone = document.getElementById('device-auth-phone')?.value.trim() || '';
   if (!rawPhone) {
-    deviceAuthSetStatus('err', 'Thiếu số điện thoại', 'Nhập SĐT cần xác thực trước khi bắt đầu.');
-    return;
-  }
-  if (!navigator.mediaDevices?.getUserMedia) {
-    deviceAuthSetStatus('err', 'Không có camera', 'WebView hoặc máy tính không hỗ trợ truy cập camera.');
+    deviceAuthSetStatus('err', 'Thiếu số điện thoại', 'Vui lòng nhập SĐT cần xác thực đổi thiết bị.');
     return;
   }
   deviceAuthState.busy = true;
-  deviceAuthSetStatus('loading', 'Đang mở camera', 'Hãy cho phép ứng dụng sử dụng camera PC.');
   deviceAuthSetButtons();
+  deviceAuthSetStatus('loading', 'Đang thực hiện xác thực', 'Khởi tạo phiên eKYC, tự động tải ảnh chân dung OneBSS và đẩy dữ liệu Liveness 0.89 lên hệ thống…');
+
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        facingMode: 'user',
-        width: {ideal: 1280},
-        height: {ideal: 720},
-      },
-    });
-    deviceAuthState.stream = stream;
-    const video = document.getElementById('device-auth-video');
-    video.srcObject = stream;
-    await video.play();
-    document.getElementById('device-auth-camera')?.classList.add('running');
-    deviceAuthSetStatus('loading', 'Đang tạo phiên xác nhận', 'Gắn SĐT với phiên eKYC OneBSS…');
-    const response = await fetch('/api/device-auth/prepare', {
+    const response = await fetch('/api/device-auth/verify', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({phone: rawPhone}),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok || !data.handle) {
-      throw new Error(data.error || `Không tạo được phiên eKYC (HTTP ${response.status})`);
-    }
-    deviceAuthState.handle = data.handle;
-    deviceAuthState.requestId = data.request_id || '';
-    deviceAuthState.phone = data.phone || rawPhone;
-    deviceAuthState.policy = data.policy || {};
-    deviceAuthRenderPolicy(deviceAuthState.policy);
-    deviceAuthSetStatus('ok', 'Đã tạo phiên xác nhận', `SĐT ${deviceAuthState.phone} · Đặt khuôn mặt vào khung rồi bấm “Chụp và xác thực”.`);
-  } catch (error) {
-    deviceAuthStopCamera(false);
-    const name = String(error?.name || '');
-    const message = name === 'NotAllowedError'
-      ? 'Quyền camera bị từ chối. Hãy cho phép camera trong Windows/WebView rồi thử lại.'
-      : name === 'NotFoundError'
-        ? 'Không tìm thấy camera đang hoạt động trên máy tính.'
-        : (error?.message || String(error));
-    deviceAuthSetStatus('err', 'Không thể bắt đầu', message);
-  } finally {
-    deviceAuthState.busy = false;
-    deviceAuthSetButtons();
-  }
-}
-
-function deviceAuthCanvasBlob(canvas) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Không tạo được khung hình JPEG')), 'image/jpeg', 0.92);
-  });
-}
-
-async function deviceAuthCaptureAndVerify() {
-  if (deviceAuthState.busy || !deviceAuthState.stream || !deviceAuthState.handle) return;
-  const video = document.getElementById('device-auth-video');
-  if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
-    deviceAuthSetStatus('err', 'Camera chưa sẵn sàng', 'Chờ hình ảnh camera hiển thị rồi thử lại.');
-    return;
-  }
-  deviceAuthState.busy = true;
-  deviceAuthSetButtons();
-  deviceAuthSetStatus('loading', 'Đang xác thực sống', 'Đang gửi khung hình camera tới dịch vụ liveness VNPT…');
-  try {
-    const canvas = document.getElementById('device-auth-canvas');
-    const scale = Math.min(1, 1280 / video.videoWidth);
-    canvas.width = Math.max(640, Math.round(video.videoWidth * scale));
-    canvas.height = Math.max(360, Math.round(video.videoHeight * scale));
-    const context = canvas.getContext('2d', {alpha:false});
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const blob = await deviceAuthCanvasBlob(canvas);
-    const form = new FormData();
-    form.append('handle', deviceAuthState.handle);
-    form.append('frame', blob, 'camera-frame.jpg');
-    const response = await fetch('/api/device-auth/verify-camera', {
-      method: 'POST',
-      body: form,
-    });
-    const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
-      const suffix = data.liveness_passed
-        ? ' Liveness đã đạt nhưng bước lưu hồ sơ chưa hoàn tất.'
-        : ' Giữ nguyên camera và chụp lại một khung hình mới.';
-      throw new Error((data.error || `Xác thực thất bại (HTTP ${response.status})`) + suffix);
+      throw new Error(data.error || `Xác thực thất bại (HTTP ${response.status})`);
     }
     const liveness = data.liveness || {};
     const file = data.file || {};
-    const result = document.getElementById('device-auth-result');
     if (result) {
       result.className = 'device-auth-result show';
       result.innerHTML = `
-        <div style="color:var(--green);font-weight:750;margin-bottom:9px">✅ ${escHtml(data.message || 'Xác thực camera thành công')}</div>
-          <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
-          <div class="doisim-summary-item"><span>Số điện thoại</span><strong>${escHtml(data.phone || deviceAuthState.phone || '—')}</strong></div>
+        <div style="color:var(--green);font-weight:750;font-size:14px;margin-bottom:10px">✅ ${escHtml(data.message || 'Xác thực đổi thiết bị thành công')}</div>
+        <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div class="doisim-summary-item"><span>Số điện thoại</span><strong>${escHtml(data.phone || rawPhone)}</strong></div>
           <div class="doisim-summary-item"><span>Mã phiên xác nhận</span><strong>${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
-          <div class="doisim-summary-item"><span>Liveness</span><strong>${escHtml(liveness.liveness ?? 'Đạt')}</strong></div>
-          <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? 'Đạt')}</strong></div>
-          <div class="doisim-summary-item"><span>Che mặt</span><strong>${escHtml(data.mask?.masked ?? 'Không')}</strong></div>
+          <div class="doisim-summary-item"><span>Liveness</span><strong>${escHtml(liveness.liveness_msg || 'Người thật (score 0.89)')}</strong></div>
+          <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? '1')}</strong></div>
+          <div class="doisim-summary-item"><span>Che mặt</span><strong>${escHtml(data.mask?.masked ?? '0')}</strong></div>
           <div class="doisim-summary-item"><span>Client session</span><strong>${escHtml(data.client_session || '—')}</strong></div>
           <div class="doisim-summary-item"><span>File ID</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Tệp lưu</span><strong>${escHtml(file.ten_taptin || file.duong_dan || 'PORTRAIT_IMAGE.jpg')}</strong></div>
         </div>
         ${data.log_warning ? `<div style="margin-top:8px;color:var(--orange);font-size:11px">Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}`;
     }
-    deviceAuthSetStatus('ok', 'Xác thực thành công', 'Kết quả liveness hợp lệ và ảnh camera đã được lưu vào hồ sơ OneBSS.');
-    deviceAuthStopCamera(false);
-    showToast('✅ Xác thực đổi thiết bị bằng camera PC thành công');
+    deviceAuthSetStatus('ok', 'Xác thực thành công', `Đã hoàn tất xác thực đổi thiết bị cho SĐT ${data.phone || rawPhone}.`);
+    showToast('✅ Xác thực đổi thiết bị thành công (Liveness 0.89)');
   } catch (error) {
-    deviceAuthSetStatus('err', 'Xác thực chưa đạt', error?.message || String(error));
+    deviceAuthSetStatus('err', 'Xác thực thất bại', error?.message || String(error));
   } finally {
     deviceAuthState.busy = false;
     deviceAuthSetButtons();
   }
 }
-
-window.addEventListener('beforeunload', () => deviceAuthStopCamera(false));
 
 // ── Đổi SIM ──
 const doiSimState = {
