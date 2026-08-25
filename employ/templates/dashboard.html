@@ -94,7 +94,31 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 /* Giao diện vận hành rút gọn: chỉ hiện các nghiệp vụ đang được sử dụng. */
 #sidebar > .sidebar-section:first-child,
 #sidebar > .sidebar-section:last-child{display:none}
-#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="donhang"]):not([data-panel="icoc"]){display:none}
+#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="donhang"]):not([data-panel="icoc"]):not([data-panel="doisim"]){display:none}
+
+.doisim-progress{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:0 0 14px}
+.doisim-step{border:1px solid var(--border);background:var(--bg2);border-radius:9px;padding:10px 12px;color:var(--text3);font-size:12px}
+.doisim-step strong{display:block;color:var(--text2);font-size:13px;margin-bottom:3px}
+.doisim-step.active{border-color:var(--accent);background:rgba(88,166,255,.08)}
+.doisim-step.done{border-color:#238636;background:rgba(46,160,67,.08)}
+.doisim-step.done strong{color:#3fb950}
+.doisim-summary{display:none;margin-top:12px;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.doisim-summary.show{display:block}
+.doisim-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:1px;background:var(--border)}
+.doisim-summary-item{background:var(--bg2);padding:10px 12px;min-height:61px}
+.doisim-summary-item span{display:block;font-size:10px;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.doisim-summary-item strong{display:block;color:var(--text1);font-size:13px;overflow-wrap:anywhere}
+.doisim-status{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:5px 9px;font-size:11px;color:var(--text2)}
+.doisim-status.ok{border-color:#238636;color:#3fb950;background:rgba(46,160,67,.08)}
+.doisim-status.err{border-color:#da3633;color:#f85149;background:rgba(248,81,73,.08)}
+.doisim-status.loading{border-color:#9e6a03;color:#d29922;background:rgba(210,153,34,.08)}
+.doisim-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.doisim-note{font-size:11px;color:var(--text3);line-height:1.55;margin-top:8px}
+.doisim-inline-form{display:grid;grid-template-columns:minmax(260px,1fr) auto auto;gap:10px;align-items:end}
+.doisim-inline-form.two{grid-template-columns:minmax(260px,1fr) auto}
+@media(max-width:900px){.doisim-progress{grid-template-columns:1fr 1fr}.doisim-summary-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.doisim-inline-form,.doisim-inline-form.two{grid-template-columns:1fr}.doisim-inline-form button{width:100%}}
+@media(max-width:560px){.doisim-progress,.doisim-summary-grid{grid-template-columns:1fr}}
 .menu-selector-wrap{display:none!important}
 
 /* ── Mở/đóng IC/OC ── */
@@ -1821,57 +1845,90 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
 
       <!-- ══ ĐỔI SIM ══ -->
       <div class="panel" id="panel-doisim">
-        <div class="section-header"><h2>📲 Đổi SIM</h2></div>
-        <div class="grid2">
-          <div class="card">
-            <div class="card-header"><h3><span class="method POST">POST</span> Đổi SIM vật lý (v2)</h3></div>
-            <div class="card-body">
-              <div class="form-row">
-                <div class="form-group"><label>Số thuê bao</label><input id="ds-isdn" placeholder="0901234567"></div>
-                <div class="form-group"><label>Serial SIM mới</label><input id="ds-serial" placeholder="Serial của SIM mới"></div>
-                <div class="form-group"><label>Loại SIM</label>
-                  <select id="ds-loaisim"><option value="1">Nano SIM</option><option value="2">Micro SIM</option><option value="3">Standard</option></select>
-                </div>
-                <button class="btn-primary" onclick="doiSim()" style="width:100%">🔄 Đổi SIM</button>
-              </div>
-              <div class="resp-box" id="ds-resp"></div>
-            </div>
+        <div class="section-header">
+          <div>
+            <h2>📲 Đổi SIM</h2>
+            <div class="sub">Luồng mobile gốc: kiểm tra quyền → tra cứu thuê bao → kiểm tra SIM mới → xác nhận đổi SIM.</div>
           </div>
-          <div class="card">
-            <div class="card-header"><h3><span class="method POST">POST</span> Kiểm tra trạng thái sinh trắc</h3></div>
-            <div class="card-body">
-              <div class="form-row">
-                <div class="form-group"><label>Số thuê bao / MSISDN</label><input id="st-tbid" placeholder="0901234567"></div>
-                <button class="btn-primary" onclick="kiemTraSinhTrac()" style="width:100%">👁️ Kiểm tra sinh trắc</button>
+          <div id="doisim-permission" class="doisim-status loading">Đang kiểm tra quyền DOISIM…</div>
+        </div>
+
+        <div class="doisim-progress">
+          <div class="doisim-step active" id="doisim-progress-1"><strong>1. Thuê bao</strong>Tra cứu thông tin CCBS</div>
+          <div class="doisim-step" id="doisim-progress-2"><strong>2. SIM mới</strong>Kiểm tra MSIN 10 số</div>
+          <div class="doisim-step" id="doisim-progress-3"><strong>3. Xác thực</strong>Nhập dữ liệu xác thực</div>
+          <div class="doisim-step" id="doisim-progress-4"><strong>4. Hoàn tất</strong>Xác nhận đổi SIM</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3><span class="method POST">POST</span> Bước 1 – Tra cứu thuê bao cần đổi SIM</h3></div>
+          <div class="card-body">
+            <div class="doisim-inline-form">
+              <div class="form-group" style="flex:1;min-width:240px">
+                <label>Số thuê bao *</label>
+                <input id="ds-isdn" inputmode="numeric" placeholder="Ví dụ: 0946287398 hoặc 84946287398"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();doiSimLookupSubscriber();}">
               </div>
-              <div class="resp-box" id="st-resp"></div>
+              <button id="doisim-lookup-btn" class="btn-primary" type="button" onclick="doiSimLookupSubscriber()">🔍 Tra cứu thuê bao</button>
+              <button class="btn-sm" type="button" onclick="doiSimReset()">Làm mới luồng</button>
             </div>
+            <div id="doisim-subscriber-summary" class="doisim-summary">
+              <div class="doisim-summary-grid">
+                <div class="doisim-summary-item"><span>Số thuê bao</span><strong id="doisim-sub-phone">—</strong></div>
+                <div class="doisim-summary-item"><span>Khách hàng</span><strong id="doisim-sub-name">—</strong></div>
+                <div class="doisim-summary-item"><span>SIM cũ / MSIN</span><strong id="doisim-sub-msin">—</strong></div>
+                <div class="doisim-summary-item"><span>Loại thuê bao</span><strong id="doisim-sub-type">—</strong></div>
+                <div class="doisim-summary-item"><span>Trạng thái</span><strong id="doisim-sub-status">—</strong></div>
+                <div class="doisim-summary-item"><span>Giấy tờ</span><strong id="doisim-sub-id">—</strong></div>
+                <div class="doisim-summary-item" style="grid-column:1/-1"><span>Địa chỉ khách hàng</span><strong id="doisim-sub-address">—</strong></div>
+              </div>
+            </div>
+            <div class="resp-box" id="doisim-subscriber-resp"></div>
           </div>
-          <div class="card">
-            <div class="card-header"><h3><span class="method POST">POST</span> Xác thực hình ảnh eKYC</h3></div>
-            <div class="card-body">
-              <div class="form-row">
-                <div class="form-group"><label>Image hash từ bước chụp eKYC</label><input id="ekyc-tbid" placeholder="p_image_hash"></div>
-                <button class="btn-primary" onclick="xacThucHinhAnh()" style="width:100%">📷 Xác thực ảnh</button>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <div class="card-header"><h3><span class="method POST">POST</span> Bước 2 – Kiểm tra SIM mới</h3></div>
+          <div class="card-body">
+            <div class="doisim-inline-form two">
+              <div class="form-group" style="flex:1;min-width:240px">
+                <label>Số SIM mới / MSIN (10 chữ số) *</label>
+                <input id="ds-serial" inputmode="numeric" maxlength="10" placeholder="Ví dụ: 2226257553"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();doiSimCheckNewSim();}">
               </div>
-              <div class="resp-box" id="ekyc-resp"></div>
+              <button id="doisim-check-sim-btn" class="btn-primary" type="button" onclick="doiSimCheckNewSim()" disabled>🔎 Kiểm tra SIM mới</button>
             </div>
+            <div id="doisim-new-sim-summary" class="doisim-summary">
+              <div class="doisim-summary-grid">
+                <div class="doisim-summary-item"><span>MSIN mới</span><strong id="doisim-new-msin">—</strong></div>
+                <div class="doisim-summary-item"><span>Loại SIM</span><strong id="doisim-new-type">—</strong></div>
+                <div class="doisim-summary-item"><span>Kết quả kiểm tra</span><strong id="doisim-new-result">—</strong></div>
+              </div>
+            </div>
+            <div class="doisim-note">API mobile dùng đồng thời SĐT đang tra cứu và MSIN mới. SIM đã gán số, không tồn tại hoặc đã hủy sẽ bị chặn trước bước xác nhận.</div>
+            <div class="resp-box" id="doisim-new-sim-resp"></div>
           </div>
-          <div class="card">
-            <div class="card-header"><h3><span class="method POST">POST</span> Khóa/Mở IC/OC</h3></div>
-            <div class="card-body">
-              <div class="form-row">
-                <div class="form-group"><label>Số thuê bao</label><input id="icoc-isdn" placeholder="0901234567"></div>
-                <div class="form-group"><label>Loại</label>
-                  <select id="icoc-type"><option value="IC">IC (Incoming)</option><option value="OC">OC (Outgoing)</option></select>
-                </div>
-                <div style="display:flex;gap:8px">
-                  <button class="btn-primary" style="flex:1" onclick="moICOC()">✅ Mở</button>
-                  <button class="btn-primary" style="flex:1;background:linear-gradient(135deg,#4a1a1a,#f85149)" onclick="khoaICOC()">🔒 Khóa</button>
-                </div>
-              </div>
-              <div class="resp-box" id="icoc-resp"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <div class="card-header"><h3><span class="method POST">POST</span> Bước 3 – Thông tin xác thực và đổi SIM</h3></div>
+          <div class="card-body">
+            <div class="grid2">
+              <div class="form-group"><label>Mã xác thực / OTP *</label><input id="doisim-auth-code" autocomplete="one-time-code" placeholder="p_maxacthuc"></div>
+              <div class="form-group"><label>Mã HRM nhân viên *</label><input id="doisim-hrm" placeholder="p_ma_hrm"></div>
+              <div class="form-group"><label>Request ID định danh/eKYC *</label><input id="doisim-request-id" placeholder="p_request_id"></div>
+              <div class="form-group"><label>Loại giấy tờ *</label><input id="doisim-id-type" placeholder="p_loai_gt theo kết quả định danh"></div>
+              <div class="form-group" style="grid-column:1/-1"><label>Địa chỉ xác thực *</label><input id="doisim-address" placeholder="p_dia_chi"></div>
             </div>
+            <label style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12px;color:var(--text2);cursor:pointer">
+              <input id="doisim-confirm" type="checkbox" style="width:auto;margin-top:2px">
+              Tôi đã đối chiếu đúng thuê bao, SIM mới và thông tin định danh; đồng ý gửi yêu cầu đổi SIM.
+            </label>
+            <div class="doisim-actions">
+              <button id="doisim-submit-btn" class="btn-primary" type="button" onclick="doiSimSubmit()" disabled>🔄 Xác nhận đổi SIM</button>
+              <span class="doisim-note">API đổi SIM là thao tác phát sinh giao dịch và chỉ được gọi đúng một lần khi bấm nút này.</span>
+            </div>
+            <div class="resp-box" id="ds-resp"></div>
           </div>
         </div>
       </div>
@@ -2279,6 +2336,11 @@ async function showPanel(name) {
       console.warn('set_menu error:', error);
       return;
     }
+  }
+  if (name === 'doisim') {
+    doiSimInitializePermission().catch(error => {
+      doiSimSetPermissionBadge('err', error.message || 'Không kiểm tra được quyền DOISIM');
+    });
   }
   // Chỉ tải đầu số sau khi session đã chuyển đúng SelectedMenuId. Trước đây
   // hai request chạy song song nên API chọn số thỉnh thoảng nhận sai menu.
@@ -6545,37 +6607,344 @@ async function thanhToanHD() {
 }
 
 // ── Đổi SIM ──
-async function doiSim() {
-  const isdn   = _isdn('ds-isdn');
-  const serial = _isdn('ds-serial');
-  const loai   = document.getElementById('ds-loaisim').value;
-  if (!isdn||!serial) { showToast('⚠️ Nhập đầy đủ thông tin'); return; }
-  showResp('ds-resp', await callApi('/app-banhang/thuebaodidong/app_tb_doisim_v2','POST',{
-    p_isdn:isdn, isdn, p_serial:serial, p_loai_sim:loai
-  }));
+const doiSimState = {
+  permission: null,
+  permissionLoading: false,
+  subscriber: null,
+  newSim: null,
+  submitting: false,
+  finalAttempted: false,
+  staffCode: '',
+};
+
+function doiSimSetPermissionBadge(state, message) {
+  const badge = document.getElementById('doisim-permission');
+  if (!badge) return;
+  badge.className = `doisim-status ${state || ''}`;
+  badge.textContent = message || 'Chưa kiểm tra quyền DOISIM';
 }
-async function kiemTraSinhTrac() {
-  const id = _isdn('st-tbid');
-  if (!id) { showToast('⚠️ Nhập số thuê bao'); return; }
-  showResp('st-resp', await callApi('/app-banhang/thietbi_thuebao/kiemtra_trangthai_sinhtrac','POST',{pmsisdn:id}));
+
+function doiSimSetProgress(completed=0, active=Math.min(completed + 1, 4)) {
+  for (let step=1; step<=4; step++) {
+    const element = document.getElementById(`doisim-progress-${step}`);
+    if (!element) continue;
+    element.classList.toggle('done', step <= completed);
+    element.classList.toggle('active', step === active && step > completed);
+  }
 }
-async function xacThucHinhAnh() {
-  const id = _isdn('ekyc-tbid');
-  if (!id) { showToast('⚠️ Nhập image hash'); return; }
-  showResp('ekyc-resp', await callApi('/app-banhang/thietbi_thuebao/xacthuc_hinhanh','POST',{p_image_hash:id}));
+
+function doiSimResponseData(response) {
+  const body = apiBodyObject(response);
+  if (!body || typeof body !== 'object') return null;
+  return body.data ?? null;
 }
-async function moICOC() {
-  const isdn = _isdn('icoc-isdn');
-  if (!isdn) { showToast('⚠️ Nhập số thuê bao'); return; }
-  showToast('ℹ️ Chuyển sang tab IC/OC để tra cứu, nhập ghi chú và xác nhận thao tác.');
-  openICOCDeviceTab(isdn);
+
+function doiSimResponseRow(response) {
+  const data = doiSimResponseData(response);
+  if (Array.isArray(data)) return data[0] || null;
+  return data && typeof data === 'object' ? data : null;
 }
-async function khoaICOC() {
-  const isdn = _isdn('icoc-isdn');
-  if (!isdn) { showToast('⚠️ Nhập số thuê bao'); return; }
-  showToast('ℹ️ Chuyển sang tab IC/OC để tra cứu, nhập ghi chú và xác nhận thao tác.');
-  openICOCDeviceTab(isdn);
+
+function doiSimSetButtonLoading(id, loading, idleText, loadingText='⏳ Đang xử lý…') {
+  const button = document.getElementById(id);
+  if (!button) return;
+  button.disabled = Boolean(loading);
+  button.textContent = loading ? loadingText : idleText;
 }
+
+async function doiSimInitializePermission({force=false}={}) {
+  if (doiSimState.permissionLoading) return doiSimState.permission;
+  if (doiSimState.permission && !force) return doiSimState.permission;
+  doiSimState.permissionLoading = true;
+  doiSimSetPermissionBadge('loading', 'Đang kiểm tra quyền DOISIM…');
+  try {
+    const [response, sessionInfo] = await Promise.all([
+      callApi('/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', 'POST', {ma_quyen:'DOISIM'}),
+      fetch('/session/info').then(result => result.json()).catch(() => ({})),
+    ]);
+    const data = doiSimResponseData(response) || {};
+    const allowed = apiSucceeded(response) && String(data.status ?? '').trim() === '1';
+    doiSimState.permission = {
+      allowed,
+      requiresOtp: String(data.trangthai_otp ?? '').trim() === '1',
+      response,
+      message: String(data.message || apiFailureMessage(response, 'Không có quyền DOISIM')),
+    };
+    doiSimState.staffCode = String(sessionInfo.staff_code || '').trim();
+    const hrmInput = document.getElementById('doisim-hrm');
+    if (hrmInput && !hrmInput.value.trim() && doiSimState.staffCode) hrmInput.value = doiSimState.staffCode;
+    doiSimSetPermissionBadge(
+      allowed ? 'ok' : 'err',
+      allowed
+        ? `Có quyền DOISIM${doiSimState.permission.requiresOtp ? ' · yêu cầu mã xác thực' : ''}`
+        : doiSimState.permission.message
+    );
+    const lookupButton = document.getElementById('doisim-lookup-btn');
+    if (lookupButton) lookupButton.disabled = !allowed;
+    doiSimUpdateSubmit();
+    return doiSimState.permission;
+  } finally {
+    doiSimState.permissionLoading = false;
+  }
+}
+
+function doiSimClearResponse(id) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.classList.remove('show');
+  element.innerHTML = '';
+}
+
+function doiSimReset({preserveSubscriberInput=false}={}) {
+  const oldPhone = document.getElementById('ds-isdn')?.value || '';
+  doiSimState.subscriber = null;
+  doiSimState.newSim = null;
+  doiSimState.submitting = false;
+  doiSimState.finalAttempted = false;
+  ['doisim-subscriber-summary','doisim-new-sim-summary'].forEach(id => document.getElementById(id)?.classList.remove('show'));
+  ['doisim-subscriber-resp','doisim-new-sim-resp','ds-resp'].forEach(doiSimClearResponse);
+  ['ds-serial','doisim-auth-code','doisim-request-id','doisim-id-type','doisim-address'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  const confirmInput = document.getElementById('doisim-confirm');
+  if (confirmInput) confirmInput.checked = false;
+  const phoneInput = document.getElementById('ds-isdn');
+  if (phoneInput) phoneInput.value = preserveSubscriberInput ? oldPhone : '';
+  const checkButton = document.getElementById('doisim-check-sim-btn');
+  if (checkButton) checkButton.disabled = true;
+  const submitButton = document.getElementById('doisim-submit-btn');
+  if (submitButton) submitButton.textContent = '🔄 Xác nhận đổi SIM';
+  doiSimSetProgress(0, 1);
+  doiSimUpdateSubmit();
+}
+
+function doiSimRenderSubscriber(data) {
+  const values = {
+    'doisim-sub-phone': data.SO_TB || '—',
+    'doisim-sub-name': data.TEN_KH || '—',
+    'doisim-sub-msin': data.SO_MSIN || '—',
+    'doisim-sub-type': `${data.LOAI_TB || '—'}${String(data.ESIM ?? '') === '1' ? ' · eSIM' : ' · SIM vật lý'}`,
+    'doisim-sub-status': String(data.TRANG_THAI ?? '') === '1' ? 'Đang hoạt động' : String(data.TRANG_THAI ?? '—'),
+    'doisim-sub-id': data.SO_GT || '—',
+    'doisim-sub-address': data.DIACHI_KH || '—',
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = String(value);
+  });
+  document.getElementById('doisim-subscriber-summary')?.classList.add('show');
+}
+
+async function doiSimLookupSubscriber() {
+  const permission = await doiSimInitializePermission();
+  if (!permission?.allowed) {
+    showToast(`⛔ ${permission?.message || 'Tài khoản không có quyền DOISIM'}`);
+    return false;
+  }
+  const input = document.getElementById('ds-isdn');
+  const msisdn = simBatchNormalizeMsisdn(input?.value || '');
+  if (!msisdn) {
+    showToast('⚠️ SĐT không hợp lệ. Có thể nhập đầu 84, đầu 0 hoặc 9 số.');
+    input?.focus();
+    return false;
+  }
+  if (input) input.value = msisdn;
+  doiSimSetButtonLoading('doisim-lookup-btn', true, '🔍 Tra cứu thuê bao', '⏳ Đang tra cứu…');
+  try {
+    const response = await callApi('/ccbs/oneBss/app_tb_tc_thongtin', 'POST', {
+      so_tb: msisdn,
+      service: 'SIM4G',
+    });
+    showResp('doisim-subscriber-resp', response);
+    const data = doiSimResponseRow(response);
+    if (!apiSucceeded(response) || !data || !String(data.SO_TB || '').trim()) {
+      throw new Error(apiFailureMessage(response, 'Không tìm thấy thông tin thuê bao'));
+    }
+    if (String(data.GPHONE_TYPE ?? '0') !== '0' || /gphone/i.test(String(data.LOAI_TB || ''))) {
+      throw new Error('Hệ thống mobile không hỗ trợ đổi SIM Gphone.');
+    }
+    doiSimState.subscriber = data;
+    doiSimState.newSim = null;
+    doiSimState.finalAttempted = false;
+    doiSimRenderSubscriber(data);
+    const addressInput = document.getElementById('doisim-address');
+    if (addressInput) addressInput.value = String(data.DIACHI_KH || '');
+    document.getElementById('doisim-new-sim-summary')?.classList.remove('show');
+    doiSimClearResponse('doisim-new-sim-resp');
+    doiSimClearResponse('ds-resp');
+    const checkButton = document.getElementById('doisim-check-sim-btn');
+    if (checkButton) checkButton.disabled = false;
+    doiSimSetProgress(1, 2);
+    doiSimUpdateSubmit();
+    showToast(`✅ Đã tra cứu thuê bao ${data.SO_TB}`);
+    return true;
+  } catch (error) {
+    doiSimState.subscriber = null;
+    doiSimState.newSim = null;
+    document.getElementById('doisim-subscriber-summary')?.classList.remove('show');
+    const checkButton = document.getElementById('doisim-check-sim-btn');
+    if (checkButton) checkButton.disabled = true;
+    doiSimSetProgress(0, 1);
+    showToast(`❌ ${error.message || error}`);
+    return false;
+  } finally {
+    doiSimSetButtonLoading('doisim-lookup-btn', false, '🔍 Tra cứu thuê bao');
+    const button = document.getElementById('doisim-lookup-btn');
+    if (button) button.disabled = !doiSimState.permission?.allowed;
+  }
+}
+
+function doiSimNormalizeMsin(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return /^\d{10}$/.test(digits) ? digits : '';
+}
+
+function doiSimRenderNewSim(data, msin, accepted, message) {
+  const values = {
+    'doisim-new-msin': msin,
+    'doisim-new-type': String(data.ESIM ?? '') === '1' || String(data.QRSTRING || '').trim() ? 'eSIM' : 'SIM vật lý',
+    'doisim-new-result': message,
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.textContent = value;
+    if (id === 'doisim-new-result') element.style.color = accepted ? '#3fb950' : '#f85149';
+  });
+  document.getElementById('doisim-new-sim-summary')?.classList.add('show');
+}
+
+async function doiSimCheckNewSim() {
+  if (!doiSimState.subscriber) {
+    showToast('⚠️ Phải tra cứu thuê bao trước.');
+    return false;
+  }
+  const input = document.getElementById('ds-serial');
+  const msin = doiSimNormalizeMsin(input?.value || '');
+  if (!msin) {
+    showToast('⚠️ Số SIM/MSIN mới phải gồm đúng 10 chữ số.');
+    input?.focus();
+    return false;
+  }
+  if (input) input.value = msin;
+  doiSimState.newSim = null;
+  doiSimSetButtonLoading('doisim-check-sim-btn', true, '🔎 Kiểm tra SIM mới', '⏳ Đang kiểm tra…');
+  try {
+    const response = await callApi('/ccbs/oneBss/app_tb_tc_ttsim', 'POST', {
+      so_tb: String(doiSimState.subscriber.SO_TB),
+      so_msin: msin,
+    });
+    showResp('doisim-new-sim-resp', response);
+    const data = doiSimResponseRow(response);
+    if (!apiSucceeded(response) || !data) {
+      throw new Error(apiFailureMessage(response, 'SIM không tồn tại hoặc đã bị huỷ'));
+    }
+    const assignedNumber = String(data.TTIN_ADD || '').replace(/\D/g, '');
+    const checkResult = String(data.KQUA_CHK ?? '').trim();
+    if (assignedNumber) {
+      doiSimRenderNewSim(data, msin, false, `SIM đã được gán số ${assignedNumber}`);
+      throw new Error(`SIM mới đã được gán cho số ${assignedNumber}`);
+    }
+    if (!checkResult || checkResult === '0') {
+      doiSimRenderNewSim(data, msin, false, 'SIM không tồn tại hoặc đã bị huỷ');
+      throw new Error('SIM không tồn tại hoặc đã bị huỷ');
+    }
+    doiSimState.newSim = {...data, msin};
+    doiSimRenderNewSim(data, msin, true, 'SIM hợp lệ, chưa được gán số');
+    doiSimSetProgress(2, 3);
+    doiSimUpdateSubmit();
+    showToast(`✅ SIM mới ${msin} hợp lệ`);
+    return true;
+  } catch (error) {
+    doiSimState.newSim = null;
+    doiSimSetProgress(1, 2);
+    doiSimUpdateSubmit();
+    showToast(`❌ ${error.message || error}`);
+    return false;
+  } finally {
+    doiSimSetButtonLoading('doisim-check-sim-btn', false, '🔎 Kiểm tra SIM mới');
+    const button = document.getElementById('doisim-check-sim-btn');
+    if (button) button.disabled = !doiSimState.subscriber;
+  }
+}
+
+function doiSimVerificationPayload() {
+  return {
+    p_so_msin: doiSimState.newSim?.msin || '',
+    p_maxacthuc: document.getElementById('doisim-auth-code')?.value.trim() || '',
+    p_ma_hrm: document.getElementById('doisim-hrm')?.value.trim() || '',
+    p_dia_chi: document.getElementById('doisim-address')?.value.trim() || '',
+    p_request_id: document.getElementById('doisim-request-id')?.value.trim() || '',
+    p_loai_gt: document.getElementById('doisim-id-type')?.value.trim() || '',
+  };
+}
+
+function doiSimUpdateSubmit() {
+  const payload = doiSimVerificationPayload();
+  const verified = Object.values(payload).every(value => String(value || '').trim());
+  const confirmed = Boolean(document.getElementById('doisim-confirm')?.checked);
+  const ready = Boolean(
+    doiSimState.permission?.allowed && doiSimState.subscriber && doiSimState.newSim &&
+    verified && confirmed && !doiSimState.submitting && !doiSimState.finalAttempted
+  );
+  const button = document.getElementById('doisim-submit-btn');
+  if (button) button.disabled = !ready;
+  if (doiSimState.newSim) doiSimSetProgress(2, verified && confirmed ? 4 : 3);
+  return ready;
+}
+
+async function doiSimSubmit() {
+  if (!doiSimUpdateSubmit()) {
+    showToast('⚠️ Hoàn tất kiểm tra thuê bao, SIM mới, dữ liệu xác thực và ô xác nhận trước.');
+    return false;
+  }
+  const payload = doiSimVerificationPayload();
+  const subscriber = doiSimState.subscriber;
+  const approved = window.confirm(
+    `Xác nhận đổi SIM?\n\nThuê bao: ${subscriber.SO_TB}\nSIM cũ: ${subscriber.SO_MSIN || '—'}\nSIM mới: ${payload.p_so_msin}\nKhách hàng: ${subscriber.TEN_KH || '—'}\n\nYêu cầu sẽ được gửi đúng một lần.`
+  );
+  if (!approved) return false;
+
+  doiSimState.submitting = true;
+  // A mutation may have succeeded upstream even if the HTTP response times
+  // out. Never automatically retry this request or enable a second click.
+  doiSimState.finalAttempted = true;
+  doiSimSetButtonLoading('doisim-submit-btn', true, '🔄 Xác nhận đổi SIM', '⏳ Đang đổi SIM…');
+  try {
+    const response = await callApi('/app-banhang/thuebaodidong/app_tb_doisim_v2', 'POST', payload);
+    showResp('ds-resp', response);
+    if (!apiSucceeded(response)) {
+      throw new Error(apiFailureMessage(response, 'Đổi SIM không thành công'));
+    }
+    doiSimSetProgress(4, 4);
+    const result = doiSimResponseData(response);
+    const qrString = result && typeof result === 'object' ? String(result.QRSTRING || result.qrstring || '').trim() : '';
+    appendResponseNotice('ds-resp', qrString ? 'Đổi SIM thành công. Quét QR Code được API trả về để kích hoạt eSIM.' : 'Đổi SIM thành công.', 'ok');
+    showToast('✅ Đổi SIM thành công');
+    return true;
+  } catch (error) {
+    appendResponseNotice(
+      'ds-resp',
+      `Yêu cầu đã được gửi nhưng chưa xác nhận thành công: ${error.message || error}. Không tự động gửi lại; hãy tra cứu trạng thái trước khi thử lại.`,
+      'error'
+    );
+    showToast(`❌ ${error.message || error}`);
+    return false;
+  } finally {
+    doiSimState.submitting = false;
+    const button = document.getElementById('doisim-submit-btn');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Đã gửi yêu cầu · không tự gửi lại';
+    }
+  }
+}
+
+['doisim-auth-code','doisim-hrm','doisim-request-id','doisim-id-type','doisim-address','doisim-confirm'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', doiSimUpdateSubmit);
+  document.getElementById(id)?.addEventListener('change', doiSimUpdateSubmit);
+});
 
 // ── Tab Mở/đóng thiết bị IC/OC ───────────────────────────────────────────
 const icocDeviceState = {

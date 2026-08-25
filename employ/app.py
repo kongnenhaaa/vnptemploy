@@ -776,6 +776,9 @@ ENDPOINT_MENU_ROUTES = (
     ('/app-banhang/b2a/', '11141'),
     ('/app-banhang/b2c/', '11167'),
     ('/app-banhang/baocao_banhang/', '700214'),
+    # Full SIM-change flow captured from the Employee mobile application.
+    ('/ccbs/oneBss/', '11175'),
+    ('/app-banhang/Ekyc/insert_log_ekyc_doisim_v2', '11175'),
     ('/app-banhang/thuebaodidong/app_tb_doisim_v2', '11175'),
     # Mobile captures use menu 11213 for IC/OC status, permission and change.
     ('/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', '11213'),
@@ -811,7 +814,18 @@ READ_ONLY_ENDPOINTS = frozenset({
 })
 
 
-def endpoint_menu_id(endpoint_path, fallback=None):
+def endpoint_menu_id(endpoint_path, fallback=None, body=None):
+    # This permission endpoint is shared by multiple mobile modules.  Its
+    # SelectedMenuId follows ma_quyen, not the panel that happened to run the
+    # previous request: DOISIM=11175, CATMODICHVU (IC/OC)=11213.
+    if endpoint_path == '/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen':
+        permission_code = str(
+            (body or {}).get('ma_quyen', '') if isinstance(body, dict) else ''
+        ).strip().upper()
+        if permission_code == 'DOISIM':
+            return '11175'
+        if permission_code == 'CATMODICHVU':
+            return '11213'
     for prefix, menu_id in ENDPOINT_MENU_ROUTES:
         if endpoint_path.startswith(prefix):
             return menu_id
@@ -1381,7 +1395,7 @@ def proxy():
     body = normalize_onebss_body(
         endpoint_path, body, endpoint, account_context.get('username'))
     requested_mid = extra_hdr.get('SelectedMenuId') or extra_hdr.get('selectedmenuid')
-    active_mid = endpoint_menu_id(endpoint_path, requested_mid)
+    active_mid = endpoint_menu_id(endpoint_path, requested_mid, body)
     # app_ds_dauso is the only chonSo call captured with an empty DTO. The
     # mobile search_isdn DTO explicitly contains menu_id=699161, so preserve
     # and inject it like the other SIM-kit requests.
@@ -1506,8 +1520,19 @@ def session_info():
     elapsed  = time.time() - session.get('token_time', time.time())
     exp_left = max(0, int(session.get('expires_in', 3600) - elapsed))
     token    = session.get('access_token', '')
+    token_claims = {}
+    try:
+        payload_part = token.split('.')[1]
+        payload_part += '=' * (-len(payload_part) % 4)
+        token_claims = json.loads(base64.urlsafe_b64decode(payload_part).decode('utf-8'))
+    except (IndexError, ValueError, TypeError, UnicodeDecodeError,
+            json.JSONDecodeError):
+        token_claims = {}
     return jsonify({
         'user':           session.get('username', ''),
+        # Employee mobile uses this claim as p_ma_hrm in the SIM-change DTO.
+        'staff_code':     token_claims.get('user_vi') or
+                          token_claims.get('ma_nhanvien_ccbs') or '',
         'base_url':       BASE_URL,
         'client_id':      APP_CFG['CLIENT_ID'],
         'expires_in':     exp_left,
