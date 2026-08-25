@@ -780,6 +780,14 @@ ENDPOINT_MENU_ROUTES = (
     ('/ccbs/oneBss/', '11175'),
     ('/app-banhang/Ekyc/insert_log_ekyc_doisim_v2', '11175'),
     ('/app-banhang/thuebaodidong/app_tb_doisim_v2', '11175'),
+    # Device-change identity verification uses the eKYC utility menu captured
+    # from Employee mobile.  Keep these before broader /app-banhang prefixes.
+    ('/app-com/Config/token_ekyc', '810241'),
+    ('/app-com/Config/app_config', '810241'),
+    ('/quantri/user/get_ekyc_config', '810241'),
+    ('/app-banhang/Ekyc/init_log_uuid', '810241'),
+    ('/app-banhang/Ekyc/log_ekyc', '810241'),
+    ('/app-banhang/quanlyfile/', '810241'),
     # Mobile captures use menu 11213 for IC/OC status, permission and change.
     ('/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', '11213'),
     ('/app-banhang/thuebaodidong/khoamo_ic_oc', '11213'),
@@ -1459,6 +1467,506 @@ def proxy():
         return jsonify({'error': 'Request timeout'}), 504
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────
+#  Device-change identity verification (live PC camera only)
+# ─────────────────────────────────────────────────────────────
+DEVICE_AUTH_MENU_ID = '810241'
+DEVICE_AUTH_IDG_BASE = 'https://api.idg.vnpt.vn'
+DEVICE_AUTH_CHALLENGE_FALLBACK = 'JGI7TCLnPYhjehlzNp34vSpfANyKRAL4'
+DEVICE_AUTH_HANDLE_TTL_SECONDS = 5 * 60
+DEVICE_AUTH_MAX_FRAME_BYTES = 8 * 1024 * 1024
+
+
+class DeviceAuthError(RuntimeError):
+    def __init__(self, message, status=400, *, liveness_passed=False):
+        super().__init__(message)
+        self.status = int(status)
+        self.liveness_passed = bool(liveness_passed)
+
+
+def _onebss_payload_succeeded(status_code, payload):
+    if not 200 <= int(status_code) < 300 or not isinstance(payload, dict):
+        return False
+    error_code = payload.get('error_code')
+    if error_code not in (None, '', 'BSS-00000000'):
+        return False
+    error = payload.get('error')
+    return error in (None, '', 0, '0', 200, '200')
+
+
+def _device_auth_upstream_message(payload, fallback):
+    if isinstance(payload, dict):
+        return str(payload.get('message') or payload.get('message_detail') or
+                   payload.get('error_code') or fallback)
+    return fallback
+
+
+def _device_auth_onebss_post(path, body, account_id=''):
+    headers = get_headers(DEVICE_AUTH_MENU_ID, account_id)
+    try:
+        response = requests.post(
+            f"{BASE_URL.rstrip('/')}/{path.lstrip('/')}",
+            headers=headers, json=body, verify=False, timeout=25)
+    except requests.exceptions.Timeout as exc:
+        raise DeviceAuthError(f'API OneBSS timeout tại {path}', 504) from exc
+    except requests.exceptions.RequestException as exc:
+        raise DeviceAuthError(f'Không kết nối được OneBSS tại {path}', 502) from exc
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise DeviceAuthError(
+            f'OneBSS trả dữ liệu không hợp lệ tại {path}', 502) from exc
+    if not _onebss_payload_succeeded(response.status_code, payload):
+        message = _device_auth_upstream_message(
+            payload, f'OneBSS từ chối tại {path} (HTTP {response.status_code})')
+        raise DeviceAuthError(message, response.status_code if response.status_code >= 400 else 400)
+    return payload
+
+
+def _device_auth_find_value(value, names):
+    """Find one SDK-config value without depending on the server's wrapper."""
+    wanted = {str(name).casefold() for name in names}
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).casefold() in wanted and item not in (None, ''):
+                return item
+        for item in value.values():
+            found = _device_auth_find_value(item, names)
+            if found not in (None, ''):
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _device_auth_find_value(item, names)
+            if found not in (None, ''):
+                return found
+    return None
+
+
+def _device_auth_access_token(payload):
+    direct_data = payload.get('data') if isinstance(payload, dict) else None
+    value = direct_data if isinstance(direct_data, str) else _device_auth_find_value(
+        payload, ('access_token_ekyc', 'accessTokenEkyc', 'access_token',
+                  'accessToken', 'token'))
+    if isinstance(value, (dict, list)):
+        value = None
+    token = str(value or '').strip()
+    if not token:
+        raise DeviceAuthError('OneBSS không trả access token eKYC', 502)
+    return token if token.lower().startswith('bearer ') else f'Bearer {token}'
+
+
+def _device_auth_sdk_settings(app_config_payload):
+    domain = str(_device_auth_find_value(
+        app_config_payload, ('domain_ekyc', 'eKycDomain', 'ekyc_domain')) or
+        DEVICE_AUTH_IDG_BASE).strip()
+    if not domain.lower().startswith(('http://', 'https://')):
+        domain = 'https://' + domain.lstrip('/')
+    parsed = urlparse(domain)
+    if parsed.scheme != 'https' or not parsed.hostname or not parsed.hostname.endswith('vnpt.vn'):
+        raise DeviceAuthError('Domain eKYC trong cấu hình không hợp lệ', 502)
+    return {
+        'base_url': domain.rstrip('/'),
+        'token_id': str(_device_auth_find_value(
+            app_config_payload, ('token_id_ekyc', 'eKycTokenId')) or
+            IDG_TOKEN_ID).strip(),
+        'token_key': str(_device_auth_find_value(
+            app_config_payload, ('token_key_ekyc', 'eKycTokenKey')) or
+            IDG_TOKEN_KEY).strip(),
+        'challenge_code': str(_device_auth_find_value(
+            app_config_payload, ('ekyc_challengecode', 'eChallengecode',
+                                 'challengeCode', 'challenge_code')) or
+            DEVICE_AUTH_CHALLENGE_FALLBACK).strip(),
+    }
+
+
+def _device_auth_selected_policy(config_payload):
+    configs = config_payload.get('data') if isinstance(config_payload, dict) else None
+    configs = configs if isinstance(configs, list) else []
+    selected = next((item for item in configs if isinstance(item, dict) and
+                     str(item.get('dichvu')) == '-1'), None)
+    if selected is None:
+        selected = next((item for item in configs if isinstance(item, dict)), {})
+    if not selected or int(selected.get('ai_must') or 0) != 1 or int(selected.get('check_liveness') or 0) != 1:
+        raise DeviceAuthError('Cấu hình OneBSS không bật xác thực sống bắt buộc', 409)
+    return dict(selected)
+
+
+def _device_auth_client_session(context):
+    device = re.sub(r'[^A-Za-z0-9_-]', '', str(context.get('device_id') or 'PC'))[:32]
+    user = re.sub(r'[^A-Za-z0-9_-]', '', str(context.get('username') or 'employee'))[:32]
+    return f'Windows_PC_Desktop_Device_3.6.6_{device}_{int(time.time() * 1000)}_{user}'
+
+
+def _device_auth_transactions():
+    value = session.get('device_auth_transactions')
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _device_auth_save_transaction(handle, transaction):
+    transactions = _device_auth_transactions()
+    now = time.time()
+    transactions = {
+        key: value for key, value in transactions.items()
+        if isinstance(value, dict) and now - float(value.get('created_at') or 0) <=
+        DEVICE_AUTH_HANDLE_TTL_SECONDS
+    }
+    transactions[handle] = transaction
+    # Four recent camera attempts are sufficient and avoid unbounded sessions.
+    transactions = dict(sorted(
+        transactions.items(), key=lambda item: item[1].get('created_at', 0),
+        reverse=True)[:4])
+    session['device_auth_transactions'] = transactions
+    session.modified = True
+
+
+def _device_auth_pop_transaction(handle, only_if_success=False):
+    transactions = _device_auth_transactions()
+    if handle in transactions and not only_if_success:
+        transactions.pop(handle, None)
+        session['device_auth_transactions'] = transactions
+        session.modified = True
+
+
+def _device_auth_json(response, service_name):
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise DeviceAuthError(f'{service_name} trả dữ liệu không hợp lệ', 502) from exc
+    if not 200 <= response.status_code < 300:
+        message = _device_auth_upstream_message(
+            payload, f'{service_name} lỗi HTTP {response.status_code}')
+        raise DeviceAuthError(message, response.status_code)
+    return payload
+
+
+def _device_auth_result_object(payload):
+    if not isinstance(payload, dict):
+        return {}
+    for key in ('object', 'data', 'result'):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+    return payload
+
+
+def _device_auth_true(value):
+    if value is True:
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) >= 0.9
+    return str(value or '').strip().casefold() in {
+        '1', 'true', 'yes', 'y', 'open', 'opened', 'live', 'real',
+        'success', 'pass', 'passed', 'người thật', 'nguoi that'
+    }
+
+
+def _device_auth_false(value):
+    if value is False:
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) == 0
+    return str(value or '').strip().casefold() in {
+        '0', 'false', 'no', 'n', 'close', 'closed', 'unmasked',
+        'not_masked', 'không', 'khong'
+    }
+
+
+def _device_auth_validate_liveness(payload, policy):
+    result = _device_auth_result_object(payload)
+    live_value = result.get('liveness')
+    if not _device_auth_true(live_value):
+        detail = result.get('liveness_msg') or 'Không đạt xác thực sống'
+        raise DeviceAuthError(str(detail), 422)
+    if _device_auth_true(result.get('fake_liveness')):
+        raise DeviceAuthError('Dịch vụ phát hiện giả mạo liveness', 422)
+    if _device_auth_true(result.get('face_swapping')):
+        raise DeviceAuthError('Dịch vụ phát hiện hoán đổi khuôn mặt', 422)
+    if int(policy.get('check_eye_open') or 0) == 1 and not _device_auth_true(result.get('is_eye_open')):
+        raise DeviceAuthError('Không xác nhận được mắt đang mở', 422)
+    return result
+
+
+def _device_auth_validate_mask(payload):
+    result = _device_auth_result_object(payload)
+    masked = result.get('masked')
+    if not _device_auth_false(masked):
+        raise DeviceAuthError('Khuôn mặt đang bị che hoặc không xác định được khẩu trang', 422)
+    return result
+
+
+def _device_auth_idg_headers(transaction):
+    headers = {
+        'Authorization': transaction['ekyc_access_token'],
+        'Token-id': transaction['token_id'],
+        'Token-key': transaction['token_key'],
+        'User-Agent': 'okhttp/4.11.0',
+    }
+    device_id = str(transaction.get('device_id') or '').strip()
+    if device_id:
+        headers['mac-address'] = device_id
+    return headers
+
+
+def _device_auth_upload_to_onebss(frame_bytes, account_id):
+    try:
+        upload_link = _device_auth_onebss_post(
+            '/app-banhang/quanlyfile/get_upload_link', {
+                'p_module': 'CCBS',
+                'p_file_name': 'PORTRAIT_IMAGE.jpg',
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }, account_id)
+    except DeviceAuthError as exc:
+        raise DeviceAuthError(
+            str(exc), exc.status, liveness_passed=True) from exc
+    data = upload_link.get('data') if isinstance(upload_link, dict) else None
+    if not isinstance(data, dict):
+        raise DeviceAuthError('OneBSS không trả thông tin upload ảnh', 502,
+                              liveness_passed=True)
+    upload_url = str(data.get('url') or '').strip()
+    if not upload_url.lower().startswith(('http://', 'https://')):
+        upload_url = 'https://' + upload_url.lstrip('/')
+    target = urlparse(upload_url)
+    if target.scheme != 'https' or not target.hostname or not target.hostname.endswith('vnpt.vn'):
+        raise DeviceAuthError('URL lưu ảnh OneBSS không hợp lệ', 502,
+                              liveness_passed=True)
+    object_name = str(data.get('objectName') or '').strip()
+    fields = data.get('fields') if isinstance(data.get('fields'), dict) else {}
+    form = {}
+    if object_name:
+        form['key'] = object_name
+    form['Content-Type'] = 'image/jpeg'
+    for key, value in fields.items():
+        if key not in form:
+            form[str(key)] = str(value)
+    try:
+        stored = requests.post(
+            upload_url, data=form,
+            files={'file': ('PORTRAIT_IMAGE.jpg', frame_bytes, 'image/jpeg')},
+            timeout=35)
+    except requests.exceptions.RequestException as exc:
+        raise DeviceAuthError('Không tải được ảnh lên kho OneBSS', 502,
+                              liveness_passed=True) from exc
+    if stored.status_code not in (200, 201, 204):
+        raise DeviceAuthError(
+            f'Kho OneBSS từ chối ảnh (HTTP {stored.status_code})', 502,
+            liveness_passed=True)
+    try:
+        updated = _device_auth_onebss_post(
+            '/app-banhang/quanlyfile/update_file', {
+                'p_object_name': object_name,
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }, account_id)
+    except DeviceAuthError as exc:
+        raise DeviceAuthError(
+            str(exc), exc.status, liveness_passed=True) from exc
+    updated_data = updated.get('data') if isinstance(updated, dict) else None
+    return updated_data if isinstance(updated_data, dict) else {}
+
+
+@app.post('/api/device-auth/prepare')
+@login_required
+def device_auth_prepare():
+    payload = request.get_json(silent=True) or {}
+    account_id = str(payload.get('account_id') or '').strip()
+    try:
+        context = _get_account_context(account_id)
+        token_payload = _device_auth_onebss_post(
+            '/app-com/Config/token_ekyc',
+            {'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
+        config_payload = _device_auth_onebss_post(
+            '/quantri/user/get_ekyc_config',
+            {'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
+        policy = _device_auth_selected_policy(config_payload)
+        try:
+            app_config = _device_auth_onebss_post(
+                '/app-com/Config/app_config',
+                {'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
+        except DeviceAuthError:
+            # Older gateways do not expose app_config on this menu. The values
+            # bundled with this exact Employee release remain a safe fallback.
+            app_config = {}
+        sdk_settings = _device_auth_sdk_settings(app_config)
+        init_payload = _device_auth_onebss_post(
+            '/app-banhang/Ekyc/init_log_uuid', {
+                'p_type': None, 'p_id': None, 'p_so_gt': None,
+                'p_loai_gt': None, 'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }, account_id)
+        init_request_id = str(init_payload.get('request_id') or '').strip()
+        if not init_request_id:
+            raise DeviceAuthError('OneBSS không trả request_id eKYC', 502)
+        handle = secrets.token_urlsafe(32)
+        transaction = {
+            'created_at': time.time(),
+            'used': False,
+            'account_id': account_id,
+            'username': context.get('username', ''),
+            'device_id': context.get('device_id', ''),
+            'ekyc_access_token': _device_auth_access_token(token_payload),
+            'token_id': sdk_settings['token_id'],
+            'token_key': sdk_settings['token_key'],
+            'challenge_code': sdk_settings['challenge_code'],
+            'base_url': sdk_settings['base_url'],
+            'client_session': _device_auth_client_session(context),
+            'init_request_id': init_request_id,
+            'policy': policy,
+        }
+        _device_auth_save_transaction(handle, transaction)
+        return jsonify({
+            'ok': True,
+            'handle': handle,
+            'expires_in': DEVICE_AUTH_HANDLE_TTL_SECONDS,
+            'request_id': init_request_id,
+            'policy': {
+                'check_liveness': int(policy.get('check_liveness') or 0),
+                'check_eye_open': int(policy.get('check_eye_open') or 0),
+                'check_masked': int(policy.get('check_masked') or 0),
+                'ai_must': int(policy.get('ai_must') or 0),
+            },
+        })
+    except DeviceAuthError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), exc.status
+    except Exception as exc:
+        print(f'[DEVICE_AUTH] prepare failed: {exc}')
+        return jsonify({'ok': False, 'error': 'Không khởi tạo được phiên xác thực camera'}), 500
+
+
+@app.post('/api/device-auth/verify-camera')
+@login_required
+def device_auth_verify_camera():
+    handle = str(request.form.get('handle') or '').strip()
+    transactions = _device_auth_transactions()
+    transaction = transactions.get(handle)
+    if not isinstance(transaction, dict):
+        return jsonify({'ok': False, 'error': 'Phiên camera không tồn tại hoặc đã hết hạn'}), 410
+    if transaction.get('used'):
+        return jsonify({'ok': False, 'error': 'Phiên camera này đã được sử dụng'}), 409
+    if time.time() - float(transaction.get('created_at') or 0) > DEVICE_AUTH_HANDLE_TTL_SECONDS:
+        _device_auth_pop_transaction(handle)
+        return jsonify({'ok': False, 'error': 'Phiên camera đã hết hạn; hãy bắt đầu lại'}), 410
+    frame = request.files.get('frame')
+    if frame is None or str(frame.mimetype or '').lower() != 'image/jpeg':
+        return jsonify({'ok': False, 'error': 'Chỉ nhận khung hình JPEG từ camera đang mở'}), 415
+    frame_bytes = frame.read(DEVICE_AUTH_MAX_FRAME_BYTES + 1)
+    if (len(frame_bytes) < 10 * 1024 or
+            len(frame_bytes) > DEVICE_AUTH_MAX_FRAME_BYTES or
+            not frame_bytes.startswith(b'\xff\xd8\xff') or
+            not frame_bytes.rstrip().endswith(b'\xff\xd9')):
+        return jsonify({'ok': False, 'error': 'Khung hình camera không hợp lệ'}), 400
+
+    account_id = str(transaction.get('account_id') or '')
+    try:
+        headers = _device_auth_idg_headers(transaction)
+        try:
+            uploaded = requests.post(
+                f"{transaction['base_url']}/file-service/v1/addFile",
+                headers=headers,
+                files={'file': ('portrait_full.jpg', frame_bytes, 'image/jpeg')},
+                data={'title': 'portrait_full.jpg',
+                      'description': 'portrait_full.jpg'},
+                timeout=35)
+        except requests.exceptions.RequestException as exc:
+            raise DeviceAuthError('Không tải được khung hình lên dịch vụ eKYC', 502) from exc
+        upload_payload = _device_auth_json(uploaded, 'Dịch vụ upload eKYC')
+        upload_object = _device_auth_result_object(upload_payload)
+        image_hash = str(upload_object.get('hash') or '').strip()
+        if not image_hash:
+            raise DeviceAuthError('Dịch vụ eKYC không trả hash khung hình', 502)
+
+        ai_body = {
+            'img': image_hash,
+            'token': '',
+            'client_session': transaction['client_session'],
+            'step_id': 0,
+        }
+        try:
+            liveness_response = requests.post(
+                f"{transaction['base_url']}/ai/v2/face/liveness",
+                params={'challenge_code': transaction['challenge_code']},
+                headers={**headers, 'Content-Type': 'application/json'},
+                json=ai_body, timeout=35)
+        except requests.exceptions.RequestException as exc:
+            raise DeviceAuthError('Không kết nối được dịch vụ liveness', 502) from exc
+        liveness_payload = _device_auth_json(liveness_response, 'Dịch vụ liveness')
+        liveness_result = _device_auth_validate_liveness(
+            liveness_payload, transaction['policy'])
+
+        mask_result = {}
+        if int(transaction['policy'].get('check_masked') or 0) == 1:
+            mask_body = {
+                'face_bbox': None,
+                'face_lmark': None,
+                'img': image_hash,
+                'client_session': transaction['client_session'],
+                'token': '',
+                'step_id': 0,
+            }
+            try:
+                mask_response = requests.post(
+                    f"{transaction['base_url']}/ai/v2/face/mask",
+                    params={'challenge_code': transaction['challenge_code']},
+                    headers={**headers, 'Content-Type': 'application/json'},
+                    json=mask_body, timeout=35)
+            except requests.exceptions.RequestException as exc:
+                raise DeviceAuthError('Không kết nối được dịch vụ kiểm tra che mặt', 502) from exc
+            mask_payload = _device_auth_json(mask_response, 'Dịch vụ kiểm tra che mặt')
+            mask_result = _device_auth_validate_mask(mask_payload)
+
+        # Log AI output like Employee mobile. A logging outage must be visible
+        # but must not turn an actually failed liveness into a success.
+        log_warning = ''
+        try:
+            _device_auth_onebss_post('/app-banhang/Ekyc/log_ekyc', {
+                'p_order_id': transaction['init_request_id'],
+                'p_tran_id': transaction['client_session'],
+                'p_step': 'FACE',
+                'p_ai_info': '',
+                'p_ai_face': json.dumps({'hash_portrait': image_hash}, ensure_ascii=False),
+                'p_ai_liveness': json.dumps(liveness_payload, ensure_ascii=False),
+                'p_front_liveness': '',
+                'p_rear_liveness': '',
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }, account_id)
+        except DeviceAuthError as exc:
+            log_warning = str(exc)
+
+        file_data = _device_auth_upload_to_onebss(frame_bytes, account_id)
+        transaction['used'] = True
+        transactions[handle] = transaction
+        session['device_auth_transactions'] = transactions
+        session.modified = True
+        return jsonify({
+            'ok': True,
+            'message': 'Xác thực sống bằng camera PC thành công',
+            'request_id': transaction['init_request_id'],
+            'client_session': transaction['client_session'],
+            'liveness': {
+                'liveness': liveness_result.get('liveness'),
+                'liveness_msg': liveness_result.get('liveness_msg'),
+                'is_eye_open': liveness_result.get('is_eye_open'),
+                'fake_liveness': liveness_result.get('fake_liveness'),
+                'face_swapping': liveness_result.get('face_swapping'),
+            },
+            'mask': {'masked': mask_result.get('masked')} if mask_result else None,
+            'file': {
+                'id_taptin': file_data.get('id_taptin'),
+                'ten_taptin': file_data.get('ten_taptin'),
+                'duong_dan': file_data.get('duong_dan'),
+            },
+            'log_warning': log_warning,
+        })
+    except DeviceAuthError as exc:
+        # A failed face/mask check may be retried with a new live frame while
+        # the short-lived handle remains valid. A completed handle is one-use.
+        return jsonify({
+            'ok': False,
+            'error': str(exc),
+            'liveness_passed': exc.liveness_passed,
+        }), exc.status
+    except Exception as exc:
+        print(f'[DEVICE_AUTH] verify failed: {exc}')
+        return jsonify({'ok': False, 'error': 'Xác thực camera gặp lỗi hệ thống'}), 500
 
 
 @app.route('/proxy-image', methods=['GET'])

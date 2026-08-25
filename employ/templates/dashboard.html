@@ -94,7 +94,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 /* Giao diện vận hành rút gọn: chỉ hiện các nghiệp vụ đang được sử dụng. */
 #sidebar > .sidebar-section:first-child,
 #sidebar > .sidebar-section:last-child{display:none}
-#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="donhang"]):not([data-panel="icoc"]):not([data-panel="doisim"]){display:none}
+#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="donhang"]):not([data-panel="icoc"]):not([data-panel="doisim"]):not([data-panel="deviceauth"]){display:none}
 
 .doisim-progress{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:0 0 14px}
 .doisim-step{border:1px solid var(--border);background:var(--bg2);border-radius:9px;padding:10px 12px;color:var(--text3);font-size:12px}
@@ -140,6 +140,28 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .icoc-device-actions button{flex:1}
 .icoc-device-help{font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px}
 @media(max-width:700px){.icoc-device-grid{grid-template-columns:1fr}}
+
+/* ── Xác thực đổi thiết bị bằng camera PC ── */
+.device-auth-card{max-width:980px}
+.device-auth-layout{display:grid;grid-template-columns:minmax(360px,1.35fr) minmax(260px,.65fr);gap:16px;align-items:start}
+.device-auth-camera{position:relative;min-height:360px;background:#03070d;border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.device-auth-camera video{display:block;width:100%;height:100%;min-height:360px;max-height:560px;object-fit:cover;transform:scaleX(-1);background:#03070d}
+.device-auth-camera-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text3);pointer-events:none;text-align:center;padding:24px}
+.device-auth-camera.running .device-auth-camera-placeholder{display:none}
+.device-auth-face-guide{display:none;position:absolute;left:50%;top:50%;width:min(48%,270px);height:min(74%,340px);transform:translate(-50%,-50%);border:3px solid rgba(88,166,255,.9);border-radius:48% 48% 44% 44%;box-shadow:0 0 0 999px rgba(0,0,0,.2),0 0 24px rgba(88,166,255,.25);pointer-events:none}
+.device-auth-camera.running .device-auth-face-guide{display:block}
+.device-auth-side{display:grid;gap:12px}
+.device-auth-status{border:1px solid var(--border);border-radius:10px;background:var(--bg3);padding:12px;font-size:12px;line-height:1.55;color:var(--text2)}
+.device-auth-status strong{display:block;color:var(--text);margin-bottom:4px}
+.device-auth-status.ok{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
+.device-auth-status.err{border-color:rgba(248,81,73,.55);background:rgba(248,81,73,.08)}
+.device-auth-status.loading{border-color:rgba(88,166,255,.55);background:rgba(88,166,255,.08)}
+.device-auth-policy{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.device-auth-policy span{border:1px solid var(--border);border-radius:7px;padding:7px 8px;background:var(--bg);font-size:10px;color:var(--text3)}
+.device-auth-actions{display:flex;gap:8px;flex-wrap:wrap}
+.device-auth-result{display:none;margin-top:14px;border:1px solid var(--border);border-radius:10px;padding:13px;background:var(--bg3)}
+.device-auth-result.show{display:block}
+@media(max-width:850px){.device-auth-layout{grid-template-columns:1fr}.device-auth-camera,.device-auth-camera video{min-height:300px}}
 
 /* ── Main content ── */
 #main{flex:1;overflow:hidden;display:flex;flex-direction:column}
@@ -778,6 +800,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
       <div class="nav-item" onclick="showPanel('giohang')" data-panel="giohang"><span class="icon">🛍️</span>Giỏ hàng</div>
       <div class="nav-item" onclick="showPanel('cuoc')" data-panel="cuoc"><span class="icon">💰</span>Cước / Dịch vụ DĐ</div>
       <div class="nav-item" onclick="showPanel('doisim')" data-panel="doisim"><span class="icon">📲</span>Đổi SIM</div>
+      <div class="nav-item" onclick="showPanel('deviceauth')" data-panel="deviceauth"><span class="icon">📷</span>Xác thực đổi thiết bị</div>
       <div class="nav-item" onclick="showPanel('cashless')" data-panel="cashless"><span class="icon">💳</span>Cashless / DCRS</div>
       <div class="nav-item" onclick="showPanel('cmgs')" data-panel="cmgs"><span class="icon">🔄</span>Chuyển mạng giữ số</div>
       <div class="nav-item" onclick="showPanel('hopdong')" data-panel="hopdong"><span class="icon">📋</span>Hợp đồng</div>
@@ -1933,6 +1956,62 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
         </div>
       </div>
 
+      <!-- ══ XÁC THỰC ĐỔI THIẾT BỊ BẰNG CAMERA PC ══ -->
+      <div class="panel" id="panel-deviceauth">
+        <div class="section-header">
+          <div>
+            <h2>📷 Xác thực đổi thiết bị</h2>
+            <div class="sub">Chụp trực tiếp bằng camera PC và kiểm tra liveness qua dịch vụ eKYC của VNPT.</div>
+          </div>
+        </div>
+        <div class="card device-auth-card">
+          <div class="card-header">
+            <h3><span class="method POST">LIVE</span> Camera PC · eKYC menu 810241</h3>
+            <span id="device-auth-header-badge" class="doisim-status">Chưa bắt đầu</span>
+          </div>
+          <div class="card-body">
+            <div class="device-auth-layout">
+              <div>
+                <div id="device-auth-camera" class="device-auth-camera">
+                  <video id="device-auth-video" autoplay playsinline muted></video>
+                  <div class="device-auth-camera-placeholder">
+                    <div style="font-size:42px">📷</div>
+                    <strong style="color:var(--text2)">Camera chưa bật</strong>
+                    <span style="font-size:11px;line-height:1.5">Bấm “Bắt đầu xác thực”, sau đó cho phép ứng dụng dùng camera.</span>
+                  </div>
+                  <div class="device-auth-face-guide" aria-hidden="true"></div>
+                </div>
+                <canvas id="device-auth-canvas" hidden></canvas>
+                <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-top:9px">
+                  Nhìn thẳng vào camera, để khuôn mặt nằm trong khung, đủ sáng, không đeo khẩu trang và mở mắt. Ứng dụng không có nút chọn ảnh từ ổ đĩa.
+                </div>
+              </div>
+              <div class="device-auth-side">
+                <div id="device-auth-status" class="device-auth-status">
+                  <strong>Trạng thái</strong>
+                  Sẵn sàng mở camera PC.
+                </div>
+                <div id="device-auth-policy" class="device-auth-policy">
+                  <span>Liveness: chờ cấu hình</span>
+                  <span>Mắt mở: chờ cấu hình</span>
+                  <span>Che mặt: chờ cấu hình</span>
+                  <span>AI bắt buộc: chờ cấu hình</span>
+                </div>
+                <div class="device-auth-actions">
+                  <button id="device-auth-start-btn" class="btn-primary" type="button" onclick="deviceAuthStart()">📷 Bắt đầu xác thực</button>
+                  <button id="device-auth-capture-btn" class="btn-primary" type="button" onclick="deviceAuthCaptureAndVerify()" disabled>✅ Chụp và xác thực</button>
+                  <button id="device-auth-stop-btn" class="btn-sm" type="button" onclick="deviceAuthStopCamera(true)" disabled>⏹ Tắt camera</button>
+                </div>
+                <div style="font-size:10px;color:var(--text3);line-height:1.5">
+                  Khung hình chỉ được đánh dấu hoàn tất khi API liveness xác nhận người thật, mắt mở và không che mặt theo cấu hình OneBSS.
+                </div>
+              </div>
+            </div>
+            <div id="device-auth-result" class="device-auth-result"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ MỞ/ĐÓNG THIẾT BỊ IC/OC ══ -->
       <div class="panel" id="panel-icoc">
         <div class="section-header">
@@ -2114,7 +2193,9 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                   {{ sec.id }}. {{ sec.name }}
                 </div>
                 {% for api in sec.apis %}
-                <div class="ep-item" onclick="selectExplorerApi('{{ sec.id }}', {{ loop.index0 }})"
+                <div class="ep-item"
+                     data-section-id="{{ sec.id }}" data-api-index="{{ loop.index0 }}"
+                     onclick="selectExplorerApi(this.dataset.sectionId, Number(this.dataset.apiIndex))"
                      data-title="{{ api.title|lower }}" data-ep="{{ (api.endpoints[0] if api.endpoints else '')|lower }}">
                   <span class="method {{ api.method|upper }}">{{ api.method|upper }}</span>
                   <span class="ep-path">{{ api.primary_endpoint or api.endpoints[0] if api.endpoints else '—' }}</span>
@@ -2195,9 +2276,15 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
 </div>
 
 <script type="application/json" id="sections-data">{{ sections|tojson }}</script>
+<script type="application/json" id="dashboard-runtime-data">{{ {
+  'base_url': base_url,
+  'expires_in': expires_in,
+  'selected_menu': app_cfg['SELECTED_MENU']
+}|tojson }}</script>
 <script>
 const SECTIONS = JSON.parse(document.getElementById('sections-data').textContent);
-const BASE_URL  = {{ base_url|tojson }};
+const DASHBOARD_RUNTIME = JSON.parse(document.getElementById('dashboard-runtime-data').textContent);
+const BASE_URL = String(DASHBOARD_RUNTIME.base_url || '');
 
 // ── Map panel → menu ID thực từ server ──
 const PANEL_MENU_MAP = {
@@ -2205,6 +2292,7 @@ const PANEL_MENU_MAP = {
   'thuebao': { id: 11213, name: 'Tra cứu thuê bao di động' },
   'cuoc':    { id: 11213, name: 'Cước & Dịch vụ di động' },
   'doisim':  { id: 11175, name: 'Đổi SIM' },
+  'deviceauth': { id: 810241, name: 'Xác thực đổi thiết bị' },
   'icoc':    { id: 11213, name: 'Mở khóa thiết bị IC/OC' },
   'donhang': { id: 699161, name: 'Đơn hàng Sim/Kit' },
   'giohang': { id: 11074, name: 'Giỏ hàng' },
@@ -2235,7 +2323,7 @@ async function loadSettingsMenus() {
 function _populateMenuSelect(list) {
   const sel = document.getElementById('cfg-selected-menu');
   if (!sel) return;
-  const curVal = sel.value || '{{ app_cfg["SELECTED_MENU"] }}';
+  const curVal = sel.value || String(DASHBOARD_RUNTIME.selected_menu || '');
   sel.innerHTML = list.map(m => {
     const id = m.id || m.id_cn || '';
     const name = m.name || m.displayName || '';
@@ -2312,6 +2400,7 @@ async function saveSettings(e) {
 
 // ── Panel navigation ──
 async function showPanel(name) {
+  if (name !== 'deviceauth') deviceAuthStopCamera(false);
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name)?.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => {
@@ -2374,7 +2463,7 @@ function toggleSidebar() {
 }
 
 // ── Token countdown ──
-let expSeconds = {{ expires_in }};
+let expSeconds = Number(DASHBOARD_RUNTIME.expires_in) || 0;
 function updateCountdown() {
   const m = Math.floor(expSeconds/60);
   const s = expSeconds % 60;
@@ -6605,6 +6694,191 @@ async function thanhToanHD() {
     p_hopdong_id:hdid, p_sotien:sotien, p_hinhthuc_thanhtoan:httt
   }));
 }
+
+// ── Xác thực đổi thiết bị bằng camera PC ──
+const deviceAuthState = {
+  stream: null,
+  handle: '',
+  busy: false,
+  requestId: '',
+  policy: null,
+};
+
+function deviceAuthSetStatus(kind, title, message) {
+  const box = document.getElementById('device-auth-status');
+  const badge = document.getElementById('device-auth-header-badge');
+  if (box) {
+    box.className = `device-auth-status ${kind || ''}`;
+    box.innerHTML = `<strong>${escHtml(title || 'Trạng thái')}</strong>${escHtml(message || '')}`;
+  }
+  if (badge) {
+    badge.className = `doisim-status ${kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : kind === 'loading' ? 'loading' : ''}`;
+    badge.textContent = title || 'Chưa bắt đầu';
+  }
+}
+
+function deviceAuthSetButtons() {
+  const running = Boolean(deviceAuthState.stream);
+  const start = document.getElementById('device-auth-start-btn');
+  const capture = document.getElementById('device-auth-capture-btn');
+  const stop = document.getElementById('device-auth-stop-btn');
+  if (start) {
+    start.disabled = deviceAuthState.busy;
+    start.textContent = deviceAuthState.busy ? '⏳ Đang khởi tạo…' : (running ? '🔄 Khởi tạo lại' : '📷 Bắt đầu xác thực');
+  }
+  if (capture) capture.disabled = deviceAuthState.busy || !running || !deviceAuthState.handle;
+  if (stop) stop.disabled = deviceAuthState.busy || !running;
+}
+
+function deviceAuthRenderPolicy(policy) {
+  const target = document.getElementById('device-auth-policy');
+  if (!target) return;
+  const yesNo = value => Number(value) === 1 ? 'Bắt buộc' : 'Không yêu cầu';
+  target.innerHTML = `
+    <span>Liveness: <b>${yesNo(policy?.check_liveness)}</b></span>
+    <span>Mắt mở: <b>${yesNo(policy?.check_eye_open)}</b></span>
+    <span>Che mặt: <b>${yesNo(policy?.check_masked)}</b></span>
+    <span>AI: <b>${yesNo(policy?.ai_must)}</b></span>`;
+}
+
+function deviceAuthStopCamera(manual=false) {
+  if (deviceAuthState.stream) {
+    deviceAuthState.stream.getTracks().forEach(track => {
+      try { track.stop(); } catch (_) {}
+    });
+  }
+  deviceAuthState.stream = null;
+  deviceAuthState.handle = '';
+  const video = document.getElementById('device-auth-video');
+  if (video) video.srcObject = null;
+  document.getElementById('device-auth-camera')?.classList.remove('running');
+  if (manual) deviceAuthSetStatus('', 'Đã tắt camera', 'Bấm “Bắt đầu xác thực” để mở phiên mới.');
+  deviceAuthSetButtons();
+}
+
+async function deviceAuthStart() {
+  if (deviceAuthState.busy) return;
+  deviceAuthStopCamera(false);
+  const result = document.getElementById('device-auth-result');
+  if (result) { result.className = 'device-auth-result'; result.innerHTML = ''; }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    deviceAuthSetStatus('err', 'Không có camera', 'WebView hoặc máy tính không hỗ trợ truy cập camera.');
+    return;
+  }
+  deviceAuthState.busy = true;
+  deviceAuthSetStatus('loading', 'Đang mở camera', 'Hãy cho phép ứng dụng sử dụng camera PC.');
+  deviceAuthSetButtons();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: 'user',
+        width: {ideal: 1280},
+        height: {ideal: 720},
+      },
+    });
+    deviceAuthState.stream = stream;
+    const video = document.getElementById('device-auth-video');
+    video.srcObject = stream;
+    await video.play();
+    document.getElementById('device-auth-camera')?.classList.add('running');
+    deviceAuthSetStatus('loading', 'Đang tạo phiên eKYC', 'Kiểm tra cấu hình liveness từ OneBSS…');
+    const response = await fetch('/api/device-auth/prepare', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok || !data.handle) {
+      throw new Error(data.error || `Không tạo được phiên eKYC (HTTP ${response.status})`);
+    }
+    deviceAuthState.handle = data.handle;
+    deviceAuthState.requestId = data.request_id || '';
+    deviceAuthState.policy = data.policy || {};
+    deviceAuthRenderPolicy(deviceAuthState.policy);
+    deviceAuthSetStatus('ok', 'Camera sẵn sàng', 'Đặt khuôn mặt vào khung, nhìn thẳng, mở mắt rồi bấm “Chụp và xác thực”.');
+  } catch (error) {
+    deviceAuthStopCamera(false);
+    const name = String(error?.name || '');
+    const message = name === 'NotAllowedError'
+      ? 'Quyền camera bị từ chối. Hãy cho phép camera trong Windows/WebView rồi thử lại.'
+      : name === 'NotFoundError'
+        ? 'Không tìm thấy camera đang hoạt động trên máy tính.'
+        : (error?.message || String(error));
+    deviceAuthSetStatus('err', 'Không thể bắt đầu', message);
+  } finally {
+    deviceAuthState.busy = false;
+    deviceAuthSetButtons();
+  }
+}
+
+function deviceAuthCanvasBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Không tạo được khung hình JPEG')), 'image/jpeg', 0.92);
+  });
+}
+
+async function deviceAuthCaptureAndVerify() {
+  if (deviceAuthState.busy || !deviceAuthState.stream || !deviceAuthState.handle) return;
+  const video = document.getElementById('device-auth-video');
+  if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    deviceAuthSetStatus('err', 'Camera chưa sẵn sàng', 'Chờ hình ảnh camera hiển thị rồi thử lại.');
+    return;
+  }
+  deviceAuthState.busy = true;
+  deviceAuthSetButtons();
+  deviceAuthSetStatus('loading', 'Đang xác thực sống', 'Đang gửi khung hình camera tới dịch vụ liveness VNPT…');
+  try {
+    const canvas = document.getElementById('device-auth-canvas');
+    const scale = Math.min(1, 1280 / video.videoWidth);
+    canvas.width = Math.max(640, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(360, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext('2d', {alpha:false});
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await deviceAuthCanvasBlob(canvas);
+    const form = new FormData();
+    form.append('handle', deviceAuthState.handle);
+    form.append('frame', blob, 'camera-frame.jpg');
+    const response = await fetch('/api/device-auth/verify-camera', {
+      method: 'POST',
+      body: form,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      const suffix = data.liveness_passed
+        ? ' Liveness đã đạt nhưng bước lưu hồ sơ chưa hoàn tất.'
+        : ' Giữ nguyên camera và chụp lại một khung hình mới.';
+      throw new Error((data.error || `Xác thực thất bại (HTTP ${response.status})`) + suffix);
+    }
+    const liveness = data.liveness || {};
+    const file = data.file || {};
+    const result = document.getElementById('device-auth-result');
+    if (result) {
+      result.className = 'device-auth-result show';
+      result.innerHTML = `
+        <div style="color:var(--green);font-weight:750;margin-bottom:9px">✅ ${escHtml(data.message || 'Xác thực camera thành công')}</div>
+        <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div class="doisim-summary-item"><span>Liveness</span><strong>${escHtml(liveness.liveness ?? 'Đạt')}</strong></div>
+          <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? 'Đạt')}</strong></div>
+          <div class="doisim-summary-item"><span>Che mặt</span><strong>${escHtml(data.mask?.masked ?? 'Không')}</strong></div>
+          <div class="doisim-summary-item"><span>Request ID</span><strong>${escHtml(data.request_id || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>File ID</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Tệp lưu</span><strong>${escHtml(file.ten_taptin || file.duong_dan || 'PORTRAIT_IMAGE.jpg')}</strong></div>
+        </div>
+        ${data.log_warning ? `<div style="margin-top:8px;color:var(--orange);font-size:11px">Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}`;
+    }
+    deviceAuthSetStatus('ok', 'Xác thực thành công', 'Kết quả liveness hợp lệ và ảnh camera đã được lưu vào hồ sơ OneBSS.');
+    deviceAuthStopCamera(false);
+    showToast('✅ Xác thực đổi thiết bị bằng camera PC thành công');
+  } catch (error) {
+    deviceAuthSetStatus('err', 'Xác thực chưa đạt', error?.message || String(error));
+  } finally {
+    deviceAuthState.busy = false;
+    deviceAuthSetButtons();
+  }
+}
+
+window.addEventListener('beforeunload', () => deviceAuthStopCamera(false));
 
 // ── Đổi SIM ──
 const doiSimState = {
