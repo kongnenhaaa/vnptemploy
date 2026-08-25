@@ -6748,24 +6748,25 @@ async function deviceAuthExecute() {
     }
     const liveness = data.liveness || {};
     const file = data.file || {};
+    const sinhtrac = data.sinhtrac || {};
     if (result) {
       result.className = 'device-auth-result show';
       result.innerHTML = `
-        <div style="color:var(--green);font-weight:750;font-size:14px;margin-bottom:10px">✅ ${escHtml(data.message || 'Xác thực đổi thiết bị thành công')}</div>
+        <div style="color:var(--green);font-weight:750;font-size:14px;margin-bottom:10px">✅ ${escHtml(sinhtrac.message || data.message || 'Xác thực đổi thiết bị thành công')}</div>
         <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
           <div class="doisim-summary-item"><span>Số điện thoại</span><strong>${escHtml(data.phone || rawPhone)}</strong></div>
-          <div class="doisim-summary-item"><span>Mã phiên xác nhận</span><strong>${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
-          <div class="doisim-summary-item"><span>Liveness</span><strong>${escHtml(liveness.liveness_msg || 'Người thật (score 0.89)')}</strong></div>
-          <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? '1')}</strong></div>
-          <div class="doisim-summary-item"><span>Che mặt</span><strong>${escHtml(data.mask?.masked ?? '0')}</strong></div>
-          <div class="doisim-summary-item"><span>Client session</span><strong>${escHtml(data.client_session || '—')}</strong></div>
-          <div class="doisim-summary-item"><span>File ID</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
-          <div class="doisim-summary-item"><span>Tệp lưu</span><strong>${escHtml(file.ten_taptin || file.duong_dan || 'PORTRAIT_IMAGE.jpg')}</strong></div>
+          <div class="doisim-summary-item"><span>Trạng thái OneBSS</span><strong style="color:var(--green)">${escHtml(sinhtrac.trang_thai ? `Mã ${sinhtrac.trang_thai} (Status: ${sinhtrac.Status})` : 'Thành công')}</strong></div>
+          <div class="doisim-summary-item"><span>Liveness AI</span><strong>${escHtml(liveness.liveness_msg || liveness.liveness || 'Người thật')}${liveness.liveness_prob ? ` (${liveness.liveness_prob})` : ''}</strong></div>
+          <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? 'yes')}</strong></div>
+          <div class="doisim-summary-item"><span>Client session</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.client_session || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Mã phiên (IDG)</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>ID Hồ sơ (OneBSS)</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Tệp lưu OneBSS</span><strong style="word-break:break-all;font-size:11px">${escHtml(file.ten_taptin || file.duong_dan || '—')}</strong></div>
         </div>
         ${data.log_warning ? `<div style="margin-top:8px;color:var(--orange);font-size:11px">Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}`;
     }
-    deviceAuthSetStatus('ok', 'Xác thực thành công', `Đã hoàn tất xác thực đổi thiết bị cho SĐT ${data.phone || rawPhone}.`);
-    showToast('✅ Xác thực đổi thiết bị thành công (Liveness 0.89)');
+    deviceAuthSetStatus('ok', 'Xác thực thành công', sinhtrac.message || `Đã hoàn tất xác thực đổi thiết bị cho SĐT ${data.phone || rawPhone}.`);
+    showToast('✅ ' + (sinhtrac.message || 'Xác thực đổi thiết bị thành công'));
   } catch (error) {
     deviceAuthSetStatus('err', 'Xác thực thất bại', error?.message || String(error));
   } finally {

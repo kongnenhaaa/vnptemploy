@@ -1973,7 +1973,7 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
 
     # 4. Kiểm tra che mặt (Mask)
     mask_payload = {}
-    mask_result = {}
+    mask_result = None
     if int(policy.get('check_masked') or 0) == 1:
         try:
             mask_body = {
@@ -1994,12 +1994,13 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
                 mask_result = _device_auth_validate_mask(mask_payload)
         except Exception:
             mask_payload = {}
-            mask_result = {'masked': '0'}
+            mask_result = None
 
     # 5. Ghi log eKYC lên OneBSS
     log_warning = ''
+    log_ekyc_data = {}
     try:
-        _device_auth_onebss_post('/app-banhang/Ekyc/log_ekyc', {
+        log_res = _device_auth_onebss_post('/app-banhang/Ekyc/log_ekyc', {
             'p_so_tb': phone,
             'p_image_hash': image_hash or DEVICE_AUTH_FAR_HASH,
             'p_challenge_code': sdk_settings['challenge_code'],
@@ -2009,11 +2010,41 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
             'p_mask': json.dumps(mask_payload if mask_result else {}, ensure_ascii=False),
             'menu_id': int(DEVICE_AUTH_MENU_ID),
         }, account_id)
+        log_ekyc_data = log_res.get('data') if isinstance(log_res, dict) else {}
     except DeviceAuthError as exc:
         log_warning = str(exc)
 
     # 6. Upload ảnh lên kho hồ sơ OneBSS
     file_data = _device_auth_upload_to_onebss(portrait_bytes, account_id)
+
+    # 7. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
+    phone_0 = '0' + phone[2:] if phone.startswith('84') else phone
+    xacthuc_result = {}
+    for num in (phone, phone_0):
+        try:
+            xacthuc_payload = {
+                'p_so_tb': num,
+                'p_image_hash': image_hash or DEVICE_AUTH_FAR_HASH,
+                'client_session': client_session,
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }
+            xacthuc_resp = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/xacthuc_hinhanh', xacthuc_payload, account_id)
+            if isinstance(xacthuc_resp, dict):
+                xacthuc_result = xacthuc_resp.get('data') or xacthuc_resp
+            break
+        except Exception:
+            pass
+
+    # 8. Kiểm tra trạng thái sinh trắc (OneBSS thietbi_thuebao)
+    sinhtrac_result = {}
+    for num in (phone, phone_0):
+        try:
+            st_resp = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/kiemtra_trangthai_sinhtrac', {'p_so_tb': num, 'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
+            if isinstance(st_resp, dict):
+                sinhtrac_result = st_resp.get('data') or st_resp
+            break
+        except Exception:
+            pass
 
     return {
         'ok': True,
@@ -2022,19 +2053,12 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
         'confirmation_id': confirmation_id,
         'phone': phone,
         'client_session': client_session,
-        'liveness': {
-            'liveness': liveness_result.get('liveness', '1'),
-            'liveness_msg': liveness_result.get('liveness_msg', 'Người thật (score 0.89)'),
-            'is_eye_open': liveness_result.get('is_eye_open', '1'),
-            'fake_liveness': liveness_result.get('fake_liveness', '0'),
-            'face_swapping': liveness_result.get('face_swapping', '0'),
-        },
-        'mask': {'masked': mask_result.get('masked', '0')} if mask_result else None,
-        'file': {
-            'id_taptin': file_data.get('id_taptin'),
-            'ten_taptin': file_data.get('ten_taptin'),
-            'duong_dan': file_data.get('duong_dan'),
-        },
+        'liveness': liveness_result if isinstance(liveness_result, dict) else {},
+        'mask': mask_result,
+        'file': file_data if isinstance(file_data, dict) else {},
+        'log_ekyc': log_ekyc_data,
+        'xacthuc_hinhanh': xacthuc_result,
+        'sinhtrac': sinhtrac_result,
         'log_warning': log_warning,
     }
 
