@@ -1970,6 +1970,14 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
             <span id="device-auth-header-badge" class="doisim-status">Chưa bắt đầu</span>
           </div>
           <div class="card-body">
+            <div class="form-group" style="max-width:430px;margin-bottom:14px">
+              <label>Số điện thoại cần xác thực *</label>
+              <input id="device-auth-phone" type="tel" inputmode="numeric"
+                     autocomplete="off" placeholder="Ví dụ: 0846216326 hoặc 84846216326">
+              <div style="font-size:10px;color:var(--text3);margin-top:5px">
+                SĐT được chuẩn hóa về đầu 84 và dùng để tạo phiên xác nhận OneBSS trước khi chụp.
+              </div>
+            </div>
             <div class="device-auth-layout">
               <div>
                 <div id="device-auth-camera" class="device-auth-camera">
@@ -6701,6 +6709,7 @@ const deviceAuthState = {
   handle: '',
   busy: false,
   requestId: '',
+  phone: '',
   policy: null,
 };
 
@@ -6722,12 +6731,14 @@ function deviceAuthSetButtons() {
   const start = document.getElementById('device-auth-start-btn');
   const capture = document.getElementById('device-auth-capture-btn');
   const stop = document.getElementById('device-auth-stop-btn');
+  const phone = document.getElementById('device-auth-phone');
   if (start) {
     start.disabled = deviceAuthState.busy;
     start.textContent = deviceAuthState.busy ? '⏳ Đang khởi tạo…' : (running ? '🔄 Khởi tạo lại' : '📷 Bắt đầu xác thực');
   }
   if (capture) capture.disabled = deviceAuthState.busy || !running || !deviceAuthState.handle;
   if (stop) stop.disabled = deviceAuthState.busy || !running;
+  if (phone) phone.disabled = deviceAuthState.busy || running;
 }
 
 function deviceAuthRenderPolicy(policy) {
@@ -6761,6 +6772,11 @@ async function deviceAuthStart() {
   deviceAuthStopCamera(false);
   const result = document.getElementById('device-auth-result');
   if (result) { result.className = 'device-auth-result'; result.innerHTML = ''; }
+  const rawPhone = document.getElementById('device-auth-phone')?.value.trim() || '';
+  if (!rawPhone) {
+    deviceAuthSetStatus('err', 'Thiếu số điện thoại', 'Nhập SĐT cần xác thực trước khi bắt đầu.');
+    return;
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     deviceAuthSetStatus('err', 'Không có camera', 'WebView hoặc máy tính không hỗ trợ truy cập camera.');
     return;
@@ -6782,11 +6798,11 @@ async function deviceAuthStart() {
     video.srcObject = stream;
     await video.play();
     document.getElementById('device-auth-camera')?.classList.add('running');
-    deviceAuthSetStatus('loading', 'Đang tạo phiên eKYC', 'Kiểm tra cấu hình liveness từ OneBSS…');
+    deviceAuthSetStatus('loading', 'Đang tạo phiên xác nhận', 'Gắn SĐT với phiên eKYC OneBSS…');
     const response = await fetch('/api/device-auth/prepare', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({}),
+      body: JSON.stringify({phone: rawPhone}),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok || !data.handle) {
@@ -6794,9 +6810,10 @@ async function deviceAuthStart() {
     }
     deviceAuthState.handle = data.handle;
     deviceAuthState.requestId = data.request_id || '';
+    deviceAuthState.phone = data.phone || rawPhone;
     deviceAuthState.policy = data.policy || {};
     deviceAuthRenderPolicy(deviceAuthState.policy);
-    deviceAuthSetStatus('ok', 'Camera sẵn sàng', 'Đặt khuôn mặt vào khung, nhìn thẳng, mở mắt rồi bấm “Chụp và xác thực”.');
+    deviceAuthSetStatus('ok', 'Đã tạo phiên xác nhận', `SĐT ${deviceAuthState.phone} · Đặt khuôn mặt vào khung rồi bấm “Chụp và xác thực”.`);
   } catch (error) {
     deviceAuthStopCamera(false);
     const name = String(error?.name || '');
@@ -6857,11 +6874,13 @@ async function deviceAuthCaptureAndVerify() {
       result.className = 'device-auth-result show';
       result.innerHTML = `
         <div style="color:var(--green);font-weight:750;margin-bottom:9px">✅ ${escHtml(data.message || 'Xác thực camera thành công')}</div>
-        <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div class="doisim-summary-item"><span>Số điện thoại</span><strong>${escHtml(data.phone || deviceAuthState.phone || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Mã phiên xác nhận</span><strong>${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
           <div class="doisim-summary-item"><span>Liveness</span><strong>${escHtml(liveness.liveness ?? 'Đạt')}</strong></div>
           <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? 'Đạt')}</strong></div>
           <div class="doisim-summary-item"><span>Che mặt</span><strong>${escHtml(data.mask?.masked ?? 'Không')}</strong></div>
-          <div class="doisim-summary-item"><span>Request ID</span><strong>${escHtml(data.request_id || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Client session</span><strong>${escHtml(data.client_session || '—')}</strong></div>
           <div class="doisim-summary-item"><span>File ID</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Tệp lưu</span><strong>${escHtml(file.ten_taptin || file.duong_dan || 'PORTRAIT_IMAGE.jpg')}</strong></div>
         </div>

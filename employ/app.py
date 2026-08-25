@@ -1486,6 +1486,20 @@ class DeviceAuthError(RuntimeError):
         self.liveness_passed = bool(liveness_passed)
 
 
+def _device_auth_normalize_phone(value):
+    """Normalize one Vietnamese mobile number to the OneBSS 84xxxxxxxxx form."""
+    digits = re.sub(r'\D', '', str(value or ''))
+    if digits.startswith('0') and len(digits) == 10:
+        digits = '84' + digits[1:]
+    elif len(digits) == 9:
+        digits = '84' + digits
+    if not re.fullmatch(r'84[35789]\d{8}', digits):
+        raise DeviceAuthError(
+            'Số điện thoại không hợp lệ. Nhập dạng 0xxxxxxxxx, 84xxxxxxxxx hoặc 9 số cuối.',
+            422)
+    return digits
+
+
 def _onebss_payload_succeeded(status_code, payload):
     if not 200 <= int(status_code) < 300 or not isinstance(payload, dict):
         return False
@@ -1771,6 +1785,8 @@ def device_auth_prepare():
     payload = request.get_json(silent=True) or {}
     account_id = str(payload.get('account_id') or '').strip()
     try:
+        phone = _device_auth_normalize_phone(
+            payload.get('phone') or payload.get('so_tb'))
         context = _get_account_context(account_id)
         token_payload = _device_auth_onebss_post(
             '/app-com/Config/token_ekyc',
@@ -1790,12 +1806,20 @@ def device_auth_prepare():
         sdk_settings = _device_auth_sdk_settings(app_config)
         init_payload = _device_auth_onebss_post(
             '/app-banhang/Ekyc/init_log_uuid', {
-                'p_type': None, 'p_id': None, 'p_so_gt': None,
-                'p_loai_gt': None, 'menu_id': int(DEVICE_AUTH_MENU_ID),
+                'p_so_tb': phone,
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
             }, account_id)
+        init_data = init_payload.get('data') if isinstance(init_payload, dict) else None
+        init_data = init_data if isinstance(init_data, dict) else {}
         init_request_id = str(init_payload.get('request_id') or '').strip()
+        confirmation_id = str(
+            init_data.get('uuid') or init_data.get('session_id') or
+            init_data.get('id') or init_data.get('token') or
+            init_data.get('session_token') or init_request_id).strip()
+        if not confirmation_id:
+            raise DeviceAuthError('OneBSS không trả mã phiên xác nhận eKYC', 502)
         if not init_request_id:
-            raise DeviceAuthError('OneBSS không trả request_id eKYC', 502)
+            init_request_id = confirmation_id
         handle = secrets.token_urlsafe(32)
         transaction = {
             'created_at': time.time(),
@@ -1803,6 +1827,7 @@ def device_auth_prepare():
             'account_id': account_id,
             'username': context.get('username', ''),
             'device_id': context.get('device_id', ''),
+            'phone': phone,
             'ekyc_access_token': _device_auth_access_token(token_payload),
             'token_id': sdk_settings['token_id'],
             'token_key': sdk_settings['token_key'],
@@ -1810,6 +1835,7 @@ def device_auth_prepare():
             'base_url': sdk_settings['base_url'],
             'client_session': _device_auth_client_session(context),
             'init_request_id': init_request_id,
+            'confirmation_id': confirmation_id,
             'policy': policy,
         }
         _device_auth_save_transaction(handle, transaction)
@@ -1818,6 +1844,8 @@ def device_auth_prepare():
             'handle': handle,
             'expires_in': DEVICE_AUTH_HANDLE_TTL_SECONDS,
             'request_id': init_request_id,
+            'confirmation_id': confirmation_id,
+            'phone': phone,
             'policy': {
                 'check_liveness': int(policy.get('check_liveness') or 0),
                 'check_eye_open': int(policy.get('check_eye_open') or 0),
@@ -1918,14 +1946,13 @@ def device_auth_verify_camera():
         log_warning = ''
         try:
             _device_auth_onebss_post('/app-banhang/Ekyc/log_ekyc', {
-                'p_order_id': transaction['init_request_id'],
-                'p_tran_id': transaction['client_session'],
-                'p_step': 'FACE',
-                'p_ai_info': '',
-                'p_ai_face': json.dumps({'hash_portrait': image_hash}, ensure_ascii=False),
-                'p_ai_liveness': json.dumps(liveness_payload, ensure_ascii=False),
-                'p_front_liveness': '',
-                'p_rear_liveness': '',
+                'p_so_tb': transaction['phone'],
+                'p_image_hash': image_hash,
+                'p_challenge_code': transaction['challenge_code'],
+                'p_client_session': transaction['client_session'],
+                'p_liveness': json.dumps(liveness_payload, ensure_ascii=False),
+                'p_compare': '{}',
+                'p_mask': json.dumps(mask_payload if mask_result else {}, ensure_ascii=False),
                 'menu_id': int(DEVICE_AUTH_MENU_ID),
             }, account_id)
         except DeviceAuthError as exc:
@@ -1940,6 +1967,8 @@ def device_auth_verify_camera():
             'ok': True,
             'message': 'Xác thực sống bằng camera PC thành công',
             'request_id': transaction['init_request_id'],
+            'confirmation_id': transaction.get('confirmation_id') or transaction['init_request_id'],
+            'phone': transaction['phone'],
             'client_session': transaction['client_session'],
             'liveness': {
                 'liveness': liveness_result.get('liveness'),
