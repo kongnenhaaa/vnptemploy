@@ -822,8 +822,8 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
     <div class="sidebar-section">
       <div class="sidebar-section-title">Khác</div>
       <div class="nav-item" onclick="showPanel('b2ab2c')" data-panel="b2ab2c"><span class="icon">📝</span>B2A / B2C</div>
-      <div class="nav-item" onclick="showPanel('baocao')" data-panel="baocao"><span class="icon">📊</span>Báo cáo</div>
-      <div class="nav-item" onclick="showPanel('explorer')" data-panel="explorer"><span class="icon">⚙️</span>API Explorer</div>
+      <div class="nav-item" onclick="showPanel('baocao')" data-panel="baocao" style="display:none"><span class="icon">📊</span>Báo cáo</div>
+      <div class="nav-item" onclick="showPanel('explorer')" data-panel="explorer" style="display:none"><span class="icon">⚙️</span>API Explorer</div>
     </div>
   </div>
 
@@ -1223,7 +1223,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               </div>
               <div style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-                  <div><b style="font-size:12px">Tài khoản chạy *</b><div style="font-size:10px;color:var(--text3);margin-top:2px">Tick một, nhiều hoặc tất cả. Số tài khoản được chọn chính là số luồng; mỗi tài khoản xử lý tuần tự từng đơn và chờ 1,5 giây giữa mọi API OneBSS.</div></div>
+                  <div><b style="font-size:12px">Tài khoản chạy *</b><div style="font-size:10px;color:var(--text3);margin-top:2px">Mỗi tài khoản là một luồng riêng và xử lý tuần tự; chọn bao nhiêu tài khoản thì chạy bấy nhiêu luồng độc lập. Các API cùng tài khoản chờ ít nhất 1,5 giây.</div></div>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
                     <button type="button" class="btn-sm" onclick="simBatchSelectAllAccounts(true)">Chọn tất cả</button>
                     <button type="button" class="btn-sm" onclick="simBatchSelectAllAccounts(false)">Bỏ chọn</button>
@@ -1252,7 +1252,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                 </div>
                 <div class="form-group">
                   <label>Delay sau mỗi SĐT của cùng tài khoản (giây)</label>
-                  <input id="sim-batch-delay" type="number" inputmode="decimal" min="0" max="3600" step="1" value="1">
+                  <input id="sim-batch-delay" type="number" inputmode="decimal" min="2" max="3600" step="1" value="2">
                 </div>
               </div>
               <input id="sim-batch-file" type="file" accept=".xlsx,.xls" style="display:none" onchange="simBatchImportFile(this)">
@@ -1267,7 +1267,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               </div>
               <div id="sim-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input/output cố định...</div>
               <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">
-                SĐT trong Excel nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84 và tự chuẩn hóa về đầu 84. Mỗi tài khoản chạy đúng một luồng: sau mỗi API OneBSS luôn chờ 1,5 giây trước API kế tiếp; xong một SĐT sẽ chờ Delay rồi mới chạy SĐT kế tiếp. Nhiều tài khoản chạy song song và mỗi tài khoản tự chờ độc lập. File được chọn sẽ chạy thật: tạo đơn, ghi khách hàng ngẫu nhiên, trừ Ví VNPT Pay, kiểm tra serial và khởi tạo thuê bao. TP.HCM và Quận/Huyện giữ cố định; Phường/Xã, địa chỉ con, số nhà và họ tên được chọn ngẫu nhiên từ dữ liệu OneBSS.
+                SĐT trong Excel nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84 và tự chuẩn hóa về đầu 84. Mỗi tài khoản chạy một luồng tuần tự riêng và chờ 1,5 giây giữa API cùng tài khoản; các tài khoản khác nhau chạy độc lập. File được chọn sẽ chạy thật: tạo đơn, ghi thông tin khách hàng/địa chỉ do luồng batch sinh từ danh mục OneBSS, trừ Ví VNPT Pay, kiểm tra serial và khởi tạo thuê bao; chỉ chạy dữ liệu đã được phép.
               </div>
               <div id="sim-batch-progress" style="display:none;margin-top:12px">
                 <div style="height:7px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="sim-batch-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#4ade80);transition:width .2s"></div></div>
@@ -2074,7 +2074,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
             <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:12px">Mỗi dòng Excel là một SĐT. Mỗi tài khoản được chọn chạy đúng một luồng tuần tự; nhiều tài khoản chạy song song và chia đều danh sách.</div>
             <div style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-                <div><b style="font-size:12px">Tài khoản chạy *</b><div style="font-size:10px;color:var(--text3);margin-top:2px">Số tài khoản được tick chính là số luồng chạy. Một tài khoản luôn xử lý xong một số rồi mới chạy số kế tiếp.</div></div>
+                <div><b style="font-size:12px">Tài khoản chạy *</b><div style="font-size:10px;color:var(--text3);margin-top:2px">Mỗi tài khoản là một luồng tuần tự riêng; chọn bao nhiêu tài khoản thì chạy bấy nhiêu luồng độc lập và không cho cùng tài khoản gọi chồng nhau.</div></div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
                   <button type="button" class="btn-sm" onclick="icocBatchSelectAllAccounts(true)">Chọn tất cả</button>
                   <button type="button" class="btn-sm" onclick="icocBatchSelectAllAccounts(false)">Bỏ chọn</button>
@@ -2087,7 +2087,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
             <div class="inline-group">
               <div class="form-group"><label>IC – Gọi đến *</label><select id="icoc-batch-ic-action"><option value="GIU" selected>Giữ nguyên IC</option><option value="MO">Mở IC</option><option value="KHOA">Đóng / khóa IC</option></select></div>
               <div class="form-group"><label>OC – Gọi đi *</label><select id="icoc-batch-oc-action"><option value="GIU" selected>Giữ nguyên OC</option><option value="MO">Mở OC</option><option value="KHOA">Đóng / khóa OC</option></select></div>
-              <div class="form-group"><label>Delay sau mỗi SĐT của cùng tài khoản (giây)</label><input id="icoc-batch-delay" type="number" inputmode="decimal" min="0" max="3600" step="1" value="1"></div>
+              <div class="form-group"><label>Delay sau mỗi SĐT của cùng tài khoản (giây)</label><input id="icoc-batch-delay" type="number" inputmode="decimal" min="2" max="3600" step="1" value="2"></div>
             </div>
             <div class="form-group"><label>Ghi chú gửi API *</label><textarea id="icoc-batch-note" rows="2" maxlength="500" placeholder="Ví dụ: chtt"></textarea></div>
             <input id="icoc-batch-file" type="file" accept=".xlsx,.xls" style="display:none" onchange="icocBatchImportFile(this)">
@@ -2101,7 +2101,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               <button id="icoc-batch-copy-btn" type="button" class="btn-sm" style="display:none" onclick="icocBatchCopyTable()">Copy bảng kết quả</button>
             </div>
             <div id="icoc-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input/output cố định...</div>
-            <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">Chọn ít nhất một chiều cần đổi. Ví dụ có thể chọn Mở IC và Đóng OC trong cùng một dòng. Mỗi tài khoản xong một SĐT sẽ chờ Delay rồi mới chạy SĐT tiếp theo; nhiều tài khoản chạy song song nhưng Delay độc lập. Hệ thống tra cứu trạng thái trước, chỉ gửi các chiều đã chọn. SĐT nhận đầu 84, đầu 0 hoặc 9 chữ số không có tiền tố.</div>
+            <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">Chọn ít nhất một chiều cần đổi. Mỗi tài khoản xử lý một luồng tuần tự riêng với delay tối thiểu 2 giây; các tài khoản khác nhau chạy độc lập. Hệ thống tra cứu trạng thái trước, bỏ qua khi không cần đổi và xác minh lại sau thay đổi.</div>
             <div id="icoc-batch-progress" style="display:none;margin-top:12px"><div style="height:7px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="icoc-batch-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#bc8cff);transition:width .2s"></div></div><div id="icoc-batch-status" style="margin-top:7px;color:var(--text2);font-size:12px">Chưa chạy</div></div>
             <div id="icoc-batch-table" style="display:none;margin-top:12px"></div>
           </div>
@@ -2493,9 +2493,14 @@ async function callApi(endpoint, method='GET', body={}, bodyType='json', extraHe
     });
     const result = await resp.json();
     if (!resp.ok && !result.status) result.status = resp.status;
+    if (isBusinessMutationEndpoint(endpoint)) result.businessMutation = true;
     return result;
   } catch (error) {
-    return {status: 0, error: `Không kết nối được proxy/API: ${error.message || error}`};
+    return {
+      status: 0,
+      error: `Không kết nối được proxy/API: ${error.message || error}`,
+      businessMutation: isBusinessMutationEndpoint(endpoint),
+    };
   }
 }
 
@@ -2838,6 +2843,26 @@ function setIOCBadge(el, loai, value) {
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const ICOC_MIN_DELAY_SECONDS = 2;
+const BUSINESS_MUTATION_ENDPOINTS = new Set([
+  '/app-banhang/donhang_simkit/chonso_kit_v2',
+  '/app-banhang/donhang_simkit/dangky_goicuoc',
+  '/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3',
+  '/app-banhang/donhang_simkit/xacnhan_thanhtoan',
+  '/app-banhang/donhang_simkit/khoitao_thuebao',
+  '/app-banhang/thuebaodidong/khoamo_ic_oc',
+]);
+
+function isBusinessMutationEndpoint(endpoint) {
+  const path = String(endpoint || '').split('?', 1)[0].replace(/\/+$/, '').toLowerCase();
+  return BUSINESS_MUTATION_ENDPOINTS.has(path);
+}
+
+function isBusinessMutationUncertain(response) {
+  const status = Number(response?.status || 0);
+  return Boolean(response?.businessMutation && !response?.localBusinessBlocked &&
+    (!status || status === 408 || status === 409 || status >= 500));
+}
 
 async function fetchMobileSubscriberState(msisdn, maxAttempts=3) {
   let lastError = null;
@@ -3174,8 +3199,45 @@ const simWizardState = {
   tttbMethodId: '2', tttbMethodName: 'KH tự đăng ký TTTB',
   promotionReason: '', hasPromotion: false, isPromotion: false, paidInFull: true,
   issueEinvoice: false, budgetCode: '', citizenId: '',
-  orderResponse: null, paymentResponse: null, paymentConfirmed: false, subscriptionCreated: false, completed: false
+  orderResponse: null, paymentResponse: null, paymentConfirmed: false, subscriptionCreated: false, completed: false,
+  mutationInFlight: false, mutationUncertain: false
 };
+
+async function simWizardCallMutation(endpoint, body, bodyType='json', extraHeaders={}) {
+  if (simWizardState.mutationUncertain) {
+    return {
+      status: 409,
+      error: 'Luồng đang khóa vì kết quả thao tác trước chưa xác định; cần đối soát trước khi gửi tiếp',
+      businessMutation: true,
+      localBusinessBlocked: true,
+    };
+  }
+  if (simWizardState.mutationInFlight) {
+    return {
+      status: 409,
+      error: 'Một thao tác ghi của đơn SIM đang chạy; không gửi chồng yêu cầu',
+      businessMutation: true,
+      localBusinessBlocked: true,
+    };
+  }
+  simWizardState.mutationInFlight = true;
+  try {
+    return await callApi(endpoint, 'POST', body, bodyType, extraHeaders);
+  } finally {
+    simWizardState.mutationInFlight = false;
+  }
+}
+
+function simWizardMutationFailure(response, fallback) {
+  const message = apiFailureMessage(response, fallback);
+  if (!isBusinessMutationUncertain(response)) return message;
+  simWizardState.mutationUncertain = true;
+  const note = document.getElementById('sim-wizard-note');
+  if (note) {
+    note.textContent = 'Kết quả thao tác ghi chưa xác định. Không gửi lại; hãy đối soát đơn/trạng thái trên OneBSS trước.';
+  }
+  return `CHƯA XÁC ĐỊNH — không gửi lại trước khi đối soát: ${message}`;
+}
 
 const SIM_ADDRESS_LEVELS = {
   province: {selectId:'sim-customer-province-name', idId:'sim-customer-province-id', placeholder:'-- Chọn Tỉnh/Thành phố --'},
@@ -3211,7 +3273,7 @@ const simBatchState = {
   rechargeId: '2',
   tttbMethodId: '2',
   tttbMethodName: 'KH tự đăng ký ĐKTTTB',
-  delaySeconds: 1
+  delaySeconds: 2
 };
 
 function simValue(row, keys) {
@@ -3296,7 +3358,8 @@ function simResetWizard() {
     account: document.getElementById('simso-wizard')?.dataset.account || '',
     promotionReason: '', hasPromotion: false, isPromotion: false, paidInFull: true,
     issueEinvoice: false, budgetCode: '', citizenId: '',
-    orderResponse: null, paymentResponse: null, paymentConfirmed: false, subscriptionCreated: false, completed: false
+    orderResponse: null, paymentResponse: null, paymentConfirmed: false, subscriptionCreated: false, completed: false,
+    mutationInFlight: false, mutationUncertain: false
   });
   document.getElementById('sim-search-results').innerHTML = '';
   document.getElementById('sim-prefix-list').innerHTML = '';
@@ -3880,7 +3943,7 @@ async function simConfirmNumber(confirmed) {
   const msisdn = simSelectedNumber();
   if (!msisdn) { showToast('Thiếu số đã chọn'); return; }
   simStepMessage('sim-kit-resp', 'Đang tạo đơn SIM Kit từ số đã chọn...');
-  const chosen = await callApi('/app-banhang/donhang_simkit/chonso_kit_v2','POST', {
+  const chosen = await simWizardCallMutation('/app-banhang/donhang_simkit/chonso_kit_v2', {
     p_id_donhang: null,
     p_id_loaidon: 1,
     p_so_dt: msisdn,
@@ -3898,7 +3961,7 @@ async function simConfirmNumber(confirmed) {
     menu_id: 699161
   });
   if (!apiSucceeded(chosen)) {
-    simStepMessage('sim-kit-resp', apiFailureMessage(chosen, 'Không tạo được đơn từ số đã chọn'), true);
+    simStepMessage('sim-kit-resp', simWizardMutationFailure(chosen, 'Không tạo được đơn từ số đã chọn'), true);
     return;
   }
   simWizardState.orderResponse = chosen;
@@ -3933,7 +3996,7 @@ async function simConfirmRecharge(confirmed) {
     return;
   }
   simStepMessage('sim-recharge-resp', 'Đang đăng ký hình thức nạp thẻ...');
-  const r = await callApi('/app-banhang/donhang_simkit/dangky_goicuoc','POST', {
+  const r = await simWizardCallMutation('/app-banhang/donhang_simkit/dangky_goicuoc', {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
     p_id_hinhthuc_napthe: apiNumericOrText(simWizardState.rechargeId),
     p_id_loai_goicuoc: null,
@@ -3943,7 +4006,7 @@ async function simConfirmRecharge(confirmed) {
     menu_id: 699161
   });
   if (!apiSucceeded(r)) {
-    simStepMessage('sim-recharge-resp', apiFailureMessage(r, 'Đăng ký hình thức nạp thẻ thất bại'), true);
+    simStepMessage('sim-recharge-resp', simWizardMutationFailure(r, 'Đăng ký hình thức nạp thẻ thất bại'), true);
     return;
   }
   simWizardState.orderResponse = r;
@@ -4245,7 +4308,7 @@ async function simConfirmCustomer(confirmed) {
   const phone = String(document.getElementById('sim-customer-phone')?.value || '').replace(/\D/g, '');
   const address = simComposeCustomerAddress();
   simStepMessage('sim-customer-resp', 'Đang ghi thông tin khách hàng vào đơn...');
-  const r = await callApi('/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3','POST', {
+  const r = await simWizardCallMutation('/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3', {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
     p_id_hinhthuc_dk_tttb: apiNumericOrText(simWizardState.tttbMethodId),
     p_ten_kh: name,
@@ -4264,7 +4327,7 @@ async function simConfirmCustomer(confirmed) {
     menu_id: 699161
   });
   if (!apiSucceeded(r)) {
-    simStepMessage('sim-customer-resp', apiFailureMessage(r, 'Nhập thông tin khách hàng thất bại'), true);
+    simStepMessage('sim-customer-resp', simWizardMutationFailure(r, 'Nhập thông tin khách hàng thất bại'), true);
     return;
   }
   simWizardState.customerId = String(findApiValue(apiBodyObject(r),
@@ -4386,7 +4449,7 @@ async function simConfirmPayment(confirmed) {
     return;
   }
   simStepMessage('sim-payment-resp', 'Đang thanh toán qua Ví VNPT Pay...');
-  const r = await callApi('/app-banhang/donhang_simkit/xacnhan_thanhtoan','POST', {
+  const r = await simWizardCallMutation('/app-banhang/donhang_simkit/xacnhan_thanhtoan', {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
     p_id_loai_sim: apiNumericOrText(document.getElementById('sim-type-id')?.value || '2'),
     p_id_hinhthuc_thanhtoan: 204,
@@ -4399,7 +4462,7 @@ async function simConfirmPayment(confirmed) {
     walletToken: simWizardState.tokenPay
   });
   if (!apiSucceeded(r)) {
-    simStepMessage('sim-payment-resp', apiFailureMessage(r, 'Xác nhận VNPT Pay thất bại'), true);
+    simStepMessage('sim-payment-resp', simWizardMutationFailure(r, 'Xác nhận VNPT Pay thất bại'), true);
     return;
   }
   simWizardState.orderResponse = r;
@@ -4509,7 +4572,7 @@ async function simCheckSimStatus() {
     return;
   }
   simStepMessage('sim-init-resp', `SIM ${serial} hợp lệ. Đang khởi tạo thuê bao cho đơn ${simWizardState.orderId}...`);
-  const initialized = await callApi('/app-banhang/donhang_simkit/khoitao_thuebao','POST', {
+  const initialized = await simWizardCallMutation('/app-banhang/donhang_simkit/khoitao_thuebao', {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
     p_loai_sim: apiNumericOrText(document.getElementById('sim-type-id')?.value || '2'),
     p_so_sim: serial,
@@ -4517,10 +4580,12 @@ async function simCheckSimStatus() {
     menu_id: 699161
   });
   if (!apiSucceeded(initialized)) {
-    simStepMessage('sim-init-resp', apiFailureMessage(initialized, 'Khởi tạo thuê bao thất bại'), true);
+    simStepMessage('sim-init-resp', simWizardMutationFailure(initialized, 'Khởi tạo thuê bao thất bại'), true);
     if (button) {
-      button.disabled = false;
-      button.textContent = 'Thử lại khởi tạo thuê bao';
+      button.disabled = simWizardState.mutationUncertain;
+      button.textContent = simWizardState.mutationUncertain
+        ? 'Cần đối soát trước khi thao tác tiếp'
+        : 'Thử lại khởi tạo thuê bao';
     }
     return;
   }
@@ -4608,7 +4673,9 @@ function simBatchAccountSelectionChanged() {
   simBatchState.selectedAccounts = selected;
   const badge = document.getElementById('sim-batch-user');
   if (badge) {
-    badge.textContent = selected.length ? `${selected.length} tài khoản · ${selected.length} luồng song song (mỗi tài khoản tuần tự)` : 'Chưa chọn tài khoản';
+    badge.textContent = selected.length
+      ? `${selected.length} tài khoản · ${selected.length} luồng độc lập`
+      : 'Chưa chọn tài khoản';
   }
   return selected;
 }
@@ -4977,7 +5044,7 @@ function simBatchRequestStop() {
 
 function simBatchDelaySeconds(value) {
   const parsed = Number(String(value ?? '').trim().replace(',', '.'));
-  return Math.max(0, Math.min(3600, Number.isFinite(parsed) ? parsed : 0));
+  return Math.max(2, Math.min(3600, Number.isFinite(parsed) ? parsed : 2));
 }
 
 async function simBatchWaitDelay(seconds, shouldStop, status) {
@@ -5108,7 +5175,7 @@ async function simBatchImportFile(input) {
       `TP Hồ Chí Minh → ${simBatchState.districtName}\n` +
       `Hình thức ĐKTTTB: ${simBatchState.tttbMethodName}\n` +
       `Tài khoản: ${selectedAccounts.map(account => `${account.username} (1 luồng)`).join(', ')}\n` +
-      `Dữ liệu được chia đều cho ${selectedAccounts.length} tài khoản = ${selectedAccounts.length} luồng song song; mỗi luồng xử lý tuần tự.\n` +
+      `Dữ liệu được chia đều cho ${selectedAccounts.length} tài khoản = ${selectedAccounts.length} luồng độc lập; mỗi tài khoản vẫn xử lý tuần tự.\n` +
       `Chờ ${delaySeconds} giây giữa hai số liên tiếp của cùng một tài khoản.\n\nMỗi dòng sẽ tự tạo đơn, thanh toán và khởi tạo thuê bao.`
     );
     if (!confirmed) {
@@ -5313,7 +5380,9 @@ async function simBatchRunLegacyExcel() {
         } catch (error) {
           row.status = 'error';
           row.stage = error.batchStage || 'Lỗi';
-          const prefix = error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo' : 'Lỗi';
+          const prefix = error.mutationUncertain
+            ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại'
+            : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo' : 'Lỗi');
           const order = error.batchOrderId ? ` | Đơn ${error.batchOrderId}` : '';
           row.result = `${prefix}${order} | ${row.stage}: ${error.message}`;
           if (error.stopAccount) {
@@ -5529,7 +5598,9 @@ async function simBatchRunTwoPhase() {
               row.result = `SĐT + SERIAL ĐÃ GÁN THÀNH CÔNG | Đơn ${result.orderId} | ${result.customerName} | ${result.tttbMethodName} | ${simWalletMoneyLabel(result.amount)} | ${result.address}`;
               finishRow(row, true);
             } catch (error) {
-              const paid = error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo | ' : '';
+              const paid = error.mutationUncertain
+                ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại | '
+                : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo | ' : '');
               const order = error.batchOrderId ? `Đơn ${error.batchOrderId} | ` : '';
               failAssignment(row, `${paid}${order}${error.batchStage || 'Xử lý'}: ${error.message}`);
               if (error.stopAccount) {
@@ -5706,12 +5777,13 @@ async function simBatchRun() {
           }
         } catch (error) {
           if (row.found) {
-            const paid = error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo | ' : '';
-            const order = error.batchOrderId ? `Đơn ${error.batchOrderId} | ` : '';
+            const prefix = error.mutationUncertain
+              ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại'
+              : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo' : 'Lỗi');
             row.status = 'error';
             row.stage = error.batchStage || 'Lỗi';
             row.bucket = 'assignment_error';
-            row.result = `${paid ? 'ĐÃ THANH TOÁN, chưa khởi tạo' : 'Lỗi'}${error.batchOrderId ? ` | Đơn ${error.batchOrderId}` : ''} | ${row.stage}: ${error.message}`;
+            row.result = `${prefix}${error.batchOrderId ? ` | Đơn ${error.batchOrderId}` : ''} | ${row.stage}: ${error.message}`;
             assignmentFailed++;
             finishRow(row, false);
           } else {
@@ -5784,7 +5856,18 @@ function simBatchRandomName() {
 }
 
 function simBatchRequireApi(response, fallback) {
-  if (!apiSucceeded(response)) throw new Error(apiFailureMessage(response, fallback));
+  if (!apiSucceeded(response)) {
+    const error = new Error(apiFailureMessage(response, fallback));
+    const status = Number(response?.status || 0);
+    if ([401, 403, 409, 429].includes(status)) error.stopAccount = true;
+    if (response?.businessMutation && (!status || status === 409 || status >= 500)) {
+      error.stopAccount = true;
+      error.mutationUncertain = true;
+    }
+    error.status = status;
+    error.retryAfter = Math.max(0, Number(response?.retry_after || 0));
+    throw error;
+  }
   return apiBodyObject(response);
 }
 
@@ -5816,7 +5899,11 @@ async function simBatchCallApi(accountId, endpoint, method='GET', body={}, bodyT
     if (remaining > 0) {
       await new Promise(resolve => setTimeout(resolve, remaining));
     }
-    return await callApi(endpoint, method, body, bodyType, extraHeaders, accountId);
+    const response = await callApi(endpoint, method, body, bodyType, extraHeaders, accountId);
+    if (response && BUSINESS_MUTATION_ENDPOINTS.has(String(endpoint).split('?', 1)[0].toLowerCase())) {
+      response.businessMutation = true;
+    }
+    return response;
   } finally {
     // Count the 1.5 seconds after the actual request has completed, not from
     // when it was queued. This avoids overlapping/instant follow-up calls.
@@ -6092,7 +6179,8 @@ async function simBatchSearchNumber(row, shared) {
   const prefix = row.msisdn.slice(0, 4);
   const suffix = `*${row.msisdn.slice(-7)}`;
   let attempt = 0;
-  while (!simBatchState.stopRequested && !shared.stopRequested) {
+  const maxAttempts = 3;
+  while (attempt < maxAttempts && !simBatchState.stopRequested && !shared.stopRequested) {
     attempt++;
     const searched = await simBatchCallApi(accountId, '/ccbs/chonSo/search_isdn', 'POST', {
       stockid:'146', kieuso_id:'-1', so_tb:suffix, prefix, status:'1',
@@ -6115,10 +6203,20 @@ async function simBatchSearchNumber(row, shared) {
       simBatchRequireApi(searched, 'Không tìm được số thuê bao');
     }
 
+    if (attempt >= maxAttempts) {
+      try {
+        simBatchRequireApi(searched, `Không tìm được số thuê bao sau ${maxAttempts} lần thử`);
+      } catch (error) {
+        error.stopAccount = true;
+        throw error;
+      }
+    }
+
     // search_isdn is read-only, so retrying it cannot create a duplicate order
     // or charge the wallet twice. Keep the same row and do not consume a
     // serial while OneBSS is throttling or temporarily unavailable.
-    const waitSeconds = Math.min(30, Math.max(5, attempt * 5));
+    const retryAfter = Math.max(0, Number(searched?.retry_after || 0));
+    const waitSeconds = retryAfter || Math.min(30, Math.max(5, attempt * 5));
     const reason = apiFailureMessage(searched, 'OneBSS tạm thời chưa phản hồi');
     row.stage = `Tra kho tạm lỗi · thử lại lần ${attempt + 1} sau ${waitSeconds}s`;
     simBatchRenderTable();
@@ -6744,29 +6842,36 @@ async function deviceAuthExecute() {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
-      throw new Error(data.error || `Xác thực thất bại (HTTP ${response.status})`);
+      const serverError = [data.error_code, data.message || data.error]
+        .filter(value => value !== null && value !== undefined && String(value).trim() !== '')
+        .join(' · ');
+      throw new Error(serverError || `HTTP ${response.status}`);
     }
     const liveness = data.liveness || {};
     const file = data.file || {};
-    const sinhtrac = data.sinhtrac || {};
+    const serverMessage = data.message ?? '';
+    const serverCode = data.error_code ?? '';
+    const serverError = data.error ?? '';
+    const serverStatus = [serverCode, serverError !== '' ? `error=${serverError}` : '']
+      .filter(Boolean).join(' · ');
     if (result) {
       result.className = 'device-auth-result show';
       result.innerHTML = `
-        <div style="color:var(--green);font-weight:750;font-size:14px;margin-bottom:10px">✅ ${escHtml(sinhtrac.message || data.message || 'Xác thực đổi thiết bị thành công')}</div>
+        <div style="color:var(--green);font-weight:750;font-size:14px;margin-bottom:10px">${escHtml(serverMessage || '—')}</div>
         <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
           <div class="doisim-summary-item"><span>Số điện thoại</span><strong>${escHtml(data.phone || rawPhone)}</strong></div>
-          <div class="doisim-summary-item"><span>Trạng thái OneBSS</span><strong style="color:var(--green)">${escHtml(sinhtrac.trang_thai ? `Mã ${sinhtrac.trang_thai} (Status: ${sinhtrac.Status})` : 'Thành công')}</strong></div>
-          <div class="doisim-summary-item"><span>Liveness AI</span><strong>${escHtml(liveness.liveness_msg || liveness.liveness || 'Người thật')}${liveness.liveness_prob ? ` (${liveness.liveness_prob})` : ''}</strong></div>
-          <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? 'yes')}</strong></div>
-          <div class="doisim-summary-item"><span>Client session</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.client_session || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Phản hồi OneBSS</span><strong>${escHtml(serverStatus || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Request ID API cuối</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.request_id || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Liveness AI</span><strong>${escHtml(liveness.liveness_msg || liveness.liveness || '—')}${liveness.liveness_prob !== null && liveness.liveness_prob !== undefined ? ` (${escHtml(liveness.liveness_prob)})` : ''}</strong></div>
+          <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Mã phiên (IDG)</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
           <div class="doisim-summary-item"><span>ID Hồ sơ (OneBSS)</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Tệp lưu OneBSS</span><strong style="word-break:break-all;font-size:11px">${escHtml(file.ten_taptin || file.duong_dan || '—')}</strong></div>
         </div>
         ${data.log_warning ? `<div style="margin-top:8px;color:var(--orange);font-size:11px">Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}`;
     }
-    deviceAuthSetStatus('ok', 'Xác thực thành công', sinhtrac.message || `Đã hoàn tất xác thực đổi thiết bị cho SĐT ${data.phone || rawPhone}.`);
-    showToast('✅ ' + (sinhtrac.message || 'Xác thực đổi thiết bị thành công'));
+    deviceAuthSetStatus('ok', serverCode || String(serverError || 'OneBSS'), serverMessage);
+    showToast(serverMessage || serverCode || String(serverError));
   } catch (error) {
     deviceAuthSetStatus('err', 'Xác thực thất bại', error?.message || String(error));
   } finally {
@@ -7121,12 +7226,16 @@ const icocDeviceState = {
   states: {IC: 'unknown', OC: 'unknown'},
   hasPermission: false,
   loading: false,
+  mutationInFlight: false,
+  permissionCheckedAt: 0,
+  permissionResult: null,
 };
 
 function icocDeviceSetActions(type, enabled) {
   ['open', 'close'].forEach(action => {
     const button = document.getElementById(`icoc-device-${action}-${type}`);
-    if (button) button.disabled = !enabled || !icocDeviceState.hasPermission || icocDeviceState.loading;
+    if (button) button.disabled = !enabled || !icocDeviceState.hasPermission ||
+      icocDeviceState.loading || icocDeviceState.mutationInFlight;
   });
 }
 
@@ -7184,17 +7293,24 @@ function icocDeviceSubscriberData(response) {
   return body.data && typeof body.data === 'object' ? body.data : body;
 }
 
-async function icocDeviceCheckPermission() {
+async function icocDeviceCheckPermission({force=false}={}) {
+  if (!force && icocDeviceState.permissionResult &&
+      Date.now() - icocDeviceState.permissionCheckedAt < 5 * 60 * 1000) {
+    return icocDeviceState.permissionResult;
+  }
   const response = await callApi('/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', 'POST', {
     ma_quyen: 'CATMODICHVU',
   });
   const data = icocDeviceSubscriberData(response);
   const allowed = apiSucceeded(response) && String(data.status ?? '').trim() === '1';
-  return {
+  const result = {
     response,
     allowed,
     message: String(data.message || data.msg || apiFailureMessage(response, 'Không có quyền CATMODICHVU')),
   };
+  icocDeviceState.permissionCheckedAt = Date.now();
+  icocDeviceState.permissionResult = result;
+  return result;
 }
 
 async function icocDeviceLookupStatus(options={}) {
@@ -7214,10 +7330,9 @@ async function icocDeviceLookupStatus(options={}) {
   icocDeviceSetPermission('checking');
   icocDeviceSetLoading(true);
   try {
-    const [permission, response] = await Promise.all([
-      icocDeviceCheckPermission(),
-      callApi('/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST', {p_so_tb: msisdn}),
-    ]);
+    const permission = await icocDeviceCheckPermission();
+    const response = await callApi(
+      '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST', {p_so_tb: msisdn});
     if (!apiSucceeded(response)) throw new Error(apiFailureMessage(response, 'Không tra cứu được trạng thái IC/OC'));
 
     icocDeviceState.hasPermission = permission.allowed;
@@ -7250,6 +7365,19 @@ async function icocDeviceLookupStatus(options={}) {
   }
 }
 
+async function icocDeviceRefreshStatusOnly(msisdn=icocDeviceState.msisdn) {
+  const response = await callApi(
+    '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST', {p_so_tb: msisdn});
+  if (!apiSucceeded(response)) {
+    throw new Error(apiFailureMessage(response, 'Không xác minh được trạng thái IC/OC sau thay đổi'));
+  }
+  if (msisdn !== icocDeviceState.msisdn) return false;
+  const data = icocDeviceSubscriberData(response);
+  icocDeviceRenderState('IC', data.goi_den ?? data.GOI_DEN ?? data.ic ?? data.IC ?? data.ic_status);
+  icocDeviceRenderState('OC', data.goi_di ?? data.GOI_DI ?? data.oc ?? data.OC ?? data.oc_status);
+  return true;
+}
+
 function icocDeviceStateFlag(type) {
   return icocDeviceState.states[type] === 'mo' ? 1 : 0;
 }
@@ -7273,6 +7401,10 @@ async function icocDeviceChange(type, nextState) {
   const noteInput = document.getElementById('icoc-device-note');
   const note = String(noteInput?.value || '').trim();
   const actionLabel = nextState === 'MO' ? 'mở' : 'đóng/khóa';
+  if (icocDeviceState.mutationInFlight) {
+    showToast('⚠️ Đang xử lý một thay đổi IC/OC; vui lòng chờ xác minh xong.');
+    return;
+  }
   if (!msisdn || icocDeviceState.states[type] === 'unknown') {
     showToast('⚠️ Hãy tra cứu thành công trạng thái trước khi thao tác.');
     return;
@@ -7298,21 +7430,35 @@ async function icocDeviceChange(type, nextState) {
     document.getElementById(`icoc-device-close-${type}`),
   ].filter(Boolean);
   buttons.forEach(button => { button.disabled = true; });
+  icocDeviceState.mutationInFlight = true;
+  let mutationAccepted = false;
   try {
     const response = await callApi(
       '/app-banhang/thuebaodidong/khoamo_ic_oc',
       'POST',
       icocDeviceChangePayload(type, nextState, note),
     );
-    if (!apiSucceeded(response)) throw new Error(apiFailureMessage(response, `Không thể ${actionLabel} ${type}`));
+    if (!apiSucceeded(response)) {
+      const error = new Error(apiFailureMessage(response, `Không thể ${actionLabel} ${type}`));
+      error.mutationUncertain = isBusinessMutationUncertain(response);
+      throw error;
+    }
 
+    mutationAccepted = true;
     icocDeviceRenderState(type, nextState);
-    showToast(`✅ Đã gửi yêu cầu ${actionLabel} ${type}.`, 3000);
-    // Kiểm tra lại nền để trạng thái hiển thị là dữ liệu mới nhất từ OneBSS.
-    setTimeout(() => { icocDeviceLookupStatus({silent:true}); }, 650);
+    showToast(`✅ Đã gửi yêu cầu ${actionLabel} ${type}; đang xác minh trạng thái.`, 3000);
+    await sleep(ICOC_MIN_DELAY_SECONDS * 1000);
+    await icocDeviceRefreshStatusOnly(msisdn);
   } catch (error) {
-    showToast(`❌ ${error.message}`);
+    if (mutationAccepted || error.mutationUncertain) {
+      icocDeviceRenderState('IC', null);
+      icocDeviceRenderState('OC', null);
+      showToast(`⚠️ Kết quả thao tác chưa xác định; không gửi lại trước khi đối soát: ${error.message}`);
+    } else {
+      showToast(`❌ ${error.message}`);
+    }
   } finally {
+    icocDeviceState.mutationInFlight = false;
     icocDeviceSetActions(type, icocDeviceState.states[type] !== 'unknown');
   }
 }
@@ -7344,10 +7490,14 @@ const icocBatchState = {
   icAction: 'GIU',
   ocAction: 'GIU',
   note: '',
-  delaySeconds: 1,
+  delaySeconds: ICOC_MIN_DELAY_SECONDS,
   inputPath: '',
   outputPath: '',
 };
+
+function icocBatchDelaySeconds(value) {
+  return Math.max(ICOC_MIN_DELAY_SECONDS, simBatchDelaySeconds(value));
+}
 
 function icocBatchSetStatus(message, error=false) {
   const progress = document.getElementById('icoc-batch-progress');
@@ -7419,7 +7569,7 @@ function icocBatchAccountSelectionChanged() {
   icocBatchState.selectedAccounts = selected;
   const badge = document.getElementById('icoc-batch-user');
   if (badge) badge.textContent = selected.length
-    ? `${selected.length} tài khoản · ${selected.length} luồng song song (mỗi tài khoản tuần tự)`
+    ? `${selected.length} tài khoản · ${selected.length} luồng độc lập`
     : 'Chưa chọn tài khoản';
   return selected;
 }
@@ -7568,7 +7718,7 @@ async function icocBatchImportFile(input) {
   const ocAction = document.getElementById('icoc-batch-oc-action')?.value;
   const note = String(document.getElementById('icoc-batch-note')?.value || '').trim();
   const delayInput = document.getElementById('icoc-batch-delay');
-  const delaySeconds = simBatchDelaySeconds(delayInput?.value);
+  const delaySeconds = icocBatchDelaySeconds(delayInput?.value);
   if (delayInput) delayInput.value = String(delaySeconds);
   if (!selectedAccounts.length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
   if (!['GIU', 'MO', 'KHOA'].includes(icAction) || !['GIU', 'MO', 'KHOA'].includes(ocAction) || (icAction === 'GIU' && ocAction === 'GIU')) {
@@ -7621,7 +7771,7 @@ async function icocBatchImportFile(input) {
     icocBatchRenderTable();
     const validCount = rows.filter(row => row.valid).length;
     const actionLabel = icocBatchActionLabel(icAction, ocAction);
-    if (!confirm(`Chạy thật ${validCount} SĐT: ${actionLabel}?\n\nTài khoản: ${selectedAccounts.map(account => account.username).join(', ')}\n${selectedAccounts.length} tài khoản = ${selectedAccounts.length} luồng song song; mỗi luồng xử lý tuần tự.\nChờ ${delaySeconds} giây giữa hai số cùng tài khoản.\nGhi chú: ${note}\n\nThao tác sẽ làm thay đổi trạng thái thuê bao.`)) {
+    if (!confirm(`Chạy thật ${validCount} SĐT: ${actionLabel}?\n\nTài khoản: ${selectedAccounts.map(account => account.username).join(', ')}\n${selectedAccounts.length} tài khoản = ${selectedAccounts.length} luồng độc lập; mỗi tài khoản vẫn tuần tự.\nChờ ${delaySeconds} giây giữa hai số cùng tài khoản.\nGhi chú: ${note}\n\nThao tác sẽ làm thay đổi trạng thái thuê bao.`)) {
       icocBatchSetStatus(`Đã đọc ${rows.length} dòng; chưa chạy vì người dùng chưa xác nhận.`);
       return;
     }
@@ -7716,9 +7866,14 @@ async function icocBatchCheckPermission(account) {
     '/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', 'POST',
     {ma_quyen: 'CATMODICHVU'}, 'json', {}, account.id
   );
+  simBatchRequireApi(response, 'Không kiểm tra được quyền CATMODICHVU');
   const data = icocDeviceSubscriberData(response);
   const allowed = apiSucceeded(response) && String(data.status ?? '').trim() === '1';
-  if (!allowed) throw new Error(String(data.message || data.msg || apiFailureMessage(response, 'Không có quyền CATMODICHVU')));
+  if (!allowed) {
+    const error = new Error(String(data.message || data.msg || 'Không có quyền CATMODICHVU'));
+    error.stopAccount = true;
+    throw error;
+  }
   return true;
 }
 
@@ -7760,7 +7915,7 @@ async function icocBatchProcessRow(row, shared) {
     '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST',
     {p_so_tb: row.msisdn}, 'json', {}, shared.account.id
   );
-  if (!apiSucceeded(statusResponse)) throw new Error(apiFailureMessage(statusResponse, 'Không tra cứu được trạng thái IC/OC'));
+  simBatchRequireApi(statusResponse, 'Không tra cứu được trạng thái IC/OC');
   const data = icocDeviceSubscriberData(statusResponse);
   const change = icocBatchChangePayload(row.msisdn, data);
   if (!change.changed.length) {
@@ -7772,7 +7927,34 @@ async function icocBatchProcessRow(row, shared) {
   const response = await callApi(
     '/app-banhang/thuebaodidong/khoamo_ic_oc', 'POST', change.body, 'json', {}, shared.account.id
   );
-  if (!apiSucceeded(response)) throw new Error(apiFailureMessage(response, `Không thể ${icocBatchActionLabel(icocBatchState.icAction, icocBatchState.ocAction)}`));
+  simBatchRequireApi(response, `Không thể ${icocBatchActionLabel(icocBatchState.icAction, icocBatchState.ocAction)}`);
+  try {
+    const keepRunning = await simBatchWaitDelay(
+      ICOC_MIN_DELAY_SECONDS,
+      () => false,
+      remaining => icocBatchSetStatus(`${shared.account.username} · ${row.msisdn} · xác minh sau ${remaining}s`)
+    );
+    if (!keepRunning) throw new Error('Không thể chờ bước xác minh trạng thái IC/OC');
+    const verifyResponse = await callApi(
+      '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST',
+      {p_so_tb: row.msisdn}, 'json', {}, shared.account.id
+    );
+    simBatchRequireApi(verifyResponse, 'Không xác minh được trạng thái IC/OC sau thay đổi');
+    const verified = icocDeviceSubscriberData(verifyResponse);
+    const verifiedIC = icocBatchStateValue(
+      verified.goi_den ?? verified.GOI_DEN ?? verified.ic ?? verified.IC ?? verified.ic_status);
+    const verifiedOC = icocBatchStateValue(
+      verified.goi_di ?? verified.GOI_DI ?? verified.oc ?? verified.OC ?? verified.oc_status);
+    if (verifiedIC !== change.targetIC || verifiedOC !== change.targetOC) {
+      throw new Error('OneBSS chưa xác nhận trạng thái IC/OC đích sau thay đổi');
+    }
+  } catch (error) {
+    // Mutation đã được OneBSS nhận; không cấp số tiếp theo cho tài khoản khi
+    // kết quả chưa được xác minh để tránh thao tác dây chuyền trên trạng thái mơ hồ.
+    error.stopAccount = true;
+    error.mutationUncertain = true;
+    throw error;
+  }
   return {
     changed: true,
     message: `Thành công | ${icocBatchActionLabel(icocBatchState.icAction, icocBatchState.ocAction)} | IC ${icocBatchStateText(change.targetIC)} · OC ${icocBatchStateText(change.targetOC)}`
@@ -7847,7 +8029,10 @@ async function icocBatchRun() {
           row.status = 'success'; row.stage = result.changed ? 'Hoàn tất' : 'Không cần thay đổi'; row.result = result.message;
           finishRow(row, true);
         } catch (error) {
-          row.status = 'error'; row.stage = 'Lỗi'; row.result = `Lỗi: ${error.message}`;
+          row.status = 'error'; row.stage = 'Lỗi';
+          row.result = error.mutationUncertain
+            ? `CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại: ${error.message}`
+            : `Lỗi: ${error.message}`;
           if (error.stopAccount) {
             shared.stopRequested = true;
             icocBatchSetAccountStatus(account.id, `Đã dừng cấp việc: ${error.message}`, true);
@@ -8233,10 +8418,8 @@ async function fetchICOCLockHistory(msisdn) {
 }
 async function loadFullCCBSData(record,tr) {
   const msisdn=record.ccbs?.MSISDN || record.input_sdt;
-  await Promise.all([
-    loadICOCBadges(msisdn,record.row_id,data => { record.mobile=data||{}; }),
-    fetchICOCLockHistory(msisdn).then(data => { record.icoc_history=data; }).catch(() => {})
-  ]);
+  await loadICOCBadges(msisdn,record.row_id,data => { record.mobile=data||{}; });
+  record.icoc_history = await fetchICOCLockHistory(msisdn).catch(() => ({ic:{},oc:{}}));
   ensureCCBSColumns(record);
   renderCCBSRow(record,tr);
 }
@@ -8258,7 +8441,6 @@ async function doLookup() {
 
   ccbsRowCount++;
   const rowNum = ccbsRowCount;
-  loadSubscriberImages(sdtRaw, rowNum, lookupImageGeneration);
 
   // Thêm hàng "đang tải" vào bảng ngay
   const tbody = document.getElementById('ccbs-tbody');
@@ -8358,7 +8540,8 @@ async function doLookup() {
       tr._ccbsRecord = record;
       ensureCCBSColumns(record);
       renderCCBSRow(record, tr);
-      loadFullCCBSData(record, tr);
+      await loadFullCCBSData(record, tr);
+      await loadSubscriberImages(sdtRaw, rowNum, lookupImageGeneration);
       updateCCBSStats();
 
     } else {
@@ -8954,11 +9137,14 @@ async function importFromFile(input) {
     showToast('⚠️ Không tìm thấy số điện thoại hợp lệ trong file', 3000);
     return;
   }
+  if (_importRunning) {
+    showToast('⚠️ Một file tra cứu đang chạy; hãy chờ hoàn tất hoặc bấm Dừng trước khi chọn file khác', 3500);
+    return;
+  }
 
   // Deduplicate
   const seen = new Set();
   sdts = sdts.filter(s => { if (seen.has(s)) return false; seen.add(s); return true; });
-
   showToast(`📂 Tìm thấy ${sdts.length} SĐT — bắt đầu tra cứu...`, 2500);
 
   // Thêm vào queue và bắt đầu nếu chưa chạy
@@ -9005,9 +9191,9 @@ async function processImportQueue() {
     if (success) ok++; else err++;
     done++;
 
-    // Delay nhỏ giữa các request để tránh rate-limit (~400ms)
+    // Chờ thêm sau khi đã hoàn tất toàn bộ chuỗi tra cứu của một SĐT.
     if (done < snapshot.length && !_importStop) {
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 
@@ -9026,7 +9212,6 @@ async function processImportQueue() {
 async function addCCBSRow(sdtRaw) {
   ccbsRowCount++;
   const rowNum = ccbsRowCount;
-  loadSubscriberImages(sdtRaw, rowNum, lookupImageGeneration);
 
   const tbody = document.getElementById('ccbs-tbody');
   const tr = document.createElement('tr');
@@ -9118,7 +9303,8 @@ async function addCCBSRow(sdtRaw) {
       tr._ccbsRecord = record;
       ensureCCBSColumns(record);
       renderCCBSRow(record, tr);
-      loadFullCCBSData(record, tr);
+      await loadFullCCBSData(record, tr);
+      await loadSubscriberImages(sdtRaw, rowNum, lookupImageGeneration);
       updateCCBSStats();
       return true; // success
     } else {

@@ -4,14 +4,15 @@ Auth flow khớp với app.js gốc:
   Step 1: POST /quantri/user/xacthuc_tapdoan  → secretCode
   Step 2: POST /quantri/oauth/token (secretCode + OTP) → access_token
 """
-import os, re, json, time, base64, hashlib, threading, subprocess, shutil, secrets
+import os, re, json, time, base64, hashlib, threading, subprocess, shutil, secrets, sqlite3
 import sys
+from contextlib import contextmanager, nullcontext
 from functools import wraps
 from flask import (Flask, render_template, request, session,
                    redirect, url_for, jsonify, flash, Response)
 import requests
 import urllib3
-from urllib.parse import urlparse, parse_qsl
+from urllib.parse import urlparse, parse_qsl, unquote
 from flask_session import Session
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -1299,16 +1300,30 @@ def api_accounts_refresh():
     if not context.get('refresh_token'):
         return jsonify({'ok': False, 'error': 'Tài khoản không có refresh token; hãy thêm lại và nhập OTP'}), 400
     try:
-        response = requests.post(
-            f'{BASE_URL}/quantri/oauth/token',
-            json={'grant_type': 'refresh_token', 'refresh_token': context.get('refresh_token'),
-                  'client_id': APP_CFG['CLIENT_ID'], 'client_secret': APP_CFG['CLIENT_SECRET']},
-            headers={'Content-Type': 'application/json'}, verify=False, timeout=15)
+        account_key = str(context.get('id') or account_id or 'primary')
+        with _business_request_slot(account_key, {
+                'workflow': 'auth', 'mutation': False,
+                'cooldown': BUSINESS_SIM_COOLDOWN_SECONDS}):
+            response = requests.post(
+                f'{BASE_URL}/quantri/oauth/token',
+                json={'grant_type': 'refresh_token', 'refresh_token': context.get('refresh_token'),
+                      'client_id': APP_CFG['CLIENT_ID'], 'client_secret': APP_CFG['CLIENT_SECRET']},
+                headers={'Content-Type': 'application/json'}, verify=False, timeout=15)
+            retry_after = _business_record_response(account_key, response)
         data = response.json()
+    except BusinessGuardRejected as exc:
+        return jsonify({'ok': False, 'error': str(exc),
+                        'retry_after': exc.retry_after}), exc.status
     except Exception as exc:
         return jsonify({'ok': False, 'error': f'Lỗi làm mới token: {exc}'}), 502
+    if response.status_code == 429:
+        return jsonify({'ok': False,
+                        'error': data.get('message') or 'OneBSS đang giới hạn tần suất',
+                        'retry_after': retry_after}), 429
     if not data.get('access_token'):
-        return jsonify({'ok': False, 'error': data.get('message') or 'Không làm mới được token'}), 400
+        status = response.status_code if response.status_code >= 400 else 400
+        return jsonify({'ok': False,
+                        'error': data.get('message') or 'Không làm mới được token'}), status
     context['access_token'] = data.get('access_token')
     context['refresh_token'] = data.get('refresh_token', context.get('refresh_token'))
     context['expires_in'] = data.get('expires_in', 3600)
@@ -1333,24 +1348,39 @@ def api_accounts_refresh():
 @login_required
 def refresh_token():
     try:
-        resp = requests.post(
-            f'{BASE_URL}/quantri/oauth/token',
-            json={'grant_type':    'refresh_token',
-                  'refresh_token': session.get('refresh_token', ''),
-                  'client_id':     APP_CFG['CLIENT_ID'],
-                  'client_secret': APP_CFG['CLIENT_SECRET']},
-            headers={'Content-Type': 'application/json'},
-            verify=False, timeout=10
-        )
+        context = _primary_account_context()
+        account_key = str(context.get('id') or 'primary')
+        with _business_request_slot(account_key, {
+                'workflow': 'auth', 'mutation': False,
+                'cooldown': BUSINESS_SIM_COOLDOWN_SECONDS}):
+            resp = requests.post(
+                f'{BASE_URL}/quantri/oauth/token',
+                json={'grant_type':    'refresh_token',
+                      'refresh_token': session.get('refresh_token', ''),
+                      'client_id':     APP_CFG['CLIENT_ID'],
+                      'client_secret': APP_CFG['CLIENT_SECRET']},
+                headers={'Content-Type': 'application/json'},
+                verify=False, timeout=10
+            )
+            retry_after = _business_record_response(account_key, resp)
         data = resp.json()
+        if resp.status_code == 429:
+            return jsonify({'ok': False,
+                            'error': data.get('message') or 'OneBSS đang giới hạn tần suất',
+                            'retry_after': retry_after}), 429
         if data.get('access_token'):
             session['access_token']  = data['access_token']
             session['refresh_token'] = data.get('refresh_token', session['refresh_token'])
             session['token_time']    = time.time()
             return jsonify({'ok': True, 'expires_in': data.get('expires_in', 3600)})
+    except BusinessGuardRejected as exc:
+        return jsonify({'ok': False, 'error': str(exc),
+                        'retry_after': exc.retry_after}), exc.status
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
-    return jsonify({'ok': False, 'error': 'Failed'})
+    status = resp.status_code if resp.status_code >= 400 else 400
+    return jsonify({'ok': False,
+                    'error': data.get('message') or 'Failed'}), status
 
 # ─────────────────────────────────────────────────────────────
 #  Dashboard
@@ -1367,6 +1397,295 @@ def dashboard():
         expires_in=expires_in,
         app_cfg=APP_CFG,
         CLIENT_ID=APP_CFG['CLIENT_ID'])
+
+
+# ─────────────────────────────────────────────────────────────
+#  OneBSS business guard – lookup, SIM Kit and IC/OC
+# ─────────────────────────────────────────────────────────────
+# Browser-side flags are not authoritative: two WebViews or a direct /proxy
+# caller can otherwise overlap requests for the same Employee account.  Keep
+# the safety boundary here, immediately before outbound OneBSS traffic.
+BUSINESS_SIM_COOLDOWN_SECONDS = max(
+    0.5, float(os.environ.get('VNPT_EMPLOY_SIM_COOLDOWN_SECONDS', '1.5')))
+BUSINESS_ICOC_COOLDOWN_SECONDS = max(
+    1.0, float(os.environ.get('VNPT_EMPLOY_ICOC_COOLDOWN_SECONDS', '2.0')))
+BUSINESS_LOOKUP_COOLDOWN_SECONDS = max(
+    1.0, float(os.environ.get('VNPT_EMPLOY_LOOKUP_COOLDOWN_SECONDS', '1.5')))
+BUSINESS_MUTATION_CACHE_SECONDS = 24 * 3600
+BUSINESS_GUARD_DB = os.path.join(_credential_root, 'business_guard.sqlite3')
+
+_business_guard_lock = threading.RLock()
+_business_account_locks = {}
+_business_account_completed_at = {}
+_business_account_paused_until = {}
+_business_db_lock = threading.RLock()
+
+_SIM_MUTATION_ENDPOINTS = frozenset({
+    '/app-banhang/donhang_simkit/chonso_kit_v2',
+    '/app-banhang/donhang_simkit/dangky_goicuoc',
+    '/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3',
+    '/app-banhang/donhang_simkit/xacnhan_thanhtoan',
+    '/app-banhang/donhang_simkit/khoitao_thuebao',
+})
+_ICOC_MUTATION_ENDPOINTS = frozenset({
+    '/app-banhang/thuebaodidong/khoamo_ic_oc',
+})
+_LOOKUP_ENDPOINTS = frozenset({
+    '/app-banhang/ccbs/tracuu_anh_thuebao',
+    '/app-banhang/ccbs/tracuu_thongtin_thuebao',
+    '/app-banhang/ccbs/verify_otp',
+    '/app-banhang/thuebaodidong/lichsu_thuebao',
+})
+_LOOKUP_OTP_ENDPOINT = '/app-banhang/ccbs/send_otp'
+
+
+class BusinessGuardRejected(RuntimeError):
+    def __init__(self, message, status=429, retry_after=0):
+        super().__init__(message)
+        self.status = int(status)
+        self.retry_after = max(0, int(retry_after or 0))
+
+
+def _business_endpoint_policy(endpoint_path, body):
+    """Return guard metadata for lookup, SIM Kit and IC/OC workflows."""
+    path = str(endpoint_path or '').rstrip('/').casefold()
+    payload = body if isinstance(body, dict) else {}
+    menu_id = str(payload.get('menu_id') or '').strip()
+
+    is_sim = (
+        path.startswith('/ccbs/chonso/') or
+        path.startswith('/app-banhang/donhang_simkit/') or
+        path.startswith('/app-thuno/vnptpay/') or
+        (path == '/app-com/danhmuc/get_danhmuc' and menu_id == '699161')
+    )
+    if is_sim:
+        return {
+            'workflow': 'sim',
+            'mutation': path in _SIM_MUTATION_ENDPOINTS,
+            'cooldown': BUSINESS_SIM_COOLDOWN_SECONDS,
+        }
+
+    is_icoc = (
+        path == '/app-banhang/thuebaodidong/tracuu_tb_didong' or
+        path == '/app-banhang/thuebaodidong/khoamo_ic_oc' or
+        (path == '/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen' and
+         str(payload.get('ma_quyen') or '').strip().upper() == 'CATMODICHVU')
+    )
+    if is_icoc:
+        return {
+            'workflow': 'icoc',
+            'mutation': path in _ICOC_MUTATION_ENDPOINTS,
+            'cooldown': BUSINESS_ICOC_COOLDOWN_SECONDS,
+        }
+    if path == _LOOKUP_OTP_ENDPOINT:
+        return {
+            'workflow': 'lookup',
+            'mutation': False,
+            'cooldown': 30.0,
+        }
+    if path in _LOOKUP_ENDPOINTS:
+        return {
+            'workflow': 'lookup',
+            'mutation': False,
+            'cooldown': BUSINESS_LOOKUP_COOLDOWN_SECONDS,
+        }
+    return None
+
+
+def _business_account_lock(account_key):
+    with _business_guard_lock:
+        return _business_account_locks.setdefault(account_key, threading.Lock())
+
+
+def _retry_after_seconds(response, default=30):
+    value = str(response.headers.get('Retry-After') or '').strip()
+    try:
+        return max(1, min(300, int(float(value))))
+    except (TypeError, ValueError):
+        return max(1, min(300, int(default)))
+
+
+@contextmanager
+def _business_request_slot(account_key, policy):
+    """Serialize requests per account; different accounts run independently."""
+    account_lock = _business_account_lock(account_key)
+    account_lock.acquire()
+    slot_entered = False
+    try:
+        now = time.monotonic()
+        with _business_guard_lock:
+            paused_until = _business_account_paused_until.get(account_key, 0)
+            completed_at = _business_account_completed_at.get(account_key, 0)
+        if paused_until > now:
+            retry_after = max(1, int(paused_until - now + 0.999))
+            raise BusinessGuardRejected(
+                'Tài khoản đang tạm dừng do OneBSS giới hạn tần suất',
+                retry_after=retry_after)
+
+        remaining = completed_at + float(policy['cooldown']) - now
+        if remaining > 0:
+            time.sleep(remaining)
+        slot_entered = True
+        yield
+    finally:
+        if slot_entered:
+            with _business_guard_lock:
+                _business_account_completed_at[account_key] = time.monotonic()
+        account_lock.release()
+
+
+def _business_record_response(account_key, response):
+    if response.status_code == 429:
+        retry_after = _retry_after_seconds(response)
+        with _business_guard_lock:
+            _business_account_paused_until[account_key] = max(
+                _business_account_paused_until.get(account_key, 0),
+                time.monotonic() + retry_after)
+        return retry_after
+    if response.status_code == 401:
+        with _business_guard_lock:
+            _business_account_paused_until[account_key] = max(
+                _business_account_paused_until.get(account_key, 0),
+                time.monotonic() + 60)
+    return 0
+
+
+def _ensure_business_guard_db():
+    with _business_db_lock:
+        os.makedirs(_credential_root, exist_ok=True)
+        connection = sqlite3.connect(BUSINESS_GUARD_DB, timeout=10)
+        try:
+            connection.execute('PRAGMA journal_mode=WAL')
+            connection.execute('''
+                CREATE TABLE IF NOT EXISTS mutation_guard (
+                    operation_key TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    response_json TEXT,
+                    updated_at REAL NOT NULL
+                )
+            ''')
+            connection.execute(
+                'DELETE FROM mutation_guard WHERE updated_at < ?',
+                (time.time() - 7 * 24 * 3600,))
+            connection.commit()
+        finally:
+            connection.close()
+
+
+def _business_operation_key(account_key, endpoint_path, body):
+    path = str(endpoint_path or '').rstrip('/').casefold()
+    payload = body if isinstance(body, dict) else {}
+    identity = {'account': account_key, 'endpoint': path}
+    if path.endswith('/chonso_kit_v2'):
+        identity['phone'] = payload.get('p_so_dt')
+    elif path.endswith('/dangky_goicuoc'):
+        identity['order'] = payload.get('p_id_donhang')
+        identity['recharge'] = payload.get('p_id_hinhthuc_napthe')
+    elif path.endswith('/nhap_thongtin_khachhang_v3'):
+        identity['order'] = payload.get('p_id_donhang')
+    elif path.endswith('/xacnhan_thanhtoan'):
+        identity['order'] = payload.get('p_id_donhang')
+    elif path.endswith('/khoitao_thuebao'):
+        identity['order'] = payload.get('p_id_donhang')
+    elif path.endswith('/khoamo_ic_oc'):
+        identity.update({
+            'phone': payload.get('p_so_tb'),
+            'ic': payload.get('p_goi_den'),
+            'oc': payload.get('p_goi_di'),
+        })
+    else:
+        identity['body'] = payload
+    encoded = json.dumps(identity, sort_keys=True, separators=(',', ':'),
+                         ensure_ascii=False).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _business_claim_mutation(operation_key, account_key, endpoint_path):
+    """Claim a mutation or return a recent completed response for deduping."""
+    _ensure_business_guard_db()
+    now = time.time()
+    with _business_db_lock:
+        connection = sqlite3.connect(BUSINESS_GUARD_DB, timeout=10)
+        try:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute(
+                'SELECT state, response_json, updated_at FROM mutation_guard WHERE operation_key=?',
+                (operation_key,)).fetchone()
+            if row:
+                state, response_json, updated_at = row
+                age = max(0, now - float(updated_at or 0))
+                is_icoc_change = str(endpoint_path).casefold().endswith(
+                    '/khoamo_ic_oc')
+                completed_ttl = (60 if is_icoc_change
+                                 else BUSINESS_MUTATION_CACHE_SECONDS)
+                if state == 'completed' and age < completed_ttl:
+                    connection.commit()
+                    try:
+                        return 'completed', json.loads(response_json or '{}')
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        return 'blocked', None
+                uncertain_ttl = (60 if is_icoc_change
+                                 else BUSINESS_MUTATION_CACHE_SECONDS)
+                if state in ('in_flight', 'uncertain') and age < uncertain_ttl:
+                    connection.commit()
+                    return state, None
+                connection.execute(
+                    'UPDATE mutation_guard SET state=?, response_json=NULL, updated_at=? WHERE operation_key=?',
+                    ('in_flight', now, operation_key))
+            else:
+                connection.execute(
+                    'INSERT INTO mutation_guard(operation_key, account_id, endpoint, state, response_json, updated_at) VALUES(?,?,?,?,?,?)',
+                    (operation_key, account_key, endpoint_path, 'in_flight', None, now))
+            connection.commit()
+            return 'claimed', None
+        finally:
+            connection.close()
+
+
+def _business_finish_mutation(operation_key, state, response_payload=None):
+    if not operation_key:
+        return
+    _ensure_business_guard_db()
+    encoded = (json.dumps(response_payload, ensure_ascii=False)
+               if response_payload is not None else None)
+    with _business_db_lock:
+        connection = sqlite3.connect(BUSINESS_GUARD_DB, timeout=10)
+        try:
+            if state == 'failed':
+                connection.execute(
+                    'DELETE FROM mutation_guard WHERE operation_key=?',
+                    (operation_key,))
+            else:
+                connection.execute(
+                    'UPDATE mutation_guard SET state=?, response_json=?, updated_at=? WHERE operation_key=?',
+                    (state, encoded, time.time(), operation_key))
+            connection.commit()
+        finally:
+            connection.close()
+
+
+def _business_payload_succeeded(status_code, payload):
+    if not 200 <= int(status_code) < 300:
+        return False
+    if payload in (None, ''):
+        return True
+    if not isinstance(payload, dict):
+        return not re.search(r'\b(error|fail|exception|no_data)\b',
+                             str(payload), flags=re.IGNORECASE)
+    if payload.get('success') is False or payload.get('ok') is False:
+        return False
+    error_code = str(payload.get('error_code') or
+                     payload.get('errorCode') or '').strip().upper()
+    if error_code and error_code not in {
+            '0', '200', 'SUCCESS', 'BSS-00000000'}:
+        return False
+    error = payload.get('error')
+    if (error not in (None, '', False, 0, '0', 200, '200') and
+            str(error).strip().upper() not in {'SUCCESS', 'BSS-00000000'}):
+        return False
+    return True
 
 # ─────────────────────────────────────────────────────────────
 #  Generic proxy (tất cả API call qua đây)
@@ -1387,7 +1706,10 @@ def proxy():
     extra_hdr = data.get('headers', {})
     if not isinstance(extra_hdr, dict):
         extra_hdr = {}
-    timeout   = int(data.get('timeout', 15))
+    try:
+        timeout = max(3, min(60, int(data.get('timeout', 15))))
+    except (TypeError, ValueError):
+        timeout = 15
 
     if not endpoint:
         return jsonify({'error': 'endpoint required'}), 400
@@ -1395,7 +1717,26 @@ def proxy():
     url = endpoint if endpoint.startswith('http') else \
           BASE_URL.rstrip('/') + '/' + endpoint.lstrip('/')
 
-    endpoint_path = endpoint.split('?', 1)[0].rstrip('/')
+    target_url = urlparse(url)
+    base_target = urlparse(BASE_URL)
+    try:
+        target_port = target_url.port
+    except ValueError:
+        target_port = -1
+    if (target_url.scheme != 'https' or
+            target_url.hostname != base_target.hostname or
+            target_port not in (None, 443) or
+            target_url.username is not None or target_url.password is not None):
+        return jsonify({'error': 'proxy host not allowed', 'status': 403}), 403
+    endpoint_path = str(target_url.path or '/')
+    for _ in range(3):
+        decoded_path = unquote(endpoint_path)
+        if decoded_path == endpoint_path:
+            break
+        endpoint_path = decoded_path
+    if any(part in ('.', '..') for part in endpoint_path.split('/')):
+        return jsonify({'error': 'proxy path not allowed', 'status': 403}), 403
+    endpoint_path = re.sub(r'/+', '/', endpoint_path).rstrip('/') or '/'
     try:
         account_context = _get_account_context(account_id)
     except ValueError as exc:
@@ -1416,6 +1757,34 @@ def proxy():
     if inject_menu_id and isinstance(body, dict) and 'menu_id' not in body:
         body['menu_id'] = active_mid
 
+    policy = _business_endpoint_policy(endpoint_path, body)
+    if policy and policy.get('mutation') and method != 'POST':
+        return jsonify({'error': 'Business mutation requires POST',
+                        'status': 405}), 405
+    account_key = str(account_context.get('id') or account_id or
+                      _account_id(account_context.get('username', '')) or 'primary')
+    operation_key = ''
+    if policy and policy.get('mutation'):
+        operation_key = _business_operation_key(
+            account_key, endpoint_path, body)
+        claim_state, cached_response = _business_claim_mutation(
+            operation_key, account_key, endpoint_path)
+        if claim_state == 'completed' and isinstance(cached_response, dict):
+            cached_response = dict(cached_response)
+            cached_response['deduplicated'] = True
+            return jsonify(cached_response)
+        if claim_state == 'in_flight':
+            return jsonify({
+                'status': 409,
+                'error': 'Thao tác giống hệt đang được xử lý; không gửi trùng lên OneBSS',
+            }), 409
+        if claim_state in ('uncertain', 'blocked'):
+            return jsonify({
+                'status': 409,
+                'error': ('Kết quả thao tác trước chưa xác định; cần đối soát trạng thái '
+                          'trước khi gửi lại'),
+            }), 409
+
     hdrs = get_headers(active_mid, account_id)
     protected_headers = {'authorization', 'app-secret'}
     hdrs.update({key: value for key, value in extra_hdr.items()
@@ -1432,40 +1801,71 @@ def proxy():
         method_used = method
         retried_from_get = False
         retried_from_post = False
-        if method == 'GET':
-            resp = requests.get(url, params=body, **kw)
-            # The current gateway exposes a number of read-only routes as POST
-            # although the mobile catalog still labels them GET. Retry only a
-            # server-declared 405 and only for OneBSS application routes.
-            if (resp.status_code == 405 and
-                    endpoint_path.startswith(('/app-', '/ccbs/'))):
-                resp = requests.post(url, json=body, **kw)
-                method_used = 'POST'
-                retried_from_get = True
-        elif body_type == 'form':
-            hdrs['Content-Type'] = 'application/x-www-form-urlencoded'
-            resp = requests.request(method, url, data=body, **kw)
-        else:
-            resp = requests.request(method, url, json=body, **kw)
-        if (method == 'POST' and resp.status_code == 405 and
-                endpoint_path in READ_ONLY_ENDPOINTS):
-            resp = requests.get(url, params=body, **kw)
-            method_used = 'GET'
-            retried_from_post = True
+        slot = (_business_request_slot(account_key, policy)
+                if policy else nullcontext())
+        with slot:
+            if method == 'GET':
+                resp = requests.get(url, params=body, **kw)
+                # The current gateway exposes a number of read-only routes as
+                # POST although the mobile catalog still labels them GET.
+                if (resp.status_code == 405 and
+                        endpoint_path.startswith(('/app-', '/ccbs/')) and
+                        not (policy and policy.get('mutation'))):
+                    resp = requests.post(url, json=body, **kw)
+                    method_used = 'POST'
+                    retried_from_get = True
+            elif body_type == 'form':
+                hdrs['Content-Type'] = 'application/x-www-form-urlencoded'
+                resp = requests.request(method, url, data=body, **kw)
+            else:
+                resp = requests.request(method, url, json=body, **kw)
+            if (method == 'POST' and resp.status_code == 405 and
+                    endpoint_path in READ_ONLY_ENDPOINTS and
+                    not (policy and policy.get('mutation'))):
+                resp = requests.get(url, params=body, **kw)
+                method_used = 'GET'
+                retried_from_post = True
+            if policy:
+                retry_after = _business_record_response(account_key, resp)
+            else:
+                retry_after = 0
         elapsed = round((time.time()-t0)*1000)
         try: rb = resp.json()
         except: rb = resp.text
-        return jsonify({'status': resp.status_code, 'elapsed': elapsed,
-                        'method_used': method_used,
-                        'retried_from_get': retried_from_get,
-                        'retried_from_post': retried_from_post,
-                        'selected_menu_id': active_mid,
-                        'headers': dict(resp.headers), 'body': rb})
+        result = {'status': resp.status_code, 'elapsed': elapsed,
+                  'method_used': method_used,
+                  'retried_from_get': retried_from_get,
+                  'retried_from_post': retried_from_post,
+                  'selected_menu_id': active_mid,
+                  'headers': dict(resp.headers), 'body': rb}
+        if retry_after:
+            result['retry_after'] = retry_after
+        if operation_key:
+            payload_succeeded = _business_payload_succeeded(
+                resp.status_code, rb)
+            if payload_succeeded:
+                _business_finish_mutation(operation_key, 'completed', result)
+            elif resp.status_code == 408 or resp.status_code >= 500:
+                _business_finish_mutation(operation_key, 'uncertain')
+            else:
+                _business_finish_mutation(operation_key, 'failed')
+        return jsonify(result)
+    except BusinessGuardRejected as exc:
+        if operation_key:
+            _business_finish_mutation(operation_key, 'failed')
+        return jsonify({'status': exc.status, 'error': str(exc),
+                        'retry_after': exc.retry_after}), exc.status
     except requests.exceptions.ConnectionError as e:
+        if operation_key:
+            _business_finish_mutation(operation_key, 'uncertain')
         return jsonify({'error': f'Lỗi kết nối: {e}'}), 502
     except requests.exceptions.Timeout:
+        if operation_key:
+            _business_finish_mutation(operation_key, 'uncertain')
         return jsonify({'error': 'Request timeout'}), 504
     except Exception as e:
+        if operation_key:
+            _business_finish_mutation(operation_key, 'uncertain')
         return jsonify({'error': str(e)}), 500
 
 
@@ -1485,10 +1885,12 @@ DEVICE_AUTH_AI_TOKEN  = "8928skjhfa89298jahga1771vbvb"
 
 
 class DeviceAuthError(RuntimeError):
-    def __init__(self, message, status=400, *, liveness_passed=False):
+    def __init__(self, message, status=400, *, liveness_passed=False,
+                 upstream=None):
         super().__init__(message)
         self.status = int(status)
         self.liveness_passed = bool(liveness_passed)
+        self.upstream = upstream if isinstance(upstream, dict) else {}
 
 
 def _device_auth_normalize_phone(value):
@@ -1540,7 +1942,10 @@ def _device_auth_onebss_post(path, body, account_id=''):
     if not _onebss_payload_succeeded(response.status_code, payload):
         message = _device_auth_upstream_message(
             payload, f'OneBSS từ chối tại {path} (HTTP {response.status_code})')
-        raise DeviceAuthError(message, response.status_code if response.status_code >= 400 else 400)
+        raise DeviceAuthError(
+            message,
+            response.status_code if response.status_code >= 400 else 400,
+            upstream=payload)
     return payload
 
 
@@ -1738,7 +2143,8 @@ def _device_auth_upload_to_onebss(frame_bytes, account_id):
             }, account_id)
     except DeviceAuthError as exc:
         raise DeviceAuthError(
-            str(exc), exc.status, liveness_passed=True) from exc
+            str(exc), exc.status, liveness_passed=True,
+            upstream=exc.upstream) from exc
     data = upload_link.get('data') if isinstance(upload_link, dict) else None
     if not isinstance(data, dict):
         raise DeviceAuthError('OneBSS không trả thông tin upload ảnh', 502,
@@ -1779,9 +2185,9 @@ def _device_auth_upload_to_onebss(frame_bytes, account_id):
             }, account_id)
     except DeviceAuthError as exc:
         raise DeviceAuthError(
-            str(exc), exc.status, liveness_passed=True) from exc
-    updated_data = updated.get('data') if isinstance(updated, dict) else None
-    return updated_data if isinstance(updated_data, dict) else {}
+            str(exc), exc.status, liveness_passed=True,
+            upstream=exc.upstream) from exc
+    return updated
 
 
 def _device_auth_make_default_portrait():
@@ -1998,7 +2404,7 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
 
     # 5. Ghi log eKYC lên OneBSS
     log_warning = ''
-    log_ekyc_data = {}
+    log_ekyc_response = {}
     try:
         log_res = _device_auth_onebss_post('/app-banhang/Ekyc/log_ekyc', {
             'p_so_tb': phone,
@@ -2010,56 +2416,52 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
             'p_mask': json.dumps(mask_payload if mask_result else {}, ensure_ascii=False),
             'menu_id': int(DEVICE_AUTH_MENU_ID),
         }, account_id)
-        log_ekyc_data = log_res.get('data') if isinstance(log_res, dict) else {}
+        log_ekyc_response = log_res if isinstance(log_res, dict) else {}
     except DeviceAuthError as exc:
-        log_warning = str(exc)
+        log_ekyc_response = exc.upstream
+        log_warning = _device_auth_upstream_message(exc.upstream, str(exc))
 
     # 6. Upload ảnh lên kho hồ sơ OneBSS
-    file_data = _device_auth_upload_to_onebss(portrait_bytes, account_id)
-
-    # 7. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
-    phone_0 = '0' + phone[2:] if phone.startswith('84') else phone
-    xacthuc_result = {}
-    for num in (phone, phone_0):
-        try:
-            xacthuc_payload = {
-                'p_so_tb': num,
-                'p_image_hash': image_hash or DEVICE_AUTH_FAR_HASH,
-                'client_session': client_session,
-                'menu_id': int(DEVICE_AUTH_MENU_ID),
-            }
-            xacthuc_resp = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/xacthuc_hinhanh', xacthuc_payload, account_id)
-            if isinstance(xacthuc_resp, dict):
-                xacthuc_result = xacthuc_resp.get('data') or xacthuc_resp
-            break
-        except Exception:
-            pass
-
-    # 8. Kiểm tra trạng thái sinh trắc (OneBSS thietbi_thuebao)
-    sinhtrac_result = {}
-    for num in (phone, phone_0):
-        try:
-            st_resp = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/kiemtra_trangthai_sinhtrac', {'p_so_tb': num, 'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
-            if isinstance(st_resp, dict):
-                sinhtrac_result = st_resp.get('data') or st_resp
-            break
-        except Exception:
-            pass
+    final_response = _device_auth_upload_to_onebss(portrait_bytes, account_id)
+    file_data = final_response.get('data') if isinstance(final_response, dict) else None
 
     return {
-        'ok': True,
-        'message': 'Xác thực đổi thiết bị thành công ',
-        'request_id': init_request_id,
+        'ok': _onebss_payload_succeeded(200, final_response),
+        'message': final_response.get('message'),
+        'error': final_response.get('error'),
+        'error_code': final_response.get('error_code'),
+        'request_id': final_response.get('request_id'),
+        'page_info': final_response.get('page_info'),
+        'server_response': final_response,
+        'init_request_id': init_request_id,
         'confirmation_id': confirmation_id,
         'phone': phone,
         'client_session': client_session,
         'liveness': liveness_result if isinstance(liveness_result, dict) else {},
         'mask': mask_result,
         'file': file_data if isinstance(file_data, dict) else {},
-        'log_ekyc': log_ekyc_data,
-        'xacthuc_hinhanh': xacthuc_result,
-        'sinhtrac': sinhtrac_result,
+        'log_ekyc': log_ekyc_response,
         'log_warning': log_warning,
+    }
+
+
+def _device_auth_error_body(exc):
+    upstream = exc.upstream if isinstance(exc.upstream, dict) else {}
+    if upstream:
+        return {
+            'ok': False,
+            'message': upstream.get('message'),
+            'error': upstream.get('error'),
+            'error_code': upstream.get('error_code'),
+            'request_id': upstream.get('request_id'),
+            'page_info': upstream.get('page_info'),
+            'server_response': upstream,
+            'liveness_passed': exc.liveness_passed,
+        }
+    return {
+        'ok': False,
+        'error': str(exc),
+        'liveness_passed': exc.liveness_passed,
     }
 
 
@@ -2083,7 +2485,7 @@ def device_auth_verify():
         result = _device_auth_execute(phone, account_id, custom_bytes)
         return jsonify(result)
     except DeviceAuthError as exc:
-        return jsonify({'ok': False, 'error': str(exc), 'liveness_passed': exc.liveness_passed}), exc.status
+        return jsonify(_device_auth_error_body(exc)), exc.status
     except Exception as exc:
         print(f'[DEVICE_AUTH] verify failed: {exc}')
         return jsonify({'ok': False, 'error': f'Lỗi hệ thống: {exc}'}), 500
@@ -2120,7 +2522,7 @@ def device_auth_prepare():
             },
         })
     except DeviceAuthError as exc:
-        return jsonify({'ok': False, 'error': str(exc)}), exc.status
+        return jsonify(_device_auth_error_body(exc)), exc.status
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
@@ -2141,7 +2543,7 @@ def device_auth_verify_camera():
             _device_auth_pop_transaction(handle)
         return jsonify(result)
     except DeviceAuthError as exc:
-        return jsonify({'ok': False, 'error': str(exc), 'liveness_passed': exc.liveness_passed}), exc.status
+        return jsonify(_device_auth_error_body(exc)), exc.status
     except Exception as exc:
         return jsonify({'ok': False, 'error': f'Lỗi hệ thống: {exc}'}), 500
 
@@ -2845,4 +3247,11 @@ if __name__ == '__main__':
     total = sum(len(s['apis']) for s in SECTIONS)
     print(f"[OK] {total} APIs | Base: {BASE_URL} | client_id: {APP_CFG['CLIENT_ID']}")
     print(f"[OK] eKYC/ĐKTTTB module: {'available' if EKYC_AVAILABLE else 'NOT AVAILABLE'}")
-    app.run(debug=True, host='0.0.0.0', port=5056)
+    # Desktop tool: one serving process on loopback keeps the in-memory request
+    # scheduler authoritative and avoids exposing authenticated business routes
+    # to the LAN.  A deliberate deployment can override the host explicitly.
+    app.run(debug=False,
+            use_reloader=False,
+            threaded=True,
+            host=os.environ.get('VNPT_EMPLOY_HOST', '127.0.0.1'),
+            port=5056)
