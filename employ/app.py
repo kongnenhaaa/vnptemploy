@@ -2478,12 +2478,21 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
                     'client_session': client_session,
                     'menu_id': int(DEVICE_AUTH_MENU_ID),
                 }, account_id)
-                if isinstance(xt_res, dict) and (xt_res.get('error') == '200' or xt_res.get('data')):
+                if isinstance(xt_res, dict):
                     xacthuc_response = xt_res
-                    break
-            except Exception:
-                pass
-        if xacthuc_response:
+                    if xt_res.get('error') == '200' or xt_res.get('data'):
+                        break
+            except DeviceAuthError as exc:
+                if isinstance(exc.upstream, dict):
+                    xacthuc_response = exc.upstream
+                    # Nếu có message hoặc data từ OneBSS/CCBS thì đã nhận được phản hồi
+                    if exc.upstream.get('data') or exc.upstream.get('message'):
+                        break
+                else:
+                    xacthuc_response = {'error': str(exc), 'message': str(exc)}
+            except Exception as exc:
+                xacthuc_response = {'error': str(exc), 'message': str(exc)}
+        if xacthuc_response and (xacthuc_response.get('data') or 'không khớp' in str(xacthuc_response).lower()):
             break
 
     # 9. Kiểm tra và kích hoạt trạng thái sinh trắc học thiết bị
@@ -2497,19 +2506,47 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
             if isinstance(st_res, dict) and st_res.get('data'):
                 sinhtrac_response = st_res
                 break
+        except DeviceAuthError as exc:
+            if isinstance(exc.upstream, dict):
+                sinhtrac_response = exc.upstream
         except Exception:
             pass
 
-    # Ưu tiên response của bước mở sinh trắc / lưu ekyc làm phản hồi chính
+    # Phân tích kết quả xác thực hình ảnh CCBS
+    xt_data = (xacthuc_response.get('data') or {}) if isinstance(xacthuc_response, dict) else {}
+    xt_msg = str(xt_data.get('message') or xacthuc_response.get('message') or '')
+    is_match = xt_data.get('is_match')
+    xt_status = xt_data.get('Status')
+    
+    face_matched = False
+    if is_match == 1 or xt_status == 1 or 'xác thực thành công' in xt_msg.lower() or 'không có bản ghi' in xt_msg.lower():
+        face_matched = True
+    elif is_match == 0 or 'không khớp' in xt_msg.lower() or xt_status == 0:
+        face_matched = False
+    else:
+        # Nếu không có phản hồi khớp rõ ràng từ CCBS, tuyệt đối không tự nhận là khớp
+        face_matched = False
+
+    sinhtrac_ok = (sinhtrac_response.get('data', {}).get('Status') == 1) or ('không có bản ghi' in xt_msg.lower())
+    overall_ok = bool(face_matched and sinhtrac_ok)
+
     final_response = sinhtrac_response if (isinstance(sinhtrac_response, dict) and sinhtrac_response.get('data')) else (
         luu_ekyc_response if (isinstance(luu_ekyc_response, dict) and luu_ekyc_response.get('data')) else file_upload_response
     )
 
+    if not face_matched:
+        summary_message = xt_msg or 'Ảnh chân dung không khớp với hồ sơ khách hàng trên CCBS. Vui lòng xác thực lại!'
+    elif overall_ok:
+        summary_message = 'Xác thực đổi thiết bị thành công (Khuôn mặt đã khớp & đã kích hoạt sinh trắc)'
+    else:
+        summary_message = final_response.get('message') or xt_msg or 'Xác thực đổi thiết bị hoàn tất'
+
     return {
-        'ok': _onebss_payload_succeeded(200, final_response),
-        'message': final_response.get('message') or 'Xác thực đổi thiết bị thành công',
-        'error': final_response.get('error'),
-        'error_code': final_response.get('error_code'),
+        'ok': overall_ok,
+        'face_matched': face_matched,
+        'message': summary_message,
+        'error': None if overall_ok else ('FACE_MISMATCH' if not face_matched else final_response.get('error')),
+        'error_code': final_response.get('error_code') or ('CCBS-MISMATCH' if not face_matched else 'BSS-00000000'),
         'request_id': final_response.get('request_id'),
         'page_info': final_response.get('page_info'),
         'server_response': final_response,
