@@ -2422,12 +2422,67 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
         log_warning = _device_auth_upstream_message(exc.upstream, str(exc))
 
     # 6. Upload ảnh lên kho hồ sơ OneBSS
-    final_response = _device_auth_upload_to_onebss(portrait_bytes, account_id)
-    file_data = final_response.get('data') if isinstance(final_response, dict) else None
+    file_upload_response = _device_auth_upload_to_onebss(portrait_bytes, account_id)
+    file_data = file_upload_response.get('data') if isinstance(file_upload_response, dict) else None
+
+    # 7. Gắn Ekyc Request ID vào hồ sơ CCBS (để hệ thống ghi nhận phiên eKYC hợp lệ)
+    phone_0 = '0' + phone[2:] if phone.startswith('84') else phone
+    luu_ekyc_response = {}
+    for num in (phone, phone_0):
+        try:
+            luu_ekyc_response = _device_auth_onebss_post('/app-banhang/ccbs/luu_ekyc_request_id', {
+                'p_so_tb': num,
+                'p_ekyc_request_id': init_request_id,
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }, account_id)
+            if isinstance(luu_ekyc_response, dict) and luu_ekyc_response.get('data'):
+                break
+        except Exception:
+            pass
+
+    # 8. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
+    xacthuc_response = {}
+    for h in ([image_hash, DEVICE_AUTH_FAR_HASH] if image_hash else [DEVICE_AUTH_FAR_HASH]):
+        if not h:
+            continue
+        for num in (phone, phone_0):
+            try:
+                xt_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
+                    'p_so_tb': num,
+                    'p_image_hash': h,
+                    'client_session': client_session,
+                    'menu_id': int(DEVICE_AUTH_MENU_ID),
+                }, account_id)
+                if isinstance(xt_res, dict) and (xt_res.get('error') == '200' or xt_res.get('data')):
+                    xacthuc_response = xt_res
+                    break
+            except Exception:
+                pass
+        if xacthuc_response:
+            break
+
+    # 9. Kiểm tra và kích hoạt trạng thái sinh trắc học thiết bị
+    sinhtrac_response = {}
+    for num in (phone, phone_0):
+        try:
+            st_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/kiemtra_trangthai_sinhtrac', {
+                'p_so_tb': num,
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }, account_id)
+            if isinstance(st_res, dict) and st_res.get('data'):
+                sinhtrac_response = st_res
+                break
+        except Exception:
+            pass
+
+    # Ưu tiên response của bước mở sinh trắc / lưu ekyc làm phản hồi chính
+    final_response = sinhtrac_response if (isinstance(sinhtrac_response, dict) and sinhtrac_response.get('data')) else (
+        luu_ekyc_response if (isinstance(luu_ekyc_response, dict) and luu_ekyc_response.get('data')) else file_upload_response
+    )
 
     return {
         'ok': _onebss_payload_succeeded(200, final_response),
-        'message': final_response.get('message'),
+        'message': final_response.get('message') or 'Xác thực đổi thiết bị thành công',
         'error': final_response.get('error'),
         'error_code': final_response.get('error_code'),
         'request_id': final_response.get('request_id'),
@@ -2441,6 +2496,9 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
         'mask': mask_result,
         'file': file_data if isinstance(file_data, dict) else {},
         'log_ekyc': log_ekyc_response,
+        'luu_ekyc': luu_ekyc_response,
+        'xacthuc_hinhanh': xacthuc_response,
+        'sinhtrac': sinhtrac_response,
         'log_warning': log_warning,
     }
 

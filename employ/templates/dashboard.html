@@ -6867,6 +6867,8 @@ async function deviceAuthExecute() {
           <div class="doisim-summary-item"><span>Mã phiên (IDG)</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
           <div class="doisim-summary-item"><span>ID Hồ sơ (OneBSS)</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Tệp lưu OneBSS</span><strong style="word-break:break-all;font-size:11px">${escHtml(file.ten_taptin || file.duong_dan || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:var(--green)">${escHtml((data.sinhtrac?.data?.trang_thai ? 'Mã ' + data.sinhtrac.data.trang_thai + ' (OK)' : (data.sinhtrac?.message || '—')))}</strong></div>
+          <div class="doisim-summary-item"><span>Lưu eKYC CCBS</span><strong>${escHtml(data.luu_ekyc?.data?.EKYC_REQUEST_ID ? 'Đã lưu (' + data.luu_ekyc.data.STATUS + ')' : (data.luu_ekyc?.message || '—'))}</strong></div>
         </div>
         ${data.log_warning ? `<div style="margin-top:8px;color:var(--orange);font-size:11px">Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}`;
     }
