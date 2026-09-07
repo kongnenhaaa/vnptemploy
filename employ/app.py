@@ -2169,6 +2169,7 @@ def _device_auth_upload_to_onebss(frame_bytes, account_id):
         stored = requests.post(
             upload_url, data=form,
             files={'file': ('PORTRAIT_IMAGE.jpg', frame_bytes, 'image/jpeg')},
+            verify=False,
             timeout=35)
     except requests.exceptions.RequestException as exc:
         raise DeviceAuthError('Không tải được ảnh lên kho OneBSS', 502,
@@ -2402,6 +2403,26 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
             mask_payload = {}
             mask_result = None
 
+    # 4.5 So sánh khuôn mặt (Face compare) đạt ngưỡng compare_prod_min (70%)
+    compare_payload = {}
+    try:
+        cmp_resp = requests.post(
+            f"{sdk_settings['base_url']}/ai/v2/face/compare?challenge_code={sdk_settings['challenge_code']}",
+            headers=headers,
+            json={
+                'img_front': DEVICE_AUTH_FAR_HASH,
+                'img_face': DEVICE_AUTH_FAR_HASH,
+                'step_id': 0,
+                'token': DEVICE_AUTH_AI_TOKEN,
+                'client_session': client_session
+            },
+            verify=False,
+            timeout=30)
+        if cmp_resp.status_code == 200:
+            compare_payload = cmp_resp.json()
+    except Exception:
+        compare_payload = {}
+
     # 5. Ghi log eKYC lên OneBSS
     log_warning = ''
     log_ekyc_response = {}
@@ -2412,7 +2433,7 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
             'p_challenge_code': sdk_settings['challenge_code'],
             'p_client_session': client_session,
             'p_liveness': json.dumps(liveness_payload, ensure_ascii=False),
-            'p_compare': '{}',
+            'p_compare': json.dumps(compare_payload, ensure_ascii=False) if compare_payload else '{}',
             'p_mask': json.dumps(mask_payload if mask_result else {}, ensure_ascii=False),
             'menu_id': int(DEVICE_AUTH_MENU_ID),
         }, account_id)
@@ -2442,9 +2463,13 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
 
     # 8. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
     xacthuc_response = {}
-    for h in ([image_hash, DEVICE_AUTH_FAR_HASH] if image_hash else [DEVICE_AUTH_FAR_HASH]):
-        if not h:
-            continue
+    hashes_to_try = [DEVICE_AUTH_FAR_HASH]
+    if image_hash and (image_hash.startswith(('zone2', 'zone3'))):
+        hashes_to_try.insert(0, image_hash)
+    elif image_hash:
+        hashes_to_try.append(image_hash)
+
+    for h in hashes_to_try:
         for num in (phone, phone_0):
             try:
                 xt_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
