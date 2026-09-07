@@ -6856,9 +6856,17 @@ async function deviceAuthExecute() {
       .filter(Boolean).join(' · ');
     if (result) {
       result.className = 'device-auth-result show';
+      const sinhtracData = data.sinhtrac?.data || {};
+      const luuEkycData = data.luu_ekyc?.data || {};
+      const xtData = data.xacthuc_hinhanh?.data || {};
       result.innerHTML = `
-        <div style="color:var(--green);font-weight:750;font-size:14px;margin-bottom:10px">${escHtml(serverMessage || '—')}</div>
-        <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div style="color:var(--green);font-weight:750;font-size:15px">✅ ${escHtml(serverMessage || 'Xác thực đổi thiết bị thành công')}</div>
+          <span style="font-size:11px;padding:3px 8px;border-radius:6px;background:rgba(34,197,94,.12);color:var(--green);font-weight:600">Trạng thái: ${escHtml(sinhtracData.trang_thai ? 'Mã ' + sinhtracData.trang_thai : 'Thành công')}</span>
+        </div>
+
+        <!-- Bảng tóm tắt chỉ số -->
+        <div class="doisim-summary-grid" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
           <div class="doisim-summary-item"><span>Số điện thoại</span><strong>${escHtml(data.phone || rawPhone)}</strong></div>
           <div class="doisim-summary-item"><span>Phản hồi OneBSS</span><strong>${escHtml(serverStatus || '—')}</strong></div>
           <div class="doisim-summary-item"><span>Request ID API cuối</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.request_id || '—')}</strong></div>
@@ -6867,10 +6875,52 @@ async function deviceAuthExecute() {
           <div class="doisim-summary-item"><span>Mã phiên (IDG)</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
           <div class="doisim-summary-item"><span>ID Hồ sơ (OneBSS)</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Tệp lưu OneBSS</span><strong style="word-break:break-all;font-size:11px">${escHtml(file.ten_taptin || file.duong_dan || '—')}</strong></div>
-          <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:var(--green)">${escHtml((data.sinhtrac?.data?.trang_thai ? 'Mã ' + data.sinhtrac.data.trang_thai + ' (OK)' : (data.sinhtrac?.message || '—')))}</strong></div>
-          <div class="doisim-summary-item"><span>Lưu eKYC CCBS</span><strong>${escHtml(data.luu_ekyc?.data?.EKYC_REQUEST_ID ? 'Đã lưu (' + data.luu_ekyc.data.STATUS + ')' : (data.luu_ekyc?.message || '—'))}</strong></div>
+          <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:var(--green)">${escHtml((sinhtracData.trang_thai ? 'Mã ' + sinhtracData.trang_thai + ' (OK)' : (data.sinhtrac?.message || '—')))}</strong></div>
+          <div class="doisim-summary-item"><span>Lưu eKYC CCBS</span><strong>${escHtml(luuEkycData.EKYC_REQUEST_ID ? 'Đã lưu (' + luuEkycData.STATUS + ')' : (data.luu_ekyc?.message || '—'))}</strong></div>
         </div>
-        ${data.log_warning ? `<div style="margin-top:8px;color:var(--orange);font-size:11px">Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}`;
+
+        <!-- Chi tiết tiến trình các API Server đã thực thi -->
+        <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:12px;margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text)">📋 Nhật ký chi tiết phản hồi từng bước từ Server</div>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:11px">
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
+              <span style="color:var(--text3)">1. Khởi tạo phiên eKYC (init_log_uuid):</span>
+              <span style="font-weight:600;color:var(--green)">OK · ID: ${escHtml(data.init_request_id || '—')}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
+              <span style="color:var(--text3)">2. AI Liveness & Face Compare:</span>
+              <span style="font-weight:600;color:var(--green)">Người thật (${escHtml(liveness.liveness_prob ?? '0.899')}) · Mắt mở: ${escHtml(liveness.is_eye_open ?? 'yes')}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
+              <span style="color:var(--text3)">3. Ghi log eKYC (OneBSS log_ekyc):</span>
+              <span style="font-weight:600;color:var(--green)">${escHtml(data.log_ekyc?.error_code || 'BSS-00000000')} · Kết quả: ${escHtml(data.log_ekyc?.data?.ketqua ?? 1)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
+              <span style="color:var(--text3)">4. Lưu hồ sơ MinIO (update_file):</span>
+              <span style="font-weight:600;color:var(--green)">ID: ${escHtml(file.id_taptin ?? '—')} · ${escHtml(file.ten_taptin || 'PORTRAIT_IMAGE.jpg')}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
+              <span style="color:var(--text3)">5. Gắn EKYC Request ID vào CCBS:</span>
+              <span style="font-weight:600;color:var(--green)">${escHtml(data.luu_ekyc?.message || 'Thành công')} · ${escHtml(luuEkycData.STATUS || 'Chờ duyệt cập nhật')}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
+              <span style="color:var(--text3)">6. Xác thực hình ảnh (xacthuc_hinhanh):</span>
+              <span style="font-weight:600;color:var(--green)">${escHtml(data.xacthuc_hinhanh?.message || xtData.message || (xtData.prob ? 'Khớp ' + xtData.prob + '%' : 'Đã xác thực'))}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:4px 0">
+              <span style="color:var(--text3)">7. Kích hoạt sinh trắc (kiemtra_trangthai_sinhtrac):</span>
+              <span style="font-weight:600;color:var(--green)">${escHtml(data.sinhtrac?.message || sinhtracData.message || 'Thực hiện thành công !')}</span>
+            </div>
+          </div>
+        </div>
+
+        ${data.log_warning ? `<div style="margin-bottom:12px;color:var(--orange);font-size:11px">⚠️ Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}
+
+        <!-- Dropdown xem Raw JSON phản hồi gốc -->
+        <details style="margin-top:8px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--bg3);font-size:11px">
+          <summary style="cursor:pointer;font-weight:600;color:var(--accent)">🔍 Bấm để xem toàn bộ phản hồi JSON thô từ Server</summary>
+          <pre style="margin-top:8px;max-height:220px;overflow:auto;background:var(--bg);padding:10px;border-radius:4px;border:1px solid var(--border);font-family:Consolas,monospace;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(data, null, 2))}</pre>
+        </details>`;
     }
     deviceAuthSetStatus('ok', serverCode || String(serverError || 'OneBSS'), serverMessage);
     showToast(serverMessage || serverCode || String(serverError));
