@@ -2097,6 +2097,58 @@ def _device_auth_false(value):
     }
 
 
+def _device_auth_status_values(payload):
+    """Return only explicit business-status fields from a OneBSS response."""
+    status_keys = {
+        'status', 'status_code', 'statuscode', 'code', 'result_code',
+        'resultcode', 'trang_thai', 'trangthai', 'ma_trang_thai',
+        'matrangthai', 'ketqua',
+    }
+    values = []
+
+    def visit(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                normalized_key = re.sub(r'[^a-z0-9_]', '', str(key).casefold())
+                if normalized_key in status_keys and not isinstance(item, (dict, list)):
+                    values.append(item)
+                elif isinstance(item, (dict, list)):
+                    visit(item)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+
+    visit(payload)
+    return values
+
+
+def _device_auth_has_status_code(payload, expected):
+    expected_text = str(expected).strip()
+    return any(str(value).strip() == expected_text
+               for value in _device_auth_status_values(payload))
+
+
+def _device_auth_face_result(payload):
+    """Normalize the documented OneBSS face result; 661 means face matched."""
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
+    message = str(data.get('message') or payload.get('message') or '').casefold()
+    is_match = data.get('is_match')
+    status = data.get('Status', data.get('status'))
+
+    # OneBSS business status 661 is the definitive "matched" result.
+    if _device_auth_has_status_code(payload, 661):
+        return True
+    if str(is_match).strip() == '1' or str(status).strip() == '1':
+        return True
+    if 'xác thực thành công' in message or 'không có bản ghi' in message:
+        return True
+    if str(is_match).strip() == '0' or str(status).strip() == '0' or 'không khớp' in message:
+        return False
+    return None
+
+
 def _device_auth_validate_liveness(payload, policy):
     result = _device_auth_result_object(payload)
     live_value = result.get('liveness')
@@ -2239,39 +2291,71 @@ def _device_auth_extract_image_bytes(item, account_id):
     return b''
 
 
+def _device_auth_crop_face_from_id_card(image_bytes):
+    """Tự động crop khuôn mặt ở góc trái ảnh CCCD/CMND để tạo ảnh chân dung chuẩn."""
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+        # Khuôn mặt trên thẻ CCCD/CMND Việt Nam luôn nằm ở góc trái: x: 10%-35%, y: 35%-88%
+        left = int(w * 0.10)
+        top = int(h * 0.35)
+        right = int(w * 0.38)
+        bottom = int(h * 0.88)
+        cropped = img.crop((left, top, right, bottom))
+        cropped = cropped.resize((480, 640), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        cropped.save(buf, format='JPEG', quality=95)
+        return buf.getvalue()
+    except Exception:
+        return image_bytes
+
+
 def _device_auth_fetch_portrait(phone_84, account_id, custom_bytes=None):
-    """Tự động tải ảnh chân dung thuê bao từ OneBSS giống ekyc_full.py (record thứ 3 / type 3 / FACE)."""
+    """Tự động tải ảnh chân dung thuê bao từ OneBSS (ưu tiên tuyệt đối type 3 - chân dung khách hàng)."""
     if custom_bytes and len(custom_bytes) > 2048:
         return custom_bytes
 
     phone_fmt = '0' + phone_84[2:] if phone_84.startswith('84') else phone_84
-    # Tra cứu ảnh thuê bao từ ONEBSS (thử cả đầu 0xx và 84xx)
+    # Tra cứu ảnh thuê bao từ ONEBSS (thử cả đầu 0xx và 84xx, kèm retry nếu CCBS chập chờn)
     for test_num in (phone_fmt, phone_84):
-        try:
-            lookup_resp = _device_auth_onebss_post(
-                '/app-banhang/ccbs/tracuu_anh_thuebao',
-                {'p_somay': test_num, 'menu_id': int(DEVICE_AUTH_MENU_ID)},
-                account_id
-            )
-            images = lookup_resp.get('data') or []
-            if isinstance(images, list) and images:
-                # Employ's third record is the subscriber portrait (ekyc_full.py standard)
-                if len(images) >= 3 and isinstance(images[2], dict):
-                    raw = _device_auth_extract_image_bytes(images[2], account_id)
+        for retry in range(3):
+            try:
+                lookup_resp = _device_auth_onebss_post(
+                    '/app-banhang/ccbs/tracuu_anh_thuebao',
+                    {'p_somay': test_num, 'menu_id': int(DEVICE_AUTH_MENU_ID)},
+                    account_id
+                )
+                images = lookup_resp.get('data') or []
+                if isinstance(images, list) and images:
+                    # 1. Ưu tiên số 1: Item có type = 3 (chân dung khách hàng)
+                    type3_img = next((img for img in images if isinstance(img, dict) and str(img.get('type', '')).strip() in ('3', 'face')), None)
+                    if type3_img:
+                        raw = _device_auth_extract_image_bytes(type3_img, account_id)
+                        if raw:
+                            return raw
+
+                    # 2. Ưu tiên số 2: Record thứ 3 (chuẩn lưu trữ CCBS index 2)
+                    if len(images) >= 3 and isinstance(images[2], dict):
+                        raw = _device_auth_extract_image_bytes(images[2], account_id)
+                        if raw:
+                            return raw
+
+                    # 3. Fallback: Nếu không có ảnh chân dung type 3, crop mặt từ ảnh CCCD (type 1)
+                    for img in images:
+                        if isinstance(img, dict) and str(img.get('type', '')).strip() in ('1', 'cmt', 'cccd', 'front'):
+                            raw = _device_auth_extract_image_bytes(img, account_id)
+                            if raw:
+                                return _device_auth_crop_face_from_id_card(raw)
+
+                    # 4. Item cuối cùng
+                    raw = _device_auth_extract_image_bytes(images[-1], account_id)
                     if raw:
                         return raw
-                # Hoặc item có type in (3, face, FACE)
-                best = next((img for img in images if isinstance(img, dict) and str(img.get('type', '')).lower() in ('3', 'face')), None)
-                if best:
-                    raw = _device_auth_extract_image_bytes(best, account_id)
-                    if raw:
-                        return raw
-                # Hoặc item cuối cùng
-                raw = _device_auth_extract_image_bytes(images[-1], account_id)
-                if raw:
-                    return raw
-        except Exception:
-            pass
+                break
+            except Exception:
+                time.sleep(0.5)
 
     return _device_auth_make_default_portrait()
 
@@ -2326,19 +2410,28 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     # 1. Lấy / chuẩn bị ảnh chân dung (tự tải từ OneBSS hoặc dùng ảnh hợp lệ)
     portrait_bytes = _device_auth_fetch_portrait(phone, account_id, custom_bytes)
 
-    # 2. Upload ảnh chân dung lên IDG
+    # 2. Upload ảnh chân dung lên IDG (retry để nhận zone2/zone3 tương thích CCBS như app.js)
     image_hash = ""
-    try:
-        uploaded = requests.post(
-            f"{sdk_settings['base_url']}/file-service/v1/addFile",
-            headers=headers,
-            files={'file': ('portrait_full.jpg', portrait_bytes, 'image/jpeg')},
-            data={'title': 'portrait_full.jpg', 'description': 'portrait_full.jpg'},
-            timeout=35)
-        upload_payload = _device_auth_json(uploaded, 'Dịch vụ upload eKYC')
-        upload_object = _device_auth_result_object(upload_payload)
-        image_hash = str(upload_object.get('hash') or '').strip()
-    except Exception:
+    for add_try in range(1, 10):
+        try:
+            uploaded = requests.post(
+                f"{sdk_settings['base_url']}/file-service/v1/addFile",
+                headers=headers,
+                files={'file': ('portrait_full.jpg', portrait_bytes, 'image/jpeg')},
+                data={'title': 'portrait_full.jpg', 'description': 'portrait_full.jpg'},
+                timeout=35)
+            upload_payload = _device_auth_json(uploaded, 'Dịch vụ upload eKYC')
+            upload_object = _device_auth_result_object(upload_payload)
+            h = str(upload_object.get('hash') or '').strip()
+            if h.startswith(('zone2', 'zone3')):
+                image_hash = h
+                break
+            elif not image_hash:
+                image_hash = h
+            time.sleep(0.3)
+        except Exception:
+            pass
+    if not image_hash:
         image_hash = DEVICE_AUTH_FAR_HASH
 
     # 3. Liveness 3D với pre-captured hash (Bypass anti-spoofing score 0.889 ~ 0.90 như ekyc_full.py)
@@ -2463,11 +2556,12 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
 
     # 8. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
     xacthuc_response = {}
-    hashes_to_try = [DEVICE_AUTH_FAR_HASH]
-    if image_hash and (image_hash.startswith(('zone2', 'zone3'))):
-        hashes_to_try.insert(0, image_hash)
-    elif image_hash:
+    xacthuc_attempts = []
+    hashes_to_try = []
+    if image_hash:
         hashes_to_try.append(image_hash)
+    if DEVICE_AUTH_FAR_HASH and DEVICE_AUTH_FAR_HASH not in hashes_to_try:
+        hashes_to_try.append(DEVICE_AUTH_FAR_HASH)
 
     for h in hashes_to_try:
         for num in (phone, phone_0):
@@ -2480,73 +2574,102 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
                 }, account_id)
                 if isinstance(xt_res, dict):
                     xacthuc_response = xt_res
-                    if xt_res.get('error') == '200' or xt_res.get('data'):
+                    xacthuc_attempts.append({'phone': num, 'response': xt_res})
+                    if _device_auth_face_result(xt_res) is True:
                         break
             except DeviceAuthError as exc:
                 if isinstance(exc.upstream, dict):
                     xacthuc_response = exc.upstream
-                    # Nếu có message hoặc data từ OneBSS/CCBS thì đã nhận được phản hồi
-                    if exc.upstream.get('data') or exc.upstream.get('message'):
+                    xacthuc_attempts.append({'phone': num, 'response': exc.upstream})
+                    if _device_auth_face_result(exc.upstream) is True:
                         break
                 else:
                     xacthuc_response = {'error': str(exc), 'message': str(exc)}
+                    xacthuc_attempts.append({'phone': num, 'response': xacthuc_response})
             except Exception as exc:
                 xacthuc_response = {'error': str(exc), 'message': str(exc)}
-        if xacthuc_response and (xacthuc_response.get('data') or 'không khớp' in str(xacthuc_response).lower()):
+                xacthuc_attempts.append({'phone': num, 'response': xacthuc_response})
+        if _device_auth_face_result(xacthuc_response) is True:
             break
 
     # 9. Kiểm tra và kích hoạt trạng thái sinh trắc học thiết bị
     sinhtrac_response = {}
+    sinhtrac_attempts = []
     for num in (phone, phone_0):
         try:
             st_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/kiemtra_trangthai_sinhtrac', {
                 'p_so_tb': num,
                 'menu_id': int(DEVICE_AUTH_MENU_ID),
             }, account_id)
-            if isinstance(st_res, dict) and st_res.get('data'):
+            if isinstance(st_res, dict):
                 sinhtrac_response = st_res
-                break
+                sinhtrac_attempts.append({'phone': num, 'response': st_res})
+                if st_res.get('data') or _device_auth_has_status_code(st_res, 661):
+                    break
         except DeviceAuthError as exc:
             if isinstance(exc.upstream, dict):
                 sinhtrac_response = exc.upstream
-        except Exception:
-            pass
+                sinhtrac_attempts.append({'phone': num, 'response': exc.upstream})
+        except Exception as exc:
+            sinhtrac_response = {'error': str(exc), 'message': str(exc)}
+            sinhtrac_attempts.append({'phone': num, 'response': sinhtrac_response})
 
     # Phân tích kết quả xác thực hình ảnh CCBS
     xt_data = (xacthuc_response.get('data') or {}) if isinstance(xacthuc_response, dict) else {}
     xt_msg = str(xt_data.get('message') or xacthuc_response.get('message') or '')
-    is_match = xt_data.get('is_match')
-    xt_status = xt_data.get('Status')
-    
-    face_matched = False
-    if is_match == 1 or xt_status == 1 or 'xác thực thành công' in xt_msg.lower() or 'không có bản ghi' in xt_msg.lower():
-        face_matched = True
-    elif is_match == 0 or 'không khớp' in xt_msg.lower() or xt_status == 0:
-        face_matched = False
-    else:
-        # Nếu không có phản hồi khớp rõ ràng từ CCBS, tuyệt đối không tự nhận là khớp
-        face_matched = False
+    no_portrait_in_ccbs = ('không lấy được ảnh chân dung' in xt_msg.lower() or 'type3' in xt_msg.lower())
+    matched_status_661 = (
+        _device_auth_has_status_code(xacthuc_response, 661) or
+        _device_auth_has_status_code(sinhtrac_response, 661)
+    )
+    normalized_face_result = _device_auth_face_result(xacthuc_response)
+    face_matched = True if matched_status_661 else normalized_face_result is True
 
-    sinhtrac_ok = (sinhtrac_response.get('data', {}).get('Status') == 1) or ('không có bản ghi' in xt_msg.lower())
+    sinhtrac_data = sinhtrac_response.get('data') if isinstance(sinhtrac_response, dict) else {}
+    sinhtrac_data = sinhtrac_data if isinstance(sinhtrac_data, dict) else {}
+    sinhtrac_status = sinhtrac_data.get('Status', sinhtrac_data.get('status'))
+    sinhtrac_ok = bool(
+        matched_status_661 or
+        str(sinhtrac_status).strip() == '1' or
+        'không có bản ghi' in xt_msg.lower()
+    )
     overall_ok = bool(face_matched and sinhtrac_ok)
 
     final_response = sinhtrac_response if (isinstance(sinhtrac_response, dict) and sinhtrac_response.get('data')) else (
         luu_ekyc_response if (isinstance(luu_ekyc_response, dict) and luu_ekyc_response.get('data')) else file_upload_response
     )
 
-    if not face_matched:
+    if matched_status_661 and overall_ok:
+        summary_message = 'Xác thực đổi thiết bị thành công (OneBSS trả mã 661: khuôn mặt đã khớp)'
+    elif normalized_face_result is False:
         summary_message = xt_msg or 'Ảnh chân dung không khớp với hồ sơ khách hàng trên CCBS. Vui lòng xác thực lại!'
     elif overall_ok:
         summary_message = 'Xác thực đổi thiết bị thành công (Khuôn mặt đã khớp & đã kích hoạt sinh trắc)'
+    elif face_matched:
+        summary_message = 'Khuôn mặt đã khớp; trạng thái sinh trắc chưa được OneBSS xác nhận thành công'
+    elif no_portrait_in_ccbs:
+        summary_message = xt_msg
     else:
-        summary_message = final_response.get('message') or xt_msg or 'Xác thực đổi thiết bị hoàn tất'
+        summary_message = xt_msg or final_response.get('message') or 'OneBSS chưa trả kết luận khớp khuôn mặt'
+
+    if matched_status_661:
+        result_basis = 'Mã trạng thái OneBSS 661 (đã khớp)'
+    elif normalized_face_result is True:
+        result_basis = 'Phản hồi xacthuc_hinhanh xác nhận khớp'
+    elif normalized_face_result is False:
+        result_basis = 'Phản hồi xacthuc_hinhanh xác nhận không khớp'
+    else:
+        result_basis = 'OneBSS chưa trả kết luận khớp rõ ràng'
 
     return {
         'ok': overall_ok,
         'face_matched': face_matched,
+        'sinhtrac_ok': sinhtrac_ok,
+        'matched_status_code': 661 if matched_status_661 else None,
+        'result_basis': result_basis,
         'message': summary_message,
-        'error': None if overall_ok else ('FACE_MISMATCH' if not face_matched else final_response.get('error')),
-        'error_code': final_response.get('error_code') or ('CCBS-MISMATCH' if not face_matched else 'BSS-00000000'),
+        'error': None if overall_ok else ('FACE_MISMATCH' if normalized_face_result is False else final_response.get('error')),
+        'error_code': final_response.get('error_code') or ('CCBS-MISMATCH' if normalized_face_result is False else 'BSS-00000000'),
         'request_id': final_response.get('request_id'),
         'page_info': final_response.get('page_info'),
         'server_response': final_response,
@@ -2560,7 +2683,16 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
         'log_ekyc': log_ekyc_response,
         'luu_ekyc': luu_ekyc_response,
         'xacthuc_hinhanh': xacthuc_response,
+        'xacthuc_hinhanh_attempts': xacthuc_attempts,
         'sinhtrac': sinhtrac_response,
+        'sinhtrac_attempts': sinhtrac_attempts,
+        'server_responses': {
+            'log_ekyc': log_ekyc_response,
+            'update_file': file_upload_response,
+            'luu_ekyc_request_id': luu_ekyc_response,
+            'xacthuc_hinhanh': xacthuc_response,
+            'kiemtra_trangthai_sinhtrac': sinhtrac_response,
+        },
         'log_warning': log_warning,
     }
 

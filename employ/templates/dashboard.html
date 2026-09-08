@@ -111,6 +111,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .doisim-status{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:5px 9px;font-size:11px;color:var(--text2)}
 .doisim-status.ok{border-color:#238636;color:#3fb950;background:rgba(46,160,67,.08)}
 .doisim-status.err{border-color:#da3633;color:#f85149;background:rgba(248,81,73,.08)}
+.doisim-status.warn{border-color:#9e6a03;color:#d29922;background:rgba(210,153,34,.08)}
 .doisim-status.loading{border-color:#9e6a03;color:#d29922;background:rgba(210,153,34,.08)}
 .doisim-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
 .doisim-note{font-size:11px;color:var(--text3);line-height:1.55;margin-top:8px}
@@ -166,6 +167,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .device-auth-status strong{display:block;color:var(--text);margin-bottom:4px;font-size:14px}
 .device-auth-status.ok{border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.08)}
 .device-auth-status.err{border-color:rgba(248,81,73,.55);background:rgba(248,81,73,.08)}
+.device-auth-status.warn{border-color:rgba(210,153,34,.55);background:rgba(210,153,34,.08)}
 .device-auth-status.loading{border-color:rgba(88,166,255,.55);background:rgba(88,166,255,.08)}
 .device-auth-policy{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 .device-auth-policy span{border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg);font-size:11px;color:var(--text3);display:flex;flex-direction:column;gap:3px}
@@ -6806,7 +6808,7 @@ function deviceAuthSetStatus(kind, title, message) {
     box.innerHTML = `<strong>${escHtml(title || 'Trạng thái')}</strong>${escHtml(message || '')}`;
   }
   if (badge) {
-    badge.className = `doisim-status ${kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : kind === 'loading' ? 'loading' : ''}`;
+    badge.className = `doisim-status ${kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : kind === 'warn' ? 'warn' : kind === 'loading' ? 'loading' : ''}`;
     badge.textContent = title || 'Chưa bắt đầu';
   }
 }
@@ -6857,22 +6859,50 @@ async function deviceAuthExecute() {
     const sinhtracData = data.sinhtrac?.data || {};
     const luuEkycData = data.luu_ekyc?.data || {};
     const xtData = data.xacthuc_hinhanh?.data || {};
+    const xtMsg = String(xtData.message ?? data.xacthuc_hinhanh?.message ?? '');
+    const matchedBy661 = String(data.matched_status_code ?? '') === '661';
     const isXtMatch = Boolean(
+      matchedBy661 ||
       data.face_matched === true ||
-      (data.face_matched !== false && (xtData.is_match === 1 || xtData.Status === 1 || xtMsg.toLowerCase().includes('xác thực thành công') || xtMsg.toLowerCase().includes('không có bản ghi')))
+      String(xtData.is_match ?? '') === '1' ||
+      String(xtData.Status ?? xtData.status ?? '') === '1' ||
+      xtMsg.toLowerCase().includes('xác thực thành công') ||
+      xtMsg.toLowerCase().includes('không có bản ghi')
     );
-    const isSuccess = Boolean(data.ok && isXtMatch);
+    const isSuccess = data.ok === true;
+    const isExplicitMismatch = data.error === 'FACE_MISMATCH';
+    const displayKind = isSuccess ? 'ok' : (isXtMatch ? 'warn' : 'err');
+    const displayColor = isSuccess || isXtMatch ? 'var(--green)' : 'var(--red, #ef4444)';
+    const displayIcon = isSuccess ? '✅' : (isXtMatch ? '🟡' : '❌');
+    const displayTitle = isSuccess
+      ? 'Xác thực đổi thiết bị thành công'
+      : isXtMatch
+        ? 'Khuôn mặt đã khớp; quy trình chưa hoàn tất'
+        : isExplicitMismatch
+          ? 'Khuôn mặt không khớp'
+          : 'OneBSS chưa xác nhận thành công';
+    const faceResultText = isXtMatch
+      ? (matchedBy661 ? 'Đã khớp · mã 661' : (xtData.prob !== undefined ? `Đã khớp · ${xtData.prob}%` : 'Đã khớp'))
+      : (isExplicitMismatch ? 'Không khớp' : 'Chưa có kết luận khớp rõ ràng');
+    const sinhtracResultText = data.sinhtrac_ok === true
+      ? (String(sinhtracData.trang_thai ?? '') === '661' ? 'Thành công · mã 661' : 'Đã xác nhận')
+      : 'Chưa xác nhận thành công';
 
     if (result) {
       result.className = 'device-auth-result show';
       result.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-          <div style="color:${isSuccess ? 'var(--green)' : 'var(--red, #ef4444)'};font-weight:750;font-size:15px">
-            ${isSuccess ? '✅' : '❌'} ${escHtml(serverMessage || (isSuccess ? 'Xác thực đổi thiết bị thành công' : 'Ảnh khuôn mặt không khớp hồ sơ CCBS'))}
+          <div style="color:${displayColor};font-weight:750;font-size:15px">
+            ${displayIcon} ${escHtml(displayTitle)}
           </div>
-          <span style="font-size:11px;padding:3px 8px;border-radius:6px;background:${isSuccess ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)'};color:${isSuccess ? 'var(--green)' : 'var(--red, #ef4444)'};font-weight:600">
-            ${isSuccess ? 'Đã gỡ xác thực' : 'Chưa gỡ xác thực (Lỗi khuôn mặt)'}
+          <span style="font-size:11px;padding:3px 8px;border-radius:6px;background:${isSuccess || isXtMatch ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)'};color:${displayColor};font-weight:600">
+            ${escHtml(faceResultText)}
           </span>
+        </div>
+
+        <div style="padding:10px 12px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);font-size:12px;margin-bottom:12px;line-height:1.5">
+          <div><b>Thông điệp tổng hợp:</b> ${escHtml(serverMessage || '—')}</div>
+          <div><b>Căn cứ kết luận:</b> ${escHtml(data.result_basis || '—')}</div>
         </div>
 
         <!-- Bảng tóm tắt chỉ số -->
@@ -6885,8 +6915,10 @@ async function deviceAuthExecute() {
           <div class="doisim-summary-item"><span>Mã phiên (IDG)</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
           <div class="doisim-summary-item"><span>ID Hồ sơ (OneBSS)</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Tệp lưu OneBSS</span><strong style="word-break:break-all;font-size:11px">${escHtml(file.ten_taptin || file.duong_dan || '—')}</strong></div>
-          <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:var(--green)">${escHtml((sinhtracData.trang_thai ? 'Mã ' + sinhtracData.trang_thai + ' (OK)' : (data.sinhtrac?.message || '—')))}</strong></div>
-          <div class="doisim-summary-item"><span>Khớp mặt CCBS</span><strong style="color:${isXtMatch ? 'var(--green)' : 'var(--red, #ef4444)'}">${escHtml(isXtMatch ? (xtData.prob ? 'Khớp ' + xtData.prob + '%' : 'Đã khớp / Đã duyệt') : (xtData.message || 'Không khớp (is_match: 0)'))}</strong></div>
+          <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:${data.sinhtrac_ok === true ? 'var(--green)' : 'var(--text2)'}">${escHtml(sinhtracResultText)}</strong></div>
+          <div class="doisim-summary-item"><span>Khớp mặt CCBS</span><strong style="color:${isXtMatch ? 'var(--green)' : 'var(--red, #ef4444)'}">${escHtml(faceResultText)}</strong></div>
+          <div class="doisim-summary-item"><span>Mã trạng thái khớp</span><strong>${escHtml(data.matched_status_code ?? '—')}</strong></div>
+          <div class="doisim-summary-item"><span>is_match / Status / trạng_thái</span><strong>${escHtml(`${xtData.is_match ?? '—'} / ${xtData.Status ?? xtData.status ?? '—'} / ${sinhtracData.trang_thai ?? '—'}`)}</strong></div>
         </div>
 
         <!-- Chi tiết tiến trình các API Server đã thực thi -->
@@ -6899,7 +6931,7 @@ async function deviceAuthExecute() {
             </div>
             <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
               <span style="color:var(--text3)">2. AI Liveness & Face Compare:</span>
-              <span style="font-weight:600;color:var(--green)">Người thật (${escHtml(liveness.liveness_prob ?? '0.899')}) · Mắt mở: ${escHtml(liveness.is_eye_open ?? 'yes')}</span>
+              <span style="font-weight:600">Liveness: ${escHtml(liveness.liveness_msg ?? liveness.liveness ?? '—')} · Điểm: ${escHtml(liveness.liveness_prob ?? '—')} · Mắt mở: ${escHtml(liveness.is_eye_open ?? '—')}</span>
             </div>
             <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
               <span style="color:var(--text3)">3. Ghi log eKYC (OneBSS log_ekyc):</span>
@@ -6921,26 +6953,32 @@ async function deviceAuthExecute() {
             </div>
             <div style="display:flex;justify-content:space-between;padding:4px 0">
               <span style="color:var(--text3)">7. Kích hoạt sinh trắc OneBSS (kiemtra_trangthai_sinhtrac):</span>
-              <span style="font-weight:600;color:var(--green)">${escHtml(data.sinhtrac?.message || sinhtracData.message || 'Thực hiện thành công !')}</span>
+              <span style="font-weight:600;color:${data.sinhtrac_ok === true ? 'var(--green)' : 'var(--text2)'}">${escHtml(data.sinhtrac?.message || sinhtracData.message || sinhtracResultText)}</span>
             </div>
           </div>
         </div>
 
-        ${!isSuccess ? `
+        ${!isSuccess && isXtMatch ? `
+          <div style="padding:10px 12px;border-radius:8px;background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);color:var(--orange);font-size:12px;margin-bottom:12px;line-height:1.5">
+            <strong>⚠️ Khuôn mặt đã khớp.</strong> OneBSS chưa xác nhận hoàn tất toàn bộ quy trình; xem phản hồi gốc bên dưới để biết bước còn lại.
+          </div>
+        ` : ''}
+
+        ${!isSuccess && !isXtMatch ? `
           <div style="padding:10px 12px;border-radius:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:var(--red, #ef4444);font-size:12px;margin-bottom:12px;line-height:1.5">
-            <strong>⚠️ Lưu ý quan trọng:</strong> Quy trình eKYC OneBSS đã hoàn tất (Mã 664), nhưng <b>CCBS chưa gỡ khóa</b> vì ảnh chân dung cung cấp không khớp với mặt của chủ thuê bao đã lưu trữ. Cần khuôn mặt chính chủ để CCBS duyệt xóa yêu cầu xác thực.
+            <strong>⚠️ Kết quả chưa thành công:</strong> ${escHtml(serverMessage || data.result_basis || 'OneBSS chưa trả kết luận thành công.')}
           </div>
         ` : ''}
 
         ${data.log_warning ? `<div style="margin-bottom:12px;color:var(--orange);font-size:11px">⚠️ Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}
 
-        <!-- Dropdown xem Raw JSON phản hồi gốc -->
-        <details style="margin-top:8px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--bg3);font-size:11px">
-          <summary style="cursor:pointer;font-weight:600;color:var(--accent)">🔍 Bấm để xem toàn bộ phản hồi JSON thô từ Server</summary>
-          <pre style="margin-top:8px;max-height:220px;overflow:auto;background:var(--bg);padding:10px;border-radius:4px;border:1px solid var(--border);font-family:Consolas,monospace;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(data, null, 2))}</pre>
+        <!-- Luôn mở và hiển thị nguyên vẹn JSON phản hồi, không suy diễn hoặc lược bỏ -->
+        <details open style="margin-top:8px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--bg3);font-size:11px">
+          <summary style="cursor:pointer;font-weight:600;color:var(--accent)">🔍 Toàn bộ phản hồi JSON thô từ Server (đang hiển thị)</summary>
+          <pre style="margin-top:8px;overflow:auto;background:var(--bg);padding:10px;border-radius:4px;border:1px solid var(--border);font-family:Consolas,monospace;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(data, null, 2))}</pre>
         </details>`;
     }
-    deviceAuthSetStatus(isSuccess ? 'ok' : 'err', isSuccess ? 'Thành công' : 'Chưa khớp khuôn mặt', serverMessage);
+    deviceAuthSetStatus(displayKind, displayTitle, serverMessage || data.result_basis || '');
     showToast(serverMessage || serverCode || String(serverError));
   } catch (error) {
     deviceAuthSetStatus('err', 'Xác thực thất bại', error?.message || String(error));
