@@ -2423,6 +2423,9 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     """Thực hiện trọn gói luồng xác thực đổi thiết bị với Liveness 0.89 không cần bật camera."""
     phone = _device_auth_normalize_phone(phone_raw)
 
+    # 0. Luôn đảm bảo đã kiểm tra hoặc tải lưu ảnh chân dung vào folder 'anh' trước khi kiểm tra trạng thái
+    portrait_bytes = _device_auth_fetch_portrait(phone, account_id, custom_bytes)
+
     # Trạng thái 661 đã là "khớp". Kiểm tra trước để không tạo lại phiên eKYC
     # hoặc gửi thêm ảnh/hash cho một thuê bao đã hoàn tất.
     precheck_sinhtrac = {}
