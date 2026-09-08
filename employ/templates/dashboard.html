@@ -6864,10 +6864,7 @@ async function deviceAuthExecute() {
     const isXtMatch = Boolean(
       matchedBy661 ||
       data.face_matched === true ||
-      String(xtData.is_match ?? '') === '1' ||
-      String(xtData.Status ?? xtData.status ?? '') === '1' ||
-      xtMsg.toLowerCase().includes('xác thực thành công') ||
-      xtMsg.toLowerCase().includes('không có bản ghi')
+      String(xtData.is_match ?? '') === '1'
     );
     const isSuccess = data.ok === true;
     const isExplicitMismatch = data.error === 'FACE_MISMATCH';
@@ -6917,6 +6914,7 @@ async function deviceAuthExecute() {
           <div class="doisim-summary-item"><span>Tệp lưu OneBSS</span><strong style="word-break:break-all;font-size:11px">${escHtml(file.ten_taptin || file.duong_dan || '—')}</strong></div>
           <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:${data.sinhtrac_ok === true ? 'var(--green)' : 'var(--text2)'}">${escHtml(sinhtracResultText)}</strong></div>
           <div class="doisim-summary-item"><span>Khớp mặt CCBS</span><strong style="color:${isXtMatch ? 'var(--green)' : 'var(--red, #ef4444)'}">${escHtml(faceResultText)}</strong></div>
+          <div class="doisim-summary-item"><span>Trạng thái trước khi chạy</span><strong>${escHtml(data.initial_status_code || '—')}</strong></div>
           <div class="doisim-summary-item"><span>Mã trạng thái khớp</span><strong>${escHtml(data.matched_status_code ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>is_match / Status / trạng_thái</span><strong>${escHtml(`${xtData.is_match ?? '—'} / ${xtData.Status ?? xtData.status ?? '—'} / ${sinhtracData.trang_thai ?? '—'}`)}</strong></div>
         </div>
