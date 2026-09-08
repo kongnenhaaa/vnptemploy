@@ -2309,13 +2309,67 @@ def _device_auth_crop_face_from_id_card(image_bytes):
         return image_bytes
 
 
+def _device_auth_get_portrait_cache_dirs():
+    """Danh sách các thư mục folder 'anh' được ưu tiên tìm kiếm và lưu trữ."""
+    dirs = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'anh'),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'anh'),
+    ]
+    return dirs
+
+
+def _device_auth_get_cached_portrait(phone_fmt, phone_84):
+    """Kiểm tra xem ảnh sdt.jpg đã có trong folder 'anh' chưa. Có thì đọc luôn, không tải lại."""
+    candidate_names = [
+        f"{phone_fmt}.jpg", f"{phone_fmt}.jpeg", f"{phone_fmt}.png",
+        f"{phone_84}.jpg", f"{phone_84}.jpeg", f"{phone_84}.png",
+    ]
+    for d in _device_auth_get_portrait_cache_dirs():
+        if not os.path.isdir(d):
+            continue
+        for name in candidate_names:
+            file_path = os.path.join(d, name)
+            if os.path.isfile(file_path) and os.path.getsize(file_path) > 2048:
+                try:
+                    with open(file_path, 'rb') as f:
+                        cached_bytes = f.read()
+                    if len(cached_bytes) > 2048:
+                        print(f"[CACHE] Tìm thấy ảnh có sẵn trên máy: {file_path} ({len(cached_bytes)} bytes), không cần tải lại.")
+                        return cached_bytes
+                except Exception as exc:
+                    print(f"[CACHE] Lỗi đọc cache từ {file_path}: {exc}")
+    return None
+
+
+def _device_auth_save_cached_portrait(phone_fmt, image_bytes):
+    """Lưu ảnh chân dung vừa tải về vào folder 'anh' với tên {sdt}.jpg để tái sử dụng."""
+    if not image_bytes or len(image_bytes) <= 2048:
+        return
+    for d in _device_auth_get_portrait_cache_dirs():
+        try:
+            os.makedirs(d, exist_ok=True)
+            file_path = os.path.join(d, f"{phone_fmt}.jpg")
+            with open(file_path, 'wb') as f:
+                f.write(image_bytes)
+            print(f"[CACHE] Đã lưu ảnh thuê bao vào folder: {file_path}")
+        except Exception as exc:
+            print(f"[CACHE] Lỗi lưu ảnh vào {d}: {exc}")
+
+
 def _device_auth_fetch_portrait(phone_84, account_id, custom_bytes=None):
-    """Tự động tải ảnh chân dung thuê bao từ OneBSS (ưu tiên tuyệt đối type 3 - chân dung khách hàng)."""
+    """Tự động tải ảnh chân dung thuê bao: kiểm tra cache sdt.jpg trong folder 'anh' trước, nếu chưa có mới tải từ OneBSS."""
     if custom_bytes and len(custom_bytes) > 2048:
         return custom_bytes
 
     phone_fmt = '0' + phone_84[2:] if phone_84.startswith('84') else phone_84
-    # Tra cứu ảnh thuê bao từ ONEBSS (thử cả đầu 0xx và 84xx, kèm retry nếu CCBS chập chờn)
+
+    # 1. Kiểm tra ảnh đã có sẵn trong folder 'anh' trên máy chưa
+    cached_bytes = _device_auth_get_cached_portrait(phone_fmt, phone_84)
+    if cached_bytes:
+        return cached_bytes
+
+    # 2. Nếu chưa có trong folder 'anh', tiến hành gọi OneBSS/CCBS để tải ảnh
+    print(f"[CACHE] Chưa có ảnh trong folder 'anh' cho số {phone_fmt}, tiến hành tải từ OneBSS/CCBS...")
     for test_num in (phone_fmt, phone_84):
         for retry in range(3):
             try:
@@ -2331,7 +2385,30 @@ def _device_auth_fetch_portrait(phone_84, account_id, custom_bytes=None):
                     if type3_img:
                         raw = _device_auth_extract_image_bytes(type3_img, account_id)
                         if raw:
+                            _device_auth_save_cached_portrait(phone_fmt, raw)
                             return raw
+
+                    # 2. Ưu tiên số 2: Record thứ 3 (chuẩn lưu trữ CCBS index 2)
+                    if len(images) >= 3 and isinstance(images[2], dict):
+                        raw = _device_auth_extract_image_bytes(images[2], account_id)
+                        if raw:
+                            _device_auth_save_cached_portrait(phone_fmt, raw)
+                            return raw
+
+                    # 3. Fallback: Nếu không có ảnh chân dung type 3, crop mặt từ ảnh CCCD (type 1)
+                    for img in images:
+                        if isinstance(img, dict) and str(img.get('type', '')).strip() in ('1', 'cmt', 'cccd', 'front'):
+                            raw = _device_auth_extract_image_bytes(img, account_id)
+                            if raw:
+                                cropped = _device_auth_crop_face_from_id_card(raw)
+                                _device_auth_save_cached_portrait(phone_fmt, cropped)
+                                return cropped
+
+                    # 4. Item cuối cùng
+                    raw = _device_auth_extract_image_bytes(images[-1], account_id)
+                    if raw:
+                        _device_auth_save_cached_portrait(phone_fmt, raw)
+                        return raw
 
                 break
             except Exception:
