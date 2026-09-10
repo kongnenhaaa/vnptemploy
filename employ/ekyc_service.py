@@ -38,6 +38,13 @@ MYVNPT_BASE    = "https://api-myvnpt.vnpt.vn"
 IDG_BASE       = "https://api.idg.vnpt.vn"
 ONEBSS_BASE    = "https://api-onebss.vnpt.vn"
 IV_ZEROS       = bytes(16)
+APP_VERSION    = "1.5.41.086"
+
+
+def set_app_version(version: str) -> None:
+    """Keep eKYC OneBSS calls aligned with the runtime-configured app version."""
+    global APP_VERSION
+    APP_VERSION = str(version or APP_VERSION).strip()
 
 # Bearer token cứng (từ APK)
 _BEARER_TOKEN  = "Bearer a60bd62fed0cf1076e93af76114f196bd9c5a48155b2bac88afe15c49595414b"
@@ -151,7 +158,7 @@ def fetch_face_from_onebss(phone_fmt: str, onebss_token: str, device_id: str = "
     _di = {
         "device_id": device_id, "device_ip": "Unknown", "device_name": "Web-Browser",
         "mac_address": "Unknown", "mobile_id": "web-generated-id",
-        "app_id": "1", "app_version": "1.5.41.007", "os_version": "Android"
+        "app_id": "1", "app_version": APP_VERSION, "os_version": "Android"
     }
     app_secret = base64.b64encode(json.dumps(_di, separators=(",", ":")).encode()).decode()
     hdrs = {

@@ -359,18 +359,64 @@ def get_saved_employee_account(account_id):
                  if a.get('id') == account_id), None)
 
 # ─── CONFIG (Dynamic) ───────────────────────
-BASE_URL      = 'https://api-onebss.vnpt.vn'
+BASE_URL = 'https://api-onebss.vnpt.vn'
+DEFAULT_APP_VERSION = '1.5.41.086'
+APP_SETTINGS_FILE = os.path.join(_credential_root, 'app_settings.json')
+_app_settings_lock = threading.RLock()
+
+
+def _normalize_app_version(value):
+    """Accept the four-part OneBSS app version shown on the download page."""
+    version = str(value or '').strip()
+    if not re.fullmatch(r'\d{1,4}(?:\.\d{1,4}){3}', version):
+        raise ValueError('APP_VERSION không hợp lệ. Ví dụ: 1.5.41.086')
+    return version
+
+
+def _load_saved_app_version():
+    try:
+        with _app_settings_lock:
+            with open(APP_SETTINGS_FILE, 'r', encoding='utf-8') as settings_file:
+                settings = json.load(settings_file)
+        return _normalize_app_version(settings.get('app_version'))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return DEFAULT_APP_VERSION
+
+
+def _save_app_version(version):
+    """Persist APP_VERSION outside the EXE so upgrades keep the user's value."""
+    version = _normalize_app_version(version)
+    os.makedirs(_credential_root, exist_ok=True)
+    temp_file = f'{APP_SETTINGS_FILE}.{os.getpid()}.tmp'
+    payload = {'app_version': version, 'updated_at': int(time.time())}
+    with _app_settings_lock:
+        try:
+            with open(temp_file, 'w', encoding='utf-8') as settings_file:
+                json.dump(payload, settings_file, ensure_ascii=False, indent=2)
+            os.replace(temp_file, APP_SETTINGS_FILE)
+        finally:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except OSError:
+                pass
+    return version
+
+
 APP_CFG = {
     'CLIENT_ID': 'clientapp',
     'CLIENT_SECRET': 'password',
     'MENU_ID': 810241,
     'SELECTED_MENU': '810241',
-    'APP_VERSION': '1.5.41.007'
+    'APP_VERSION': _load_saved_app_version()
 }
+
+if EKYC_AVAILABLE and hasattr(_ekyc, 'set_app_version'):
+    _ekyc.set_app_version(APP_CFG['APP_VERSION'])
 
 # IDG Token-id / Token-key (từ upload_mobile.js)
 IDG_TOKEN_ID  = '04c0a953-7fb8-5461-e063-62199f0aeda6'
-IDG_TOKEN_KEY = 'MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAKjy7FK9SegSCW0cuUIbEDUsbRZOCoxijNPLMfvgX+8/XA7HebHXMN4/PO5c5mwK31Yk31RKuMXYLLp6X6oZPDKcAwEAAQ=='
+IDG_TOKEN_KEY = 'MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAKjy7FK9SegSCW0cuUIbEDUsbRZOCoxijNPLMfvgX+8/XA7HebHXMN4/PO5c5mwK3lYk3lRKuMXYLLp6X6oZPDkCAwEAAQ=='
 
 # ─────────────────────────────────────────────────────────────
 #  Parser
@@ -925,21 +971,32 @@ def index():
     return redirect(url_for('login'))
 
 @app.route('/settings/update', methods=['POST'])
+@login_required
 def update_settings():
     data = request.get_json(silent=True) or {}
     APP_CFG['CLIENT_ID'] = data.get('client_id', APP_CFG['CLIENT_ID'])
     APP_CFG['CLIENT_SECRET'] = data.get('client_secret', APP_CFG['CLIENT_SECRET'])
     APP_CFG['SELECTED_MENU'] = data.get('selected_menu', APP_CFG['SELECTED_MENU'])
     APP_CFG['MENU_ID'] = int(APP_CFG['SELECTED_MENU']) if str(APP_CFG['SELECTED_MENU']).isdigit() else APP_CFG['MENU_ID']
-    requested_version = str(data.get('app_version') or APP_CFG['APP_VERSION']).strip()
+    try:
+        requested_version = _save_app_version(
+            data.get('app_version', APP_CFG['APP_VERSION']))
+    except (OSError, ValueError) as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
     APP_CFG['APP_VERSION'] = requested_version
+    if EKYC_AVAILABLE and hasattr(_ekyc, 'set_app_version'):
+        _ekyc.set_app_version(requested_version)
     
     # Đồng bộ session active_menu_id nếu người dùng lưu cài đặt
     session['active_menu_id'] = APP_CFG['SELECTED_MENU']
     current_app_secret()
     _save_persistent_session()
     
-    return jsonify({'ok': True, 'msg': 'Đã cập nhật cài đặt!'})
+    return jsonify({
+        'ok': True,
+        'msg': f'Đã lưu APP_VERSION {requested_version}',
+        'app_version': requested_version,
+    })
 
 def _render_login():
     return render_template(
@@ -1982,8 +2039,11 @@ def _device_auth_access_token(payload):
 
 
 def _device_auth_sdk_settings(app_config_payload):
-    domain = str(_device_auth_find_value(
-        app_config_payload, ('domain_ekyc', 'eKycDomain', 'ekyc_domain')) or
+    data = app_config_payload.get('data', {}) if isinstance(app_config_payload, dict) else {}
+    sdkconfig = data.get('sdkconfig', {}) if isinstance(data, dict) else {}
+    domain = str(
+        sdkconfig.get('domain_ekyc') or
+        _device_auth_find_value(app_config_payload, ('domain_ekyc', 'eKycDomain', 'ekyc_domain')) or
         DEVICE_AUTH_IDG_BASE).strip()
     if not domain.lower().startswith(('http://', 'https://')):
         domain = 'https://' + domain.lstrip('/')
@@ -1992,14 +2052,17 @@ def _device_auth_sdk_settings(app_config_payload):
         raise DeviceAuthError('Domain eKYC trong cấu hình không hợp lệ', 502)
     return {
         'base_url': domain.rstrip('/'),
-        'token_id': str(_device_auth_find_value(
-            app_config_payload, ('token_id_ekyc', 'eKycTokenId')) or
+        'token_id': str(
+            sdkconfig.get('token_id_ekyc') or
+            _device_auth_find_value(app_config_payload, ('token_id_ekyc', 'eKycTokenId')) or
             IDG_TOKEN_ID).strip(),
-        'token_key': str(_device_auth_find_value(
-            app_config_payload, ('token_key_ekyc', 'eKycTokenKey')) or
+        'token_key': str(
+            sdkconfig.get('token_key_ekyc') or
+            _device_auth_find_value(app_config_payload, ('token_key_ekyc', 'eKycTokenKey')) or
             IDG_TOKEN_KEY).strip(),
-        'challenge_code': str(_device_auth_find_value(
-            app_config_payload, ('ekyc_challengecode', 'eChallengecode',
+        'challenge_code': str(
+            sdkconfig.get('ekyc_challengecode') or
+            _device_auth_find_value(app_config_payload, ('ekyc_challengecode', 'eChallengecode',
                                  'challengeCode', 'challenge_code')) or
             DEVICE_AUTH_CHALLENGE_FALLBACK).strip(),
     }
@@ -2309,6 +2372,29 @@ def _device_auth_crop_face_from_id_card(image_bytes):
         return image_bytes
 
 
+def _device_auth_clean_and_crop_portrait(image_bytes):
+    """Cắt 15% phần trên cùng của ảnh chân dung để loại bỏ watermark/timestamp và chuẩn hóa JPEG."""
+    if not image_bytes or len(image_bytes) < 100:
+        return image_bytes
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+        # Nếu ảnh dọc có chiều cao lớn (chứa timestamp watermark góc trên), cắt 15% phía trên
+        crop_y = int(h * 0.15) if h > w else 0
+        if crop_y > 0:
+            cropped = img.crop((0, crop_y, w, h))
+        else:
+            cropped = img
+        buf = io.BytesIO()
+        cropped.save(buf, format='JPEG', quality=95)
+        return buf.getvalue()
+    except Exception as exc:
+        print(f"[CROP] Lỗi cắt ảnh chân dung: {exc}, giữ nguyên ảnh gốc")
+        return image_bytes
+
+
 def _device_auth_get_portrait_cache_dirs():
     """Danh sách các thư mục folder 'anh' được ưu tiên tìm kiếm và lưu trữ."""
     dirs = [
@@ -2520,24 +2606,35 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
 
     # 1. Lấy / chuẩn bị ảnh chân dung (tự tải từ OneBSS hoặc dùng ảnh hợp lệ)
     portrait_bytes = _device_auth_fetch_portrait(phone, account_id, custom_bytes)
+    # Cắt watermark 15% trên cùng để ảnh chân dung sạch, IDG AI nhận diện khuôn mặt chuẩn xác
+    clean_portrait = _device_auth_clean_and_crop_portrait(portrait_bytes)
 
-    # 2. Upload đúng một lần ảnh chân dung lên IDG. Zone lưu trữ không phải
-    # tín hiệu để lặp upload; lặp nhiều lần chỉ tạo hash rác và tăng tải server.
+    # 2. Upload ảnh chân dung lên IDG (lặp tối đa 5 lần để đảm bảo vào zone2 hoặc zone3 tương thích CCBS)
     image_hash = ""
-    try:
-        uploaded = requests.post(
-            f"{sdk_settings['base_url']}/file-service/v1/addFile",
-            headers=headers,
-            files={'file': ('portrait_full.jpg', portrait_bytes, 'image/jpeg')},
-            data={'title': 'portrait_full.jpg', 'description': 'portrait_full.jpg'},
-            timeout=35)
-        upload_payload = _device_auth_json(uploaded, 'Dịch vụ upload eKYC')
-        upload_object = _device_auth_result_object(upload_payload)
-        image_hash = str(upload_object.get('hash') or '').strip()
-    except DeviceAuthError:
-        raise
-    except Exception as exc:
-        raise DeviceAuthError(f'Không upload được ảnh chân dung lên IDG: {exc}', 502) from exc
+    for add_try in range(1, 6):
+        try:
+            uploaded = requests.post(
+                f"{sdk_settings['base_url']}/file-service/v1/addFile",
+                headers=headers,
+                files={'file': ('portrait_full.jpg', clean_portrait, 'image/jpeg')},
+                data={'title': 'portrait_full.jpg', 'description': 'portrait_full.jpg'},
+                timeout=35)
+            upload_payload = _device_auth_json(uploaded, 'Dịch vụ upload eKYC')
+            upload_object = _device_auth_result_object(upload_payload)
+            h = str(upload_object.get('hash') or '').strip()
+            if h:
+                image_hash = h
+                zone = h.split('/')[0] if '/' in h else ''
+                if zone in ('zone2', 'zone3') or add_try >= 5:
+                    break
+                time.sleep(0.3)
+        except DeviceAuthError:
+            if add_try >= 5:
+                raise
+        except Exception as exc:
+            if add_try >= 5:
+                raise DeviceAuthError(f'Không upload được ảnh chân dung lên IDG: {exc}', 502) from exc
+            time.sleep(0.3)
     if not image_hash:
         raise DeviceAuthError('IDG không trả hash ảnh chân dung; dừng để tránh dùng hash dự phòng sai người/khác phiên.', 502)
 
@@ -2643,7 +2740,7 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
         log_warning = _device_auth_upstream_message(exc.upstream, str(exc))
 
     # 6. Upload ảnh lên kho hồ sơ OneBSS
-    file_upload_response = _device_auth_upload_to_onebss(portrait_bytes, account_id)
+    file_upload_response = _device_auth_upload_to_onebss(clean_portrait, account_id)
     file_data = file_upload_response.get('data') if isinstance(file_upload_response, dict) else None
 
     # 7. Gắn Ekyc Request ID vào hồ sơ CCBS (để hệ thống ghi nhận phiên eKYC hợp lệ)
@@ -2664,10 +2761,9 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     # 8. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
     xacthuc_response = {}
     xacthuc_attempts = []
-    # Endpoint này chấp nhận chuẩn 84xxxxxxxxx. Chỉ gửi hash vừa upload của
-    # đúng ảnh type 3; không thử lại đầu 0 và không dùng hash tĩnh dự phòng.
+    # Thử số điện thoại chuẩn 84xxxxxxxxx trước; nếu lỗi thì tự động thử lại dạng 0xxxxxxxxx
     for h in (image_hash,):
-        for num in (phone,):
+        for num in (phone, phone_0):
             try:
                 xt_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
                     'p_so_tb': num,
