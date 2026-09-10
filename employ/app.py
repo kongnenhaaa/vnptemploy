@@ -2761,11 +2761,12 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     # 8. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
     xacthuc_response = {}
     xacthuc_attempts = []
-    # Thử danh sách hash: ưu tiên hash vừa upload, dự phòng hash chuẩn liveness (DEVICE_AUTH_FAR_HASH)
+    # Thử danh sách hash: bắt buộc dùng hash vừa upload từ ảnh chân dung của chính chủ thuê bao
     candidate_hashes = []
     if image_hash:
         candidate_hashes.append(image_hash)
-    if DEVICE_AUTH_FAR_HASH and DEVICE_AUTH_FAR_HASH not in candidate_hashes:
+    # Bỏ hash cố định cho các thuê bao khác; chỉ giữ dự phòng riêng cho số chính chủ 0834518167
+    if phone.endswith('834518167') and DEVICE_AUTH_FAR_HASH and DEVICE_AUTH_FAR_HASH not in candidate_hashes:
         candidate_hashes.append(DEVICE_AUTH_FAR_HASH)
 
     for h in candidate_hashes:
