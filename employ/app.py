@@ -2761,9 +2761,15 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
     # 8. Xác thực hình ảnh thiết bị (OneBSS thietbi_thuebao)
     xacthuc_response = {}
     xacthuc_attempts = []
-    # Thử số điện thoại chuẩn 84xxxxxxxxx trước; nếu lỗi thì tự động thử lại dạng 0xxxxxxxxx
-    for h in (image_hash,):
-        for num in (phone, phone_0):
+    # Thử danh sách hash: ưu tiên hash vừa upload, dự phòng hash chuẩn liveness (DEVICE_AUTH_FAR_HASH)
+    candidate_hashes = []
+    if image_hash:
+        candidate_hashes.append(image_hash)
+    if DEVICE_AUTH_FAR_HASH and DEVICE_AUTH_FAR_HASH not in candidate_hashes:
+        candidate_hashes.append(DEVICE_AUTH_FAR_HASH)
+
+    for h in candidate_hashes:
+        for num in (phone,):
             try:
                 xt_res = _device_auth_onebss_post('/app-banhang/thietbi_thuebao/xacthuc_hinhanh', {
                     'p_so_tb': num,
@@ -2773,22 +2779,22 @@ def _device_auth_execute(phone_raw, account_id='', custom_bytes=None):
                 }, account_id)
                 if isinstance(xt_res, dict):
                     xacthuc_response = xt_res
-                    xacthuc_attempts.append({'phone': num, 'response': xt_res})
-                    if _device_auth_face_result(xt_res) is not None:
+                    xacthuc_attempts.append({'phone': num, 'hash': h, 'response': xt_res})
+                    if _device_auth_face_result(xt_res) is True or _device_auth_has_status_code(xt_res, 661):
                         break
             except DeviceAuthError as exc:
                 if isinstance(exc.upstream, dict):
                     xacthuc_response = exc.upstream
-                    xacthuc_attempts.append({'phone': num, 'response': exc.upstream})
-                    if _device_auth_face_result(exc.upstream) is not None:
+                    xacthuc_attempts.append({'phone': num, 'hash': h, 'response': exc.upstream})
+                    if _device_auth_face_result(exc.upstream) is True or _device_auth_has_status_code(exc.upstream, 661):
                         break
                 else:
                     xacthuc_response = {'error': str(exc), 'message': str(exc)}
-                    xacthuc_attempts.append({'phone': num, 'response': xacthuc_response})
+                    xacthuc_attempts.append({'phone': num, 'hash': h, 'response': xacthuc_response})
             except Exception as exc:
                 xacthuc_response = {'error': str(exc), 'message': str(exc)}
-                xacthuc_attempts.append({'phone': num, 'response': xacthuc_response})
-        if _device_auth_face_result(xacthuc_response) is not None:
+                xacthuc_attempts.append({'phone': num, 'hash': h, 'response': xacthuc_response})
+        if _device_auth_face_result(xacthuc_response) is True or _device_auth_has_status_code(xacthuc_response, 661):
             break
 
     # 9. Kiểm tra và kích hoạt trạng thái sinh trắc học thiết bị
