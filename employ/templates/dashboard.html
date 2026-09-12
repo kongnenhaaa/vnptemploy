@@ -156,7 +156,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .icoc-device-help{font-size:11px;color:var(--text3);line-height:1.5;margin-top:6px}
 @media(max-width:700px){.icoc-device-grid{grid-template-columns:1fr}}
 
-/* ── Xác thực đổi thiết bị tự động (eKYC Liveness 0.89) ── */
+/* ── Xác thực đổi thiết bị (OneBSS / IDG eKYC) ── */
 .device-auth-card{max-width:860px}
 .device-auth-layout{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
 .device-auth-form{display:grid;gap:14px;background:var(--bg3);padding:18px;border-radius:12px;border:1px solid var(--border)}
@@ -1269,7 +1269,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               </div>
               <div id="sim-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input/output cố định...</div>
               <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">
-                SĐT trong Excel nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84 và tự chuẩn hóa về đầu 84. Mỗi tài khoản chạy một luồng tuần tự riêng và chờ 1,5 giây giữa API cùng tài khoản; các tài khoản khác nhau chạy độc lập. File được chọn sẽ chạy thật: tạo đơn, ghi thông tin khách hàng/địa chỉ do luồng batch sinh từ danh mục OneBSS, trừ Ví VNPT Pay, kiểm tra serial và khởi tạo thuê bao; chỉ chạy dữ liệu đã được phép.
+                SĐT trong Excel nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84 và tự chuẩn hóa về đầu 84. Mỗi tài khoản chạy một luồng tuần tự riêng và chờ 1,5 giây giữa API cùng tài khoản; các tài khoản khác nhau chạy độc lập. Lỗi của một SĐT chỉ được ghi vào kết quả, luồng vẫn tự chạy SĐT kế tiếp và chỉ dừng khi bấm “Dừng chạy”. File được chọn sẽ chạy thật: tạo đơn, ghi thông tin khách hàng/địa chỉ do luồng batch sinh từ danh mục OneBSS, trừ Ví VNPT Pay, kiểm tra serial và khởi tạo thuê bao; chỉ chạy dữ liệu đã được phép.
               </div>
               <div id="sim-batch-progress" style="display:none;margin-top:12px">
                 <div style="height:7px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="sim-batch-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#4ade80);transition:width .2s"></div></div>
@@ -1968,7 +1968,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
         </div>
       </div>
 
-      <!-- ══ XÁC THỰC ĐỔI THIẾT BỊ (eKYC AUTO) ══ -->
+      <!-- ══ XÁC THỰC ĐỔI THIẾT BỊ (VNPT eKYC SDK) ══ -->
       <div class="panel" id="panel-deviceauth">
         <div class="section-header">
           <div>
@@ -1977,7 +1977,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
         </div>
         <div class="card device-auth-card">
           <div class="card-header">
-            <h3><span class="method POST">AUTO</span> eKYC · Menu 810241</h3>
+            <h3><span class="method POST">SDK</span> eKYC · Menu 810241</h3>
             <span id="device-auth-header-badge" class="doisim-status">Chưa bắt đầu</span>
           </div>
           <div class="card-body">
@@ -1989,7 +1989,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                     <input id="device-auth-phone" type="tel" inputmode="numeric" style="flex:1;font-size:15px;font-weight:600"
                            autocomplete="off" placeholder="Ví dụ: 0846216326 hoặc 84846216326" onkeydown="if(event.key==='Enter')deviceAuthExecute()">
                     <button id="device-auth-start-btn" class="btn-primary" type="button" onclick="deviceAuthExecute()" style="padding:10px 22px;font-size:13px;font-weight:700">
-                      🚀 Xác thực ngay
+                      🔎 Kiểm tra / hoàn tất
                     </button>
                   </div>
                 </div>
@@ -1998,13 +1998,13 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               <div class="device-auth-side">
                 <div id="device-auth-status" class="device-auth-status">
                   <strong>Trạng thái</strong>
-                  Sẵn sàng xác thực đổi thiết bị. Nhập SĐT và bấm “Xác thực ngay”.
+                  Nhập SĐT để đọc trạng thái OneBSS. Nếu chưa có mã 661, cần hoàn tất phiên chụp trực tiếp bằng VNPT eKYC SDK.
                 </div>
                 <div id="device-auth-policy" class="device-auth-policy">
-                  <span>Liveness<b>Bypass (0.89)</b></span>
-                  <span>Mắt mở<b>Bắt buộc (1)</b></span>
-                  <span>Che mặt<b>Không (0)</b></span>
-                  <span>AI<b>Đạt (1)</b></span>
+                  <span>Liveness<b>Server quyết định</b></span>
+                  <span>Mắt mở<b>Theo OneBSS</b></span>
+                  <span>Che mặt<b>Theo OneBSS</b></span>
+                  <span>Kết quả<b>Theo phản hồi API</b></span>
                 </div>
               </div>
             </div>
@@ -2103,7 +2103,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               <button id="icoc-batch-copy-btn" type="button" class="btn-sm" style="display:none" onclick="icocBatchCopyTable()">Copy bảng kết quả</button>
             </div>
             <div id="icoc-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input/output cố định...</div>
-            <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">Chọn ít nhất một chiều cần đổi. Mỗi tài khoản xử lý một luồng tuần tự riêng với delay tối thiểu 2 giây; các tài khoản khác nhau chạy độc lập. Hệ thống tra cứu trạng thái trước, bỏ qua khi không cần đổi và xác minh lại sau thay đổi.</div>
+            <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">Chọn ít nhất một chiều cần đổi. Mỗi tài khoản xử lý một luồng tuần tự riêng với delay tối thiểu 2 giây; các tài khoản khác nhau chạy độc lập. Hệ thống tra cứu trạng thái trước, bỏ qua khi không cần đổi và xác minh lại sau thay đổi. Một SĐT lỗi chỉ bị ghi lỗi riêng; hàng đợi vẫn tự chạy SĐT kế tiếp và chỉ dừng khi bấm “Dừng chạy”.</div>
             <div id="icoc-batch-progress" style="display:none;margin-top:12px"><div style="height:7px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="icoc-batch-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#bc8cff);transition:width .2s"></div></div><div id="icoc-batch-status" style="margin-top:7px;color:var(--text2);font-size:12px">Chưa chạy</div></div>
             <div id="icoc-batch-table" style="display:none;margin-top:12px"></div>
           </div>
@@ -3584,7 +3584,11 @@ function simExtractOptions(response, idKeys, nameKeys) {
     // Danh mục địa bàn OneBSS thường trả PARENT_ID/PARENT_NAME. Giữ lại
     // metadata này để batch không lấy nhầm dữ liệu của quận/phường khác.
     parentId: String(simValue(row, ['PARENT_ID','parent_id','parentId','ID_CHA','id_cha']) || '').trim(),
-    parentName: String(simValue(row, ['PARENT_NAME','parent_name','parentName','TEN_CHA','ten_cha']) || '').trim()
+    parentName: String(simValue(row, ['PARENT_NAME','parent_name','parentName','TEN_CHA','ten_cha']) || '').trim(),
+    // Catalog của OneBSS có thể không trả PARENT_ID nhưng vẫn trả PARAM đã
+    // dùng để scope danh mục (ví dụ 28;<districtId>). Giữ lại để batch xác
+    // minh đúng phạm vi thay vì loại nhầm toàn bộ Phường/Xã hợp lệ.
+    param: String(simValue(row, ['PARAM','param','PARAM_CUSTOMIZE','param_customize']) || '').trim()
   })).filter(option => {
     if (!option.id || seen.has(option.id)) return false;
     seen.add(option.id);
@@ -5360,20 +5364,17 @@ async function simBatchRunLegacyExcel() {
       // wallet/order calls for that account ordered while selected accounts
       // still run in parallel through the outer Promise.all.
       for (let index = 0; index < queue.length; index++) {
-        if (simBatchState.stopRequested || shared.stopRequested) break;
+        if (simBatchState.stopRequested) break;
         const row = queue[index];
+        let nextDelaySeconds = simBatchState.delaySeconds;
         row.status = 'running';
         row.stage = 'Bắt đầu';
+        simBatchSetAccountStatus(account.id, `Đang chạy ${row.msisdn}...`);
         simBatchRenderTable();
         simBatchSetProgress(done, simBatchState.rows.length, ok, failed,
           `${account.username} · ${row.msisdn}`);
         try {
-          try {
-            await simBatchEnsureAccountFresh(account);
-          } catch (refreshError) {
-            refreshError.stopAccount = true;
-            throw refreshError;
-          }
+          await simBatchEnsureAccountFresh(account);
           const result = await simBatchProcessRow(row, shared);
           row.status = 'success';
           row.stage = 'Hoàn tất';
@@ -5387,16 +5388,15 @@ async function simBatchRunLegacyExcel() {
             : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo' : 'Lỗi');
           const order = error.batchOrderId ? ` | Đơn ${error.batchOrderId}` : '';
           row.result = `${prefix}${order} | ${row.stage}: ${error.message}`;
-          if (error.stopAccount) {
-            shared.stopRequested = true;
-            simBatchSetAccountStatus(account.id, `Đã dừng cấp việc: ${error.message}`, true);
-          }
+          if (Number(error.status || 0) === 401) account.expiresAt = 0;
+          nextDelaySeconds = Math.max(nextDelaySeconds, Number(error.retryAfter || 0));
+          simBatchSetAccountStatus(account.id, `Lỗi ${row.msisdn}; vẫn tiếp tục số kế tiếp`, true);
           finishRow(row, false);
         }
-        if (index < queue.length - 1 && !simBatchState.stopRequested && !shared.stopRequested) {
+        if (index < queue.length - 1 && !simBatchState.stopRequested) {
           const shouldContinue = await simBatchWaitDelay(
-            simBatchState.delaySeconds,
-            () => simBatchState.stopRequested || shared.stopRequested,
+            nextDelaySeconds,
+            () => simBatchState.stopRequested,
             remaining => simBatchSetStatus(`${account.username} chờ ${remaining}s trước số tiếp theo`)
           );
           if (!shouldContinue) break;
@@ -5405,12 +5405,11 @@ async function simBatchRunLegacyExcel() {
     }));
 
     simBatchState.rows.filter(row => row.valid && row.status === 'pending').forEach(row => {
-      const shared = simBatchState.accountContexts.get(row.accountId);
       row.status = 'stopped';
       row.stage = 'Chưa chạy';
       row.result = simBatchState.stopRequested
         ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : `Chưa chạy: tài khoản ${row.user} đã dừng cấp việc${shared?.stopRequested ? ' do lỗi/số dư' : ''}`;
+        : `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
       finishRow(row, false);
     });
   } catch (error) {
@@ -5465,6 +5464,7 @@ async function simBatchRunTwoPhase() {
   let ok = 0;
   let failed = done;
   let notFound = simBatchState.rows.filter(row => row.bucket === 'not_found').length;
+  let lookupFailed = simBatchState.rows.filter(row => row.bucket === 'lookup_error').length;
   let assignmentFailed = 0;
 
   const finishRow = (row, success) => {
@@ -5482,6 +5482,16 @@ async function simBatchRunTwoPhase() {
     row.original[1] = '';
     row.result = `Lỗi | ${row.stage}: ${message}`;
     notFound++;
+    finishRow(row, false);
+  };
+  const failLookup = (row, message) => {
+    row.status = 'error';
+    row.stage = 'Lỗi tra kho';
+    row.bucket = 'lookup_error';
+    row.serial = '';
+    row.original[1] = '';
+    row.result = `LỖI TRA KHO | ${message}`;
+    lookupFailed++;
     finishRow(row, false);
   };
   const failAssignment = (row, message, stage='Gán serial') => {
@@ -5531,7 +5541,8 @@ async function simBatchRunTwoPhase() {
             row.stage = 'Đã tìm thấy · chờ cấp serial';
           }
         } catch (error) {
-          failNotFound(row, `Lỗi tra kho: ${error.message}`);
+          if (error.lookupFailure) failLookup(row, error.message);
+          else failNotFound(row, `Lỗi tra kho: ${error.message}`);
         }
         searchedCount++;
         simBatchRenderTable();
@@ -5578,7 +5589,7 @@ async function simBatchRunTwoPhase() {
       }));
 
       if (!activeAccounts.length && assignmentRows.length) {
-        assignmentRows.forEach(row => failAssignment(row, 'Không có tài khoản nào chuẩn bị được địa chỉ/Ví VNPT Pay'));
+        assignmentRows.forEach(row => failAssignment(row, 'Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, địa chỉ hoặc Ví VNPT Pay)'));
       } else if (assignmentRows.length) {
         const assignmentQueues = simBatchDistributeRows(assignmentRows, activeAccounts);
         await Promise.all(activeAccounts.map(async account => {
@@ -5586,10 +5597,12 @@ async function simBatchRunTwoPhase() {
           const queue = assignmentQueues.get(account.id) || [];
           if (!shared) return;
           for (let index = 0; index < queue.length; index++) {
-            if (simBatchState.stopRequested || shared.stopRequested) break;
+            if (simBatchState.stopRequested) break;
             const row = queue[index];
+            let nextDelaySeconds = simBatchState.delaySeconds;
             row.status = 'running';
             row.stage = 'Bắt đầu tạo đơn';
+            simBatchSetAccountStatus(account.id, `Đang chạy ${row.msisdn}...`);
             simBatchRenderTable();
             try {
               await simBatchEnsureAccountFresh(account);
@@ -5605,15 +5618,14 @@ async function simBatchRunTwoPhase() {
                 : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo | ' : '');
               const order = error.batchOrderId ? `Đơn ${error.batchOrderId} | ` : '';
               failAssignment(row, `${paid}${order}${error.batchStage || 'Xử lý'}: ${error.message}`);
-              if (error.stopAccount) {
-                shared.stopRequested = true;
-                simBatchSetAccountStatus(account.id, `Đã dừng cấp việc: ${error.message}`, true);
-              }
+              if (Number(error.status || 0) === 401) account.expiresAt = 0;
+              nextDelaySeconds = Math.max(nextDelaySeconds, Number(error.retryAfter || 0));
+              simBatchSetAccountStatus(account.id, `Lỗi ${row.msisdn}; vẫn tiếp tục SĐT kế tiếp`, true);
             }
-            if (index < queue.length - 1 && !simBatchState.stopRequested && !shared.stopRequested) {
+            if (index < queue.length - 1 && !simBatchState.stopRequested) {
               const keepRunning = await simBatchWaitDelay(
-                simBatchState.delaySeconds,
-                () => simBatchState.stopRequested || shared.stopRequested,
+                nextDelaySeconds,
+                () => simBatchState.stopRequested,
                 remaining => simBatchSetStatus(`${account.username} chờ ${remaining}s trước SĐT tiếp theo`)
               );
               if (!keepRunning) break;
@@ -5629,7 +5641,7 @@ async function simBatchRunTwoPhase() {
       row.bucket = row.found ? 'assignment_error' : 'not_found';
       row.result = simBatchState.stopRequested
         ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : 'Chưa chạy: tài khoản phụ trách đã dừng cấp việc';
+        : 'Chưa chạy do lỗi ngoài dự kiến của luồng phụ trách';
       if (row.bucket === 'not_found') notFound++; else assignmentFailed++;
       finishRow(row, false);
     });
@@ -5649,7 +5661,7 @@ async function simBatchRunTwoPhase() {
       const appended = await simBatchWriteRunOutput();
       simBatchSetStatus(
         `${done}/${simBatchState.rows.length} · Gán thành công ${ok} · SĐT không tìm thấy ${notFound} · ` +
-        `Gán serial lỗi ${assignmentFailed} · Output: ${appended.path}`
+        `Lỗi tra kho ${lookupFailed} · Gán serial lỗi ${assignmentFailed} · Output: ${appended.path}`
       );
     } catch (error) {
       simBatchSetStatus(`Đã xử lý xong nhưng chưa ghi được output: ${error.message}`, true);
@@ -5685,6 +5697,7 @@ async function simBatchRun() {
   let ok = 0;
   let failed = done;
   let notFound = simBatchState.rows.filter(row => row.bucket === 'not_found').length;
+  let lookupFailed = simBatchState.rows.filter(row => row.bucket === 'lookup_error').length;
   let assignmentFailed = 0;
   let nextSerialIndex = 0;
 
@@ -5703,6 +5716,16 @@ async function simBatchRun() {
     row.original[simBatchState.serialColumn] = '';
     row.result = `SĐT KHÔNG TÌM THẤY | ${message}`;
     notFound++;
+    finishRow(row, false);
+  };
+  const failLookup = (row, message) => {
+    row.status = 'error';
+    row.stage = 'Lỗi tra kho';
+    row.bucket = 'lookup_error';
+    row.serial = '';
+    row.original[simBatchState.serialColumn] = '';
+    row.result = `LỖI TRA KHO | ${message}`;
+    lookupFailed++;
     finishRow(row, false);
   };
   const failAssignment = (row, message) => {
@@ -5733,7 +5756,7 @@ async function simBatchRun() {
         simBatchSetAccountStatus(account.id, `Không thể chạy: ${error.message}`, true);
       }
     }));
-    if (!activeAccounts.length) throw new Error('Không có tài khoản nào chuẩn bị được phiên/Ví VNPT Pay');
+    if (!activeAccounts.length) throw new Error('Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, địa chỉ hoặc Ví VNPT Pay)');
 
     const queues = simBatchDistributeRows(validRows, activeAccounts);
     await Promise.all(activeAccounts.map(async account => {
@@ -5741,12 +5764,14 @@ async function simBatchRun() {
       const queue = queues.get(account.id) || [];
       if (!shared) return;
       for (let index = 0; index < queue.length; index++) {
-        if (simBatchState.stopRequested || shared.stopRequested) break;
+        if (simBatchState.stopRequested) break;
         const row = queue[index];
+        let nextDelaySeconds = simBatchState.delaySeconds;
         row.user = account.username;
         row.accountId = account.id;
         row.status = 'running';
         row.stage = 'Đang tra kho';
+        simBatchSetAccountStatus(account.id, `Đang chạy ${row.msisdn}...`);
         simBatchRenderTable();
         simBatchSetStatus(`${account.username} · ${row.msisdn} · Đang tra kho`);
         try {
@@ -5788,18 +5813,19 @@ async function simBatchRun() {
             row.result = `${prefix}${error.batchOrderId ? ` | Đơn ${error.batchOrderId}` : ''} | ${row.stage}: ${error.message}`;
             assignmentFailed++;
             finishRow(row, false);
+          } else if (error.lookupFailure) {
+            failLookup(row, error.message);
           } else {
             failNotFound(row, `Lỗi tra kho: ${error.message}`);
           }
-          if (error.stopAccount) {
-            shared.stopRequested = true;
-            simBatchSetAccountStatus(account.id, `Đã dừng cấp việc: ${error.message}`, true);
-          }
+          if (Number(error.status || 0) === 401) account.expiresAt = 0;
+          nextDelaySeconds = Math.max(nextDelaySeconds, Number(error.retryAfter || 0));
+          simBatchSetAccountStatus(account.id, `Lỗi ${row.msisdn}; vẫn tiếp tục SĐT kế tiếp`, true);
         }
-        if (index < queue.length - 1 && !simBatchState.stopRequested && !shared.stopRequested) {
+        if (index < queue.length - 1 && !simBatchState.stopRequested) {
           const keepRunning = await simBatchWaitDelay(
-            simBatchState.delaySeconds,
-            () => simBatchState.stopRequested || shared.stopRequested,
+            nextDelaySeconds,
+            () => simBatchState.stopRequested,
             remaining => simBatchSetStatus(`${account.username} chờ ${remaining}s trước SĐT tiếp theo`)
           );
           if (!keepRunning) break;
@@ -5813,7 +5839,7 @@ async function simBatchRun() {
       row.bucket = 'assignment_error';
       row.result = simBatchState.stopRequested
         ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : `Chưa chạy: tài khoản ${row.user} đã dừng cấp việc`;
+        : `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
       assignmentFailed++;
       finishRow(row, false);
     });
@@ -5861,9 +5887,7 @@ function simBatchRequireApi(response, fallback) {
   if (!apiSucceeded(response)) {
     const error = new Error(apiFailureMessage(response, fallback));
     const status = Number(response?.status || 0);
-    if ([401, 403, 409, 429].includes(status)) error.stopAccount = true;
     if (response?.businessMutation && (!status || status === 409 || status >= 500)) {
-      error.stopAccount = true;
       error.mutationUncertain = true;
     }
     error.status = status;
@@ -5929,25 +5953,44 @@ function simBatchConstrainParent(options, expectedParentId='', label='danh mục
   return matched;
 }
 
-function simBatchRequireVerifiedDistrictWards(options, district) {
+function simBatchLocationParamTokens(value) {
+  return String(value || '').split(/[;,|/]+/).map(token => token.trim()).filter(Boolean);
+}
+
+function simBatchRequireVerifiedDistrictWards(options, district, requestedParam='') {
   const districtId = String(district?.id || '').trim();
   const districtName = String(district?.name || '').trim() || 'Quận/Huyện đã chọn';
   if (!districtId) return options;
-  // The current OneBSS 10003 response is in transition to the 2-level
-  // administrative model. It can return every ward in TP.HCM for a legacy
-  // district parameter and omits PARENT_ID entirely. Selecting a random row
-  // from that response would silently pair e.g. a Thủ Đức order with an An
-  // Đông/Côn Đảo ward. Do not create any order unless the response itself
-  // proves the ward's parent district.
+
+  // PARENT_ID là bằng chứng mạnh nhất khi OneBSS có trả trường này.
   const parentRows = options.filter(option => String(option.parentId || '').trim());
-  if (!parentRows.length) {
-    throw new Error(`OneBSS không trả quan hệ Phường/Xã – ${districtName}; không thể random địa chỉ đúng quận nên batch không tạo đơn`);
+  if (parentRows.length) {
+    const scoped = parentRows.filter(option => String(option.parentId || '').trim() === districtId);
+    if (!scoped.length) {
+      throw new Error(`OneBSS trả Phường/Xã không thuộc ${districtName}; batch không tạo đơn để tránh sai địa chỉ`);
+    }
+    return scoped;
   }
-  const scoped = options.filter(option => String(option.parentId || '').trim() === districtId);
-  if (!scoped.length) {
-    throw new Error(`OneBSS trả Phường/Xã không thuộc ${districtName}; batch không tạo đơn để tránh sai địa chỉ`);
+
+  // Bản catalog mới có thể bỏ PARENT_ID nhưng vẫn gắn PARAM. Đối chiếu đủ
+  // token tỉnh + quận/huyện để không nhận nhầm một response phạm vi khác.
+  const expectedTokens = simBatchLocationParamTokens(requestedParam);
+  const parameterizedRows = options.filter(option => String(option.param || '').trim());
+  if (parameterizedRows.length && expectedTokens.length) {
+    const scoped = parameterizedRows.filter(option => {
+      const actualTokens = simBatchLocationParamTokens(option.param);
+      return expectedTokens.every(token => actualTokens.includes(token));
+    });
+    if (!scoped.length) {
+      throw new Error(`OneBSS trả PARAM Phường/Xã không thuộc ${districtName}; batch không tạo đơn để tránh sai địa chỉ`);
+    }
+    return scoped;
   }
-  return scoped;
+
+  // Khi response không có cả PARENT_ID lẫn PARAM, endpoint vẫn là response
+  // của chính request đã scope bằng 28;<districtId>. Đây cũng là cách catalog
+  // ứng dụng OneBSS tra CATEGORY_TYPE + PARAM; không chặn nhầm dữ liệu hợp lệ.
+  return options;
 }
 
 async function simBatchCategory(categoryId, paramCustomize, {required=false, label='danh mục', expectedParentId=''}={}, accountId='') {
@@ -6036,8 +6079,9 @@ async function simBatchPrepareSharedContext(account) {
   const tttbResponse = await simBatchCallApi(accountId, '/app-com/danhmuc/get_danhmuc', 'POST', {
       id_danhmucs:'10178', menu_id:699161
     });
+  const wardScopeParam = `28;${districtId}`;
   const rawWards = await simBatchCategory(
-    10003, `28;${districtId}`,
+    10003, wardScopeParam,
     {
       required:true,
       label:'Phường/Xã của Quận/Huyện đã chọn',
@@ -6047,7 +6091,7 @@ async function simBatchPrepareSharedContext(account) {
   const wards = simBatchRequireVerifiedDistrictWards(rawWards, {
     id: districtId,
     name: districtName
-  });
+  }, wardScopeParam);
   const rechargeOptions = simBatchRequireApi(rechargeResponse, 'Không tải được hình thức nạp thẻ');
   const recharge = simExtractOptions({status:200, body:rechargeOptions}, ['ID','id'], ['NAME','name'])
     .find(option => option.id === '2' || /nạp thẻ bằng hình thức khác/i.test(option.name));
@@ -6180,10 +6224,18 @@ async function simBatchSearchNumber(row, shared) {
   const accountId = shared.account?.id || '';
   const prefix = row.msisdn.slice(0, 4);
   const suffix = `*${row.msisdn.slice(-7)}`;
-  let attempt = 0;
-  const maxAttempts = 3;
-  while (attempt < maxAttempts && !simBatchState.stopRequested && !shared.stopRequested) {
-    attempt++;
+  let retryCount = 0;
+  const maxRetries = 3;
+  const throwLookupFailure = (response, fallback) => {
+    try {
+      simBatchRequireApi(response, fallback);
+    } catch (error) {
+      error.lookupFailure = true;
+      error.lookupRetries = retryCount;
+      throw error;
+    }
+  };
+  while (!simBatchState.stopRequested) {
     const searched = await simBatchCallApi(accountId, '/ccbs/chonSo/search_isdn', 'POST', {
       stockid:'146', kieuso_id:'-1', so_tb:suffix, prefix, status:'1',
       page_num:'1', page_rec:'200', menu_id:699161
@@ -6198,40 +6250,39 @@ async function simBatchSearchNumber(row, shared) {
     const code = String(body?.error_code ?? body?.errorCode ?? '').trim().toUpperCase();
     const message = [searched?.error, body?.message, body?.error]
       .filter(value => value != null && String(value).trim()).join(' ');
-    const transient = code === 'BSS-00000500' || !status || status === 408 ||
+    // BSS-00000500 chỉ có nghĩa OneBSS đang bận và yêu cầu chờ. Không được
+    // biến lỗi tạm thời này thành kết luận "SĐT không tìm thấy".
+    const transient = code === 'BSS-00000500' || /BSS-00000500/i.test(message) || !status || status === 408 ||
       status === 429 || status >= 500 ||
       /request timeout|timeout|lỗi kết nối|không kết nối|network|failed to fetch|vui lòng chờ/i.test(message);
     if (!transient) {
-      simBatchRequireApi(searched, 'Không tìm được số thuê bao');
+      throwLookupFailure(searched, 'Lỗi API tra kho');
     }
 
-    if (attempt >= maxAttempts) {
-      try {
-        simBatchRequireApi(searched, `Không tìm được số thuê bao sau ${maxAttempts} lần thử`);
-      } catch (error) {
-        error.stopAccount = true;
-        throw error;
-      }
+    if (retryCount >= maxRetries) {
+      throwLookupFailure(searched, `API tra kho vẫn lỗi sau ${maxRetries} lần retry`);
     }
 
     // search_isdn is read-only, so retrying it cannot create a duplicate order
     // or charge the wallet twice. Keep the same row and do not consume a
     // serial while OneBSS is throttling or temporarily unavailable.
+    retryCount++;
     const retryAfter = Math.max(0, Number(searched?.retry_after || 0));
-    const waitSeconds = retryAfter || Math.min(30, Math.max(5, attempt * 5));
+    const waitSeconds = retryAfter || Math.min(30, Math.max(5, retryCount * 5));
     const reason = apiFailureMessage(searched, 'OneBSS tạm thời chưa phản hồi');
-    row.stage = `Tra kho tạm lỗi · thử lại lần ${attempt + 1} sau ${waitSeconds}s`;
+    row.stage = `Tra kho tạm lỗi · retry ${retryCount}/${maxRetries} sau ${waitSeconds}s`;
     simBatchRenderTable();
     const keepRunning = await simBatchWaitDelay(
       waitSeconds,
-      () => simBatchState.stopRequested || shared.stopRequested,
+      () => simBatchState.stopRequested,
       remaining => simBatchSetStatus(
         `${shared.account?.username || row.user} · ${row.msisdn} · ${reason} · thử lại sau ${remaining}s`
       )
     );
     if (!keepRunning) break;
   }
-  throw new Error('Đã dừng trong khi chờ gọi lại API tra kho');
+  if (simBatchState.stopRequested) throw new Error('Người dùng đã dừng trong khi chờ gọi lại API tra kho');
+  throw new Error('Đã dừng tra kho');
 }
 
 async function simBatchProcessRow(row, shared, selectedNumber=null) {
@@ -6308,9 +6359,7 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
       setStage('Chờ khóa thanh toán · kiểm tra số dư Ví VNPT Pay');
       const balance = await simBatchRefreshWalletBalance(shared.wallet, shared.account);
       if (balance < amount) {
-        const error = new Error(`Số dư không đủ; thiếu ${simWalletMoneyLabel(amount - balance)}`);
-        error.stopAccount = true;
-        throw error;
+        throw new Error(`Số dư không đủ; thiếu ${simWalletMoneyLabel(amount - balance)}`);
       }
 
       setStage('Thanh toán VNPT Pay');
@@ -6793,12 +6842,49 @@ async function thanhToanHD() {
   }));
 }
 
-// ── Xác thực đổi thiết bị tự động (eKYC Liveness 0.89) ──
+// ── Xác thực đổi thiết bị (OneBSS / IDG eKYC) ──
 const deviceAuthState = {
   busy: false,
   requestId: '',
   phone: '',
 };
+
+function deviceAuthHasRawResponse(value) {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function deviceAuthHasVerificationStatus(payload, expected) {
+  const expectedText = String(expected);
+  const statusKeys = new Set(['trang_thai', 'trangthai', 'ma_trang_thai', 'matrangthai']);
+  let matched = false;
+  const visit = value => {
+    if (matched || value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== 'object') return;
+    Object.entries(value).forEach(([key, item]) => {
+      const normalizedKey = String(key).toLowerCase().replace(/[^a-z0-9_]/g, '');
+      if (statusKeys.has(normalizedKey) && String(item).trim() === expectedText) matched = true;
+      else if (item && typeof item === 'object') visit(item);
+    });
+  };
+  visit(payload);
+  return matched;
+}
+
+function deviceAuthRawStep(label, payload) {
+  if (!deviceAuthHasRawResponse(payload)) return '';
+  return `
+    <details open style="border-bottom:1px dashed var(--border);padding:7px 0">
+      <summary style="cursor:pointer;color:var(--text3)">${escHtml(label)}</summary>
+      <pre style="margin-top:6px;overflow:auto;background:var(--bg);padding:8px;border-radius:4px;border:1px solid var(--border);font-family:Consolas,monospace;font-size:10.5px;line-height:1.4;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(payload, null, 2))}</pre>
+    </details>`;
+}
 
 function deviceAuthSetStatus(kind, title, message) {
   const box = document.getElementById('device-auth-status');
@@ -6818,7 +6904,7 @@ function deviceAuthSetButtons() {
   const phone = document.getElementById('device-auth-phone');
   if (start) {
     start.disabled = deviceAuthState.busy;
-    start.textContent = deviceAuthState.busy ? '⏳ Đang xác thực…' : '🚀 Xác thực ngay';
+    start.textContent = deviceAuthState.busy ? '⏳ Đang kiểm tra…' : '🔎 Kiểm tra / hoàn tất';
   }
   if (phone) phone.disabled = deviceAuthState.busy;
 }
@@ -6834,7 +6920,7 @@ async function deviceAuthExecute() {
   }
   deviceAuthState.busy = true;
   deviceAuthSetButtons();
-  deviceAuthSetStatus('loading', 'Đang thực hiện xác thực', 'Khởi tạo phiên eKYC, tự động tải ảnh chân dung OneBSS và đẩy dữ liệu Liveness 0.89 lên hệ thống…');
+  deviceAuthSetStatus('loading', 'Đang kiểm tra OneBSS', 'Đọc trạng thái sinh trắc và chỉ tiếp tục khi có kết quả phiên chụp VNPT eKYC SDK hiện tại…');
 
   try {
     const response = await fetch('/api/device-auth/verify', {
@@ -6843,7 +6929,7 @@ async function deviceAuthExecute() {
       body: JSON.stringify({phone: rawPhone}),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok && !data.phone && !data.sinhtrac && !data.xacthuc_hinhanh) {
+    if (!response.ok && !data.server_response && !data.phone && !data.sinhtrac && !data.xacthuc_hinhanh) {
       const serverError = [data.error_code, data.message || data.error]
         .filter(value => value !== null && value !== undefined && String(value).trim() !== '')
         .join(' · ');
@@ -6851,39 +6937,64 @@ async function deviceAuthExecute() {
     }
     const liveness = data.liveness || {};
     const file = data.file || {};
-    const serverMessage = data.message ?? '';
-    const serverCode = data.error_code ?? '';
-    const serverError = data.error ?? '';
-    const serverStatus = [serverCode, serverError !== '' ? `error=${serverError}` : '']
-      .filter(Boolean).join(' · ');
+    const finalServerResponse = data.server_response && typeof data.server_response === 'object'
+      ? data.server_response : {};
+    const finalServerData = finalServerResponse.data && typeof finalServerResponse.data === 'object'
+      ? finalServerResponse.data : {};
+    const serverMessage = finalServerResponse.message ?? finalServerData.message ?? data.message ?? '';
+    const serverCode = finalServerResponse.error_code ?? data.error_code;
+    const serverError = finalServerResponse.error ?? data.error;
+    const serverStatus = [
+      serverCode !== null && serverCode !== undefined && String(serverCode) !== '' ? `error_code=${serverCode}` : '',
+      serverError !== null && serverError !== undefined && String(serverError) !== '' ? `error=${serverError}` : '',
+    ].filter(Boolean).join(' · ');
     const sinhtracData = data.sinhtrac?.data || {};
-    const luuEkycData = data.luu_ekyc?.data || {};
     const xtData = data.xacthuc_hinhanh?.data || {};
     const xtMsg = String(xtData.message ?? data.xacthuc_hinhanh?.message ?? '');
-    const matchedBy661 = String(data.matched_status_code ?? '') === '661';
+    const matchedBy661 = deviceAuthHasVerificationStatus(data.sinhtrac, 661);
     const isXtMatch = Boolean(
       matchedBy661 ||
-      data.face_matched === true ||
+      deviceAuthHasVerificationStatus(data.xacthuc_hinhanh, 661) ||
       String(xtData.is_match ?? '') === '1'
     );
-    const isSuccess = data.ok === true;
-    const isExplicitMismatch = data.error === 'FACE_MISMATCH';
-    const displayKind = isSuccess ? 'ok' : (isXtMatch ? 'warn' : 'err');
-    const displayColor = isSuccess || isXtMatch ? 'var(--green)' : 'var(--red, #ef4444)';
-    const displayIcon = isSuccess ? '✅' : (isXtMatch ? '🟡' : '❌');
+    // 661 của chính response kiemtra_trangthai_sinhtrac là trạng thái hoàn tất.
+    // Không lấy cờ tổng hợp hay response của API khác để giả lập thành công.
+    const isSuccess = matchedBy661;
+    const requiresSdkCapture = data.requires_sdk_capture === true;
+    const isExplicitMismatch = String(xtData.is_match ?? '') === '0' || /không khớp/i.test(xtMsg);
+    const displayKind = isSuccess ? 'ok' : (isXtMatch || requiresSdkCapture ? 'warn' : 'err');
+    const displayColor = isSuccess ? 'var(--green)' : (isXtMatch || requiresSdkCapture ? 'var(--orange)' : 'var(--red, #ef4444)');
+    const displayIcon = isSuccess ? '✅' : (isXtMatch || requiresSdkCapture ? '🟡' : '❌');
     const displayTitle = isSuccess
       ? 'Xác thực đổi thiết bị thành công'
-      : isXtMatch
+      : requiresSdkCapture
+        ? 'Cần phiên chụp VNPT eKYC SDK'
+        : isXtMatch
         ? 'Khuôn mặt đã khớp; quy trình chưa hoàn tất'
         : isExplicitMismatch
           ? 'Khuôn mặt không khớp'
           : 'OneBSS chưa xác nhận thành công';
-    const faceResultText = isXtMatch
+    const faceResultText = requiresSdkCapture
+      ? 'Chưa có kết quả SDK'
+      : isXtMatch
       ? (matchedBy661 ? 'Đã khớp · mã 661' : (xtData.prob !== undefined ? `Đã khớp · ${xtData.prob}%` : 'Đã khớp'))
       : (isExplicitMismatch ? 'Không khớp' : 'Chưa có kết luận khớp rõ ràng');
-    const sinhtracResultText = data.sinhtrac_ok === true
-      ? (String(sinhtracData.trang_thai ?? '') === '661' ? 'Thành công · mã 661' : 'Đã xác nhận')
-      : 'Chưa xác nhận thành công';
+    const sinhtracResultText = matchedBy661
+      ? 'Thành công · mã 661'
+      : (sinhtracData.trang_thai !== null && sinhtracData.trang_thai !== undefined && String(sinhtracData.trang_thai) !== ''
+        ? `Chưa hoàn tất · mã ${sinhtracData.trang_thai}` : '—');
+    const rawResponses = data.server_responses && typeof data.server_responses === 'object'
+      ? data.server_responses : {};
+    const localErrors = data.local_errors && typeof data.local_errors === 'object'
+      ? data.local_errors : {};
+    const rawStepHtml = [
+      ['0. Kiểm tra trạng thái trước khi chạy', rawResponses.precheck_kiemtra_trangthai_sinhtrac],
+      ['1. LIVENESS_FACE_RESULT từ SDK', rawResponses.sdk_liveness_result],
+      ['2. MASKED_FACE_RESULT từ SDK', rawResponses.sdk_masked_face_result],
+      ['3. OneBSS xacthuc_hinhanh', rawResponses.xacthuc_hinhanh],
+      ['4. OneBSS kiemtra_trangthai_sinhtrac', rawResponses.kiemtra_trangthai_sinhtrac],
+      ['API upstream trả lỗi', rawResponses.upstream_error],
+    ].map(([label, payload]) => deviceAuthRawStep(label, payload)).join('');
 
     if (result) {
       result.className = 'device-auth-result show';
@@ -6898,8 +7009,9 @@ async function deviceAuthExecute() {
         </div>
 
         <div style="padding:10px 12px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);font-size:12px;margin-bottom:12px;line-height:1.5">
-          <div><b>Thông điệp tổng hợp:</b> ${escHtml(serverMessage || '—')}</div>
-          <div><b>Căn cứ kết luận:</b> ${escHtml(data.result_basis || '—')}</div>
+          <div><b>Thông điệp server:</b> ${escHtml(serverMessage || '—')}</div>
+          ${data.failed_step ? `<div><b>Bước lỗi:</b> ${escHtml(data.failed_step)}</div>` : ''}
+          <div><b>Diễn giải mã trạng thái:</b> ${escHtml(data.result_basis || '—')}</div>
         </div>
 
         <!-- Bảng tóm tắt chỉ số -->
@@ -6909,52 +7021,27 @@ async function deviceAuthExecute() {
           <div class="doisim-summary-item"><span>Request ID API cuối</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.request_id || '—')}</strong></div>
           <div class="doisim-summary-item"><span>Liveness AI</span><strong>${escHtml(liveness.liveness_msg || liveness.liveness || '—')}${liveness.liveness_prob !== null && liveness.liveness_prob !== undefined ? ` (${escHtml(liveness.liveness_prob)})` : ''}</strong></div>
           <div class="doisim-summary-item"><span>Mắt mở</span><strong>${escHtml(liveness.is_eye_open ?? '—')}</strong></div>
-          <div class="doisim-summary-item"><span>Mã phiên (IDG)</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.confirmation_id || data.request_id || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Mã phiên (SDK)</span><strong style="word-break:break-all;font-size:11px">${escHtml(data.confirmation_id || '—')}</strong></div>
           <div class="doisim-summary-item"><span>ID Hồ sơ (OneBSS)</span><strong>${escHtml(file.id_taptin ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Tệp lưu OneBSS</span><strong style="word-break:break-all;font-size:11px">${escHtml(file.ten_taptin || file.duong_dan || '—')}</strong></div>
-          <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:${data.sinhtrac_ok === true ? 'var(--green)' : 'var(--text2)'}">${escHtml(sinhtracResultText)}</strong></div>
+          <div class="doisim-summary-item"><span>Trạng thái sinh trắc</span><strong style="color:${matchedBy661 ? 'var(--green)' : 'var(--text2)'}">${escHtml(sinhtracResultText)}</strong></div>
           <div class="doisim-summary-item"><span>Khớp mặt CCBS</span><strong style="color:${isXtMatch ? 'var(--green)' : 'var(--red, #ef4444)'}">${escHtml(faceResultText)}</strong></div>
-          <div class="doisim-summary-item"><span>Trạng thái trước khi chạy</span><strong>${escHtml(data.initial_status_code || '—')}</strong></div>
+          <div class="doisim-summary-item"><span>Trạng thái trước khi chạy</span><strong>${escHtml(data.initial_status_code ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>Mã trạng thái khớp</span><strong>${escHtml(data.matched_status_code ?? '—')}</strong></div>
           <div class="doisim-summary-item"><span>is_match / Status / trạng_thái</span><strong>${escHtml(`${xtData.is_match ?? '—'} / ${xtData.Status ?? xtData.status ?? '—'} / ${sinhtracData.trang_thai ?? '—'}`)}</strong></div>
         </div>
 
-        <!-- Chi tiết tiến trình các API Server đã thực thi -->
+        <!-- Chỉ hiển thị JSON thực nhận từ từng API, không chèn giá trị mặc định. -->
         <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:12px;margin-bottom:12px">
-          <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text)">📋 Nhật ký chi tiết phản hồi từng bước từ Server</div>
-          <div style="display:flex;flex-direction:column;gap:6px;font-size:11px">
-            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
-              <span style="color:var(--text3)">1. Khởi tạo phiên eKYC (init_log_uuid):</span>
-              <span style="font-weight:600;color:var(--green)">OK · ID: ${escHtml(data.init_request_id || '—')}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
-              <span style="color:var(--text3)">2. AI Liveness & Face Compare:</span>
-              <span style="font-weight:600">Liveness: ${escHtml(liveness.liveness_msg ?? liveness.liveness ?? '—')} · Điểm: ${escHtml(liveness.liveness_prob ?? '—')} · Mắt mở: ${escHtml(liveness.is_eye_open ?? '—')}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
-              <span style="color:var(--text3)">3. Ghi log eKYC (OneBSS log_ekyc):</span>
-              <span style="font-weight:600;color:var(--green)">${escHtml(data.log_ekyc?.error_code || 'BSS-00000000')} · Kết quả: ${escHtml(data.log_ekyc?.data?.ketqua ?? 1)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
-              <span style="color:var(--text3)">4. Lưu hồ sơ MinIO (update_file):</span>
-              <span style="font-weight:600;color:var(--green)">ID: ${escHtml(file.id_taptin ?? '—')} · ${escHtml(file.ten_taptin || 'PORTRAIT_IMAGE.jpg')}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
-              <span style="color:var(--text3)">5. Gắn EKYC Request ID vào CCBS:</span>
-              <span style="font-weight:600;color:var(--green)">${escHtml(data.luu_ekyc?.message || 'Thành công')} · ${escHtml(luuEkycData.STATUS || 'Chờ duyệt cập nhật')}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--border)">
-              <span style="color:var(--text3)">6. Xác thực hình ảnh CCBS (xacthuc_hinhanh):</span>
-              <span style="font-weight:600;color:${isXtMatch ? 'var(--green)' : 'var(--red, #ef4444)'}">
-                ${isXtMatch ? '✅ ' : '❌ '}${escHtml(data.xacthuc_hinhanh?.message || xtData.message || (xtData.prob ? 'Khớp ' + xtData.prob + '%' : (isXtMatch ? 'Đã xác thực' : 'Không khớp')))}
-              </span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:4px 0">
-              <span style="color:var(--text3)">7. Kích hoạt sinh trắc OneBSS (kiemtra_trangthai_sinhtrac):</span>
-              <span style="font-weight:600;color:${data.sinhtrac_ok === true ? 'var(--green)' : 'var(--text2)'}">${escHtml(data.sinhtrac?.message || sinhtracData.message || sinhtracResultText)}</span>
-            </div>
-          </div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text)">📋 Phản hồi JSON nguyên bản của từng API</div>
+          <div style="font-size:11px">${rawStepHtml || '<span style="color:var(--text3)">Không có phản hồi API để hiển thị.</span>'}</div>
         </div>
+
+        ${Object.keys(localErrors).length ? `
+          <details open style="margin-bottom:12px;border:1px solid rgba(210,153,34,.3);border-radius:6px;padding:8px 10px;background:rgba(210,153,34,.08);font-size:11px">
+            <summary style="cursor:pointer;font-weight:600;color:var(--orange)">Lỗi cục bộ — không phải phản hồi Server</summary>
+            <pre style="margin-top:8px;overflow:auto;background:var(--bg);padding:10px;border-radius:4px;border:1px solid var(--border);font-family:Consolas,monospace;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(localErrors, null, 2))}</pre>
+          </details>` : ''}
 
         ${!isSuccess && isXtMatch ? `
           <div style="padding:10px 12px;border-radius:8px;background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);color:var(--orange);font-size:12px;margin-bottom:12px;line-height:1.5">
@@ -6962,7 +7049,13 @@ async function deviceAuthExecute() {
           </div>
         ` : ''}
 
-        ${!isSuccess && !isXtMatch ? `
+        ${!isSuccess && requiresSdkCapture ? `
+          <div style="padding:10px 12px;border-radius:8px;background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);color:var(--orange);font-size:12px;margin-bottom:12px;line-height:1.5">
+            <strong>⚠️ Chưa có phiên liveness hợp lệ.</strong> ${escHtml(data.result_basis || '')}
+          </div>
+        ` : ''}
+
+        ${!isSuccess && !isXtMatch && !requiresSdkCapture ? `
           <div style="padding:10px 12px;border-radius:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:var(--red, #ef4444);font-size:12px;margin-bottom:12px;line-height:1.5">
             <strong>⚠️ Kết quả chưa thành công:</strong> ${escHtml(serverMessage || data.result_basis || 'OneBSS chưa trả kết luận thành công.')}
           </div>
@@ -6970,14 +7063,16 @@ async function deviceAuthExecute() {
 
         ${data.log_warning ? `<div style="margin-bottom:12px;color:var(--orange);font-size:11px">⚠️ Cảnh báo log eKYC: ${escHtml(data.log_warning)}</div>` : ''}
 
-        <!-- Luôn mở và hiển thị nguyên vẹn JSON phản hồi, không suy diễn hoặc lược bỏ -->
+        <!-- Chỉ chứa các response nguyên bản; không trộn cờ/kết luận do ứng dụng suy ra. -->
         <details open style="margin-top:8px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--bg3);font-size:11px">
           <summary style="cursor:pointer;font-weight:600;color:var(--accent)">🔍 Toàn bộ phản hồi JSON thô từ Server (đang hiển thị)</summary>
-          <pre style="margin-top:8px;overflow:auto;background:var(--bg);padding:10px;border-radius:4px;border:1px solid var(--border);font-family:Consolas,monospace;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(data, null, 2))}</pre>
+          <pre style="margin-top:8px;overflow:auto;background:var(--bg);padding:10px;border-radius:4px;border:1px solid var(--border);font-family:Consolas,monospace;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(rawResponses, null, 2))}</pre>
         </details>`;
     }
-    deviceAuthSetStatus(displayKind, displayTitle, serverMessage || data.result_basis || '');
-    showToast(serverMessage || serverCode || String(serverError));
+    deviceAuthSetStatus(displayKind, displayTitle, requiresSdkCapture ? data.result_basis : (serverMessage || data.result_basis || ''));
+    const toastMessage = [serverMessage, serverCode, serverError]
+      .find(value => value !== null && value !== undefined && String(value).trim() !== '');
+    if (toastMessage !== undefined) showToast(String(toastMessage));
   } catch (error) {
     deviceAuthSetStatus('err', 'Xác thực thất bại', error?.message || String(error));
   } finally {
@@ -7975,11 +8070,7 @@ async function icocBatchCheckPermission(account) {
   simBatchRequireApi(response, 'Không kiểm tra được quyền CATMODICHVU');
   const data = icocDeviceSubscriberData(response);
   const allowed = apiSucceeded(response) && String(data.status ?? '').trim() === '1';
-  if (!allowed) {
-    const error = new Error(String(data.message || data.msg || 'Không có quyền CATMODICHVU'));
-    error.stopAccount = true;
-    throw error;
-  }
+  if (!allowed) throw new Error(String(data.message || data.msg || 'Không có quyền CATMODICHVU'));
   return true;
 }
 
@@ -8055,9 +8146,8 @@ async function icocBatchProcessRow(row, shared) {
       throw new Error('OneBSS chưa xác nhận trạng thái IC/OC đích sau thay đổi');
     }
   } catch (error) {
-    // Mutation đã được OneBSS nhận; không cấp số tiếp theo cho tài khoản khi
-    // kết quả chưa được xác minh để tránh thao tác dây chuyền trên trạng thái mơ hồ.
-    error.stopAccount = true;
+    // Chỉ đánh dấu riêng dòng hiện tại để đối soát. Dòng kế tiếp vẫn được cấp
+    // cho worker; mỗi SĐT là một thao tác độc lập.
     error.mutationUncertain = true;
     throw error;
   }
@@ -8119,18 +8209,15 @@ async function icocBatchRun() {
       if (!shared) return;
       const queue = queues.get(account.id) || [];
       for (let index = 0; index < queue.length; index++) {
-        if (icocBatchState.stopRequested || shared.stopRequested) break;
+        if (icocBatchState.stopRequested) break;
         const row = queue[index];
+        let nextDelaySeconds = icocBatchState.delaySeconds;
         row.status = 'running'; row.stage = 'Đang tra cứu và thay đổi';
+        icocBatchSetAccountStatus(account.id, `Đang chạy ${row.msisdn}...`);
         icocBatchRenderTable();
         icocBatchSetProgress(done, icocBatchState.rows.length, ok, failed, `${account.username} · ${row.msisdn}`);
         try {
-          try {
-            await icocBatchEnsureAccountFresh(account);
-          } catch (refreshError) {
-            refreshError.stopAccount = true;
-            throw refreshError;
-          }
+          await icocBatchEnsureAccountFresh(account);
           const result = await icocBatchProcessRow(row, shared);
           row.status = 'success'; row.stage = result.changed ? 'Hoàn tất' : 'Không cần thay đổi'; row.result = result.message;
           finishRow(row, true);
@@ -8139,16 +8226,15 @@ async function icocBatchRun() {
           row.result = error.mutationUncertain
             ? `CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại: ${error.message}`
             : `Lỗi: ${error.message}`;
-          if (error.stopAccount) {
-            shared.stopRequested = true;
-            icocBatchSetAccountStatus(account.id, `Đã dừng cấp việc: ${error.message}`, true);
-          }
+          if (Number(error.status || 0) === 401) account.expiresAt = 0;
+          nextDelaySeconds = Math.max(nextDelaySeconds, Number(error.retryAfter || 0));
+          icocBatchSetAccountStatus(account.id, `Lỗi ${row.msisdn}; vẫn tiếp tục SĐT kế tiếp`, true);
           finishRow(row, false);
         }
-        if (index < queue.length - 1 && !icocBatchState.stopRequested && !shared.stopRequested) {
+        if (index < queue.length - 1 && !icocBatchState.stopRequested) {
           const shouldContinue = await simBatchWaitDelay(
-            icocBatchState.delaySeconds,
-            () => icocBatchState.stopRequested || shared.stopRequested,
+            nextDelaySeconds,
+            () => icocBatchState.stopRequested,
             remaining => icocBatchSetStatus(`${account.username} chờ ${remaining}s trước số tiếp theo`)
           );
           if (!shouldContinue) break;
@@ -8156,11 +8242,10 @@ async function icocBatchRun() {
       }
     }));
     icocBatchState.rows.filter(row => row.valid && row.status === 'pending').forEach(row => {
-      const shared = icocBatchState.accountContexts.get(row.accountId);
       row.status = 'stopped'; row.stage = 'Chưa chạy';
       row.result = icocBatchState.stopRequested
         ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : `Chưa chạy: tài khoản ${row.user} đã dừng cấp việc${shared?.stopRequested ? ' do lỗi token' : ''}`;
+        : `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
       finishRow(row, false);
     });
   } catch (error) {
