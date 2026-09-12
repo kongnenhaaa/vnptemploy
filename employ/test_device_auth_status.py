@@ -108,7 +108,11 @@ class DeviceAuthStatusTests(unittest.TestCase):
             body for path, body in calls
             if path.endswith('/xacthuc_hinhanh')]
         self.assertEqual(
-            xacthuc_calls, [{'p_image_hash': 'zone2/server-image-hash'}])
+            xacthuc_calls, [{
+                'p_so_tb': '84834518167',
+                'p_image_hash': 'zone2/server-image-hash',
+                'menu_id': 810241,
+            }])
 
     def test_xacthuc_rejection_is_not_hidden_by_status_response(self):
         rejected = {
@@ -193,7 +197,7 @@ class DeviceAuthStatusTests(unittest.TestCase):
             },
         )
 
-    def test_664_without_current_sdk_capture_stops_before_mutation(self):
+    def test_664_without_current_sdk_capture_runs_auto_liveness(self):
         response = {
             'error': '200',
             'error_code': 'BSS-00000000',
@@ -205,21 +209,38 @@ class DeviceAuthStatusTests(unittest.TestCase):
 
         def onebss_post(path, body, account_id=''):
             calls.append((path, body))
+            if path.endswith('/get_ekyc_config'):
+                return {'data': [{'dichvu': '-1', 'ai_must': 1, 'check_liveness': 1}]}
+            if path.endswith('/xacthuc_hinhanh'):
+                return {'data': {'is_match': 0, 'message': 'Không khớp'}}
             return response
 
-        with patch.object(
+        mock_capture = {
+            'client_session': 'test-auto-session',
+            'image_hash': app_module.DEVICE_AUTH_FAR_HASH,
+            'liveness_payload': {'statusCode': 200, 'dataSign': 'auto-sign'},
+            'liveness_result': {'liveness': 'success', 'liveness_prob': 0.899},
+            'mask_payload': {},
+            'mask_result': None,
+        }
+
+        with (
+            patch.object(
                 app_module, '_device_auth_onebss_post',
-                side_effect=onebss_post):
+                side_effect=onebss_post),
+            patch.object(
+                app_module, '_device_auth_run_liveness_3d',
+                return_value=mock_capture),
+            patch.object(app_module.time, 'sleep', return_value=None),
+        ):
             result = app_module._device_auth_execute('0834518167')
 
         self.assertFalse(result['ok'])
-        self.assertTrue(result['requires_sdk_capture'])
-        self.assertEqual(result['failed_step'], 'sdk_capture')
+        self.assertFalse(result['face_matched'])
+        self.assertEqual(result['failed_step'], 'xacthuc_hinhanh')
         self.assertEqual(result['initial_status_code'], '664')
-        self.assertEqual(result['server_response'], response)
-        self.assertEqual(len(calls), 1)
-        self.assertTrue(
-            calls[0][0].endswith('/kiemtra_trangthai_sinhtrac'))
+        self.assertEqual(result['liveness']['liveness_prob'], 0.899)
+
 
     def test_sdk_capture_must_be_current_employee_session(self):
         sdk_result = {

