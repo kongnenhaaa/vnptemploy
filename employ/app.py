@@ -87,7 +87,22 @@ _documents_root = os.path.join(
 SIM_BATCH_DIR = os.path.join(_documents_root, 'VNPTEmploy', 'SIM_Kit_Batch')
 SIM_BATCH_INPUT_FILE = os.path.join(SIM_BATCH_DIR, 'SIM_Kit_Input.xlsx')
 SIM_BATCH_OUTPUT_FILE = os.path.join(SIM_BATCH_DIR, 'SIM_Kit_Output.xlsx')
+SIM_BATCH_OUTPUT_HEADERS = (
+    'SĐT', 'Serial SIM', 'Kết quả', 'Mã đơn hàng', 'Loại đăng ký',
+    'Tên khách hàng', 'Địa chỉ khách hàng', 'Số tiền', 'Thời gian', 'User chạy'
+)
+SIM_BATCH_OUTPUT_META_SHEET = '_Luu_tu_dong'
 _sim_batch_file_lock = threading.Lock()
+
+# Tra cứu seri SIM dùng file 1 cột input và file 2 cột output cố định.
+# Output là nhật ký cộng dồn: mỗi dòng tra xong được ghi ngay để
+# thao tác Dừng không làm mất phần đã hoàn tất.
+SERIAL_LOOKUP_BATCH_DIR = os.path.join(_documents_root, 'VNPTEmploy', 'Tra_Cuu_Seri')
+SERIAL_LOOKUP_INPUT_FILE = os.path.join(SERIAL_LOOKUP_BATCH_DIR, 'Tra_Cuu_Seri_Input.xlsx')
+SERIAL_LOOKUP_OUTPUT_FILE = os.path.join(SERIAL_LOOKUP_BATCH_DIR, 'Tra_Cuu_Seri_Output.xlsx')
+SERIAL_LOOKUP_OUTPUT_HEADERS = ('MSIN / Seri SIM', 'SĐT')
+SERIAL_LOOKUP_OUTPUT_META_SHEET = '_Luu_tu_dong'
+_serial_lookup_file_lock = threading.Lock()
 
 # Batch thao tác IC/OC dùng workbook riêng để không lẫn Serial SIM của luồng
 # khởi tạo SIM Kit. File được giữ trong Documents giống batch SIM Kit.
@@ -96,8 +111,123 @@ ICOC_BATCH_INPUT_FILE = os.path.join(ICOC_BATCH_DIR, 'IC_OC_Input.xlsx')
 ICOC_BATCH_OUTPUT_FILE = os.path.join(ICOC_BATCH_DIR, 'IC_OC_Output.xlsx')
 _icoc_batch_file_lock = threading.Lock()
 
+
+def _batch_header_key(value):
+    return re.sub(r'\s+', ' ', str(value or '').strip()).casefold()
+
+
+def _sim_batch_legacy_details(result):
+    """Recover separated fields from the pipe-delimited result used by old builds."""
+    text = str(result or '').strip()
+    details = {'order': '', 'registration': '', 'customer': '', 'address': '', 'amount': ''}
+    order_match = re.search(r'(?:đơn|mã đơn hàng)\s*[:#-]?\s*([0-9]+)', text, re.IGNORECASE)
+    if order_match:
+        details['order'] = order_match.group(1)
+    segments = [segment.strip() for segment in text.split('|') if segment.strip()]
+    order_index = next((index for index, value in enumerate(segments)
+                        if re.match(r'^(?:đơn|mã đơn hàng)\b', value, re.IGNORECASE)), None)
+    if order_index is not None and order_index + 1 < len(segments):
+        tail = segments[order_index + 1:]
+        if tail:
+            details['customer'] = tail[0]
+        if len(tail) > 1 and ('đăng ký' in tail[1].casefold() or 'nhân viên hỗ trợ' in tail[1].casefold()):
+            details['registration'] = tail[1]
+        if len(tail) > 2 and re.search(r'\d', tail[2]):
+            details['amount'] = tail[2]
+        if len(tail) > 3:
+            details['address'] = ' | '.join(tail[3:])
+    lowered = text.casefold()
+    if not details['registration']:
+        if 'nhân viên hỗ trợ' in lowered:
+            details['registration'] = 'Nhân viên hỗ trợ'
+        elif 'kh tự đăng ký' in lowered or 'khách hàng tự đăng ký' in lowered:
+            details['registration'] = 'Khách hàng tự đăng ký'
+    return details
+
+
+def _sim_batch_convert_output_row(headers, row):
+    source = {
+        _batch_header_key(header): row[index] if index < len(row) else ''
+        for index, header in enumerate(headers)
+    }
+    value = lambda name: source.get(_batch_header_key(name), '')
+    result = value('Kết quả') or value('Nhóm kết quả')
+    parsed = _sim_batch_legacy_details(result)
+    registration = value('Loại đăng ký') or parsed['registration']
+    registration_key = _batch_header_key(registration)
+    if (registration_key.startswith('kh tự đăng ký') or
+            registration_key.startswith('khách hàng tự đăng ký')):
+        registration = 'Khách hàng tự đăng ký'
+    elif 'nhân viên hỗ trợ' in registration_key:
+        registration = 'Nhân viên hỗ trợ'
+    converted = [
+        value('SĐT'),
+        value('Serial SIM'),
+        result,
+        value('Mã đơn hàng') or parsed['order'],
+        registration,
+        value('Tên khách hàng') or parsed['customer'],
+        value('Địa chỉ khách hàng') or value('Địa chỉ') or value('Địa chỉ đầy đủ') or parsed['address'],
+        value('Số tiền') or parsed['amount'],
+        value('Thời gian'),
+        value('User chạy'),
+    ]
+    # Preserve values from unknown legacy columns inside Kết quả instead of
+    # silently dropping history during the one-time schema migration.
+    known = {_batch_header_key(name) for name in SIM_BATCH_OUTPUT_HEADERS}
+    known.update({_batch_header_key('Nhóm kết quả'), _batch_header_key('Địa chỉ'),
+                  _batch_header_key('Địa chỉ đầy đủ')})
+    extras = [
+        f'{headers[index]}: {item}' for index, item in enumerate(row)
+        if index < len(headers) and item not in (None, '') and _batch_header_key(headers[index]) not in known
+    ]
+    if extras:
+        converted[2] = ' | '.join(filter(None, [str(converted[2] or '').strip(), 'Dữ liệu cũ: ' + '; '.join(extras)]))
+    return converted
+
+
+def _prepare_sim_batch_output_workbook(workbook):
+    """Migrate the stable cumulative log without deleting any existing rows."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    changed = False
+    sheet = workbook['SIM_Output'] if 'SIM_Output' in workbook.sheetnames else workbook.active
+    sheet.title = 'SIM_Output'
+    current_headers = [cell.value for cell in sheet[1]][:sheet.max_column] if sheet.max_row else []
+    if tuple(str(value or '').strip() for value in current_headers) != SIM_BATCH_OUTPUT_HEADERS:
+        old_headers = current_headers
+        old_rows = list(sheet.iter_rows(min_row=2, values_only=True)) if sheet.max_row > 1 else []
+        converted = [_sim_batch_convert_output_row(old_headers, row) for row in old_rows]
+        if sheet.max_row:
+            sheet.delete_rows(1, sheet.max_row)
+        sheet.append(list(SIM_BATCH_OUTPUT_HEADERS))
+        for row in converted:
+            sheet.append(row)
+        changed = True
+
+    widths = [20, 20, 48, 18, 26, 28, 68, 18, 22, 24]
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    sheet.freeze_panes = 'A2'
+    sheet.auto_filter.ref = f'A1:J{max(1, sheet.max_row)}'
+
+    if SIM_BATCH_OUTPUT_META_SHEET not in workbook.sheetnames:
+        metadata = workbook.create_sheet(SIM_BATCH_OUTPUT_META_SHEET)
+        metadata.append(['entry_id', 'saved_at'])
+        metadata.sheet_state = 'hidden'
+        changed = True
+    else:
+        metadata = workbook[SIM_BATCH_OUTPUT_META_SHEET]
+        metadata.sheet_state = 'hidden'
+    return sheet, metadata, changed
+
 def _ensure_sim_batch_files():
-    """Create the stable input template and an empty legacy output template."""
+    """Create the stable input template and cumulative SIM output log."""
     from openpyxl import Workbook, load_workbook
     from openpyxl.utils import get_column_letter
 
@@ -153,23 +283,17 @@ def _ensure_sim_batch_files():
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = 'SIM_Output'
-        sheet.append(['SĐT', 'Serial SIM', 'Kết quả', 'Thời gian', 'User chạy'])
-        sheet.freeze_panes = 'A2'
-        for column, width in {'A':20, 'B':20, 'C':80, 'D':22, 'E':24}.items():
-            sheet.column_dimensions[column].width = width
+        sheet.append(list(SIM_BATCH_OUTPUT_HEADERS))
+        _prepare_sim_batch_output_workbook(workbook)
         workbook.save(SIM_BATCH_OUTPUT_FILE)
+        workbook.close()
     else:
-        # Output cũ từng có cột địa chỉ riêng; kết quả đã chứa địa chỉ nên bỏ
-        # cột trùng lặp mà vẫn giữ nguyên toàn bộ các dòng lịch sử.
+        # One-time migration keeps every prior result while making column E the
+        # requested registration type for all future appended rows.
         try:
             workbook = load_workbook(SIM_BATCH_OUTPUT_FILE)
-            sheet = workbook['SIM_Output'] if 'SIM_Output' in workbook.sheetnames else workbook.active
-            address_column = next((
-                index for index, cell in enumerate(sheet[1], start=1)
-                if str(cell.value or '').strip().casefold() == 'địa chỉ đầy đủ'.casefold()
-            ), None)
-            if address_column:
-                sheet.delete_cols(address_column, 1)
+            _, _, changed = _prepare_sim_batch_output_workbook(workbook)
+            if changed:
                 workbook.save(SIM_BATCH_OUTPUT_FILE)
             workbook.close()
         except PermissionError:
@@ -223,6 +347,86 @@ def _ensure_icoc_batch_files():
         for column, width in {'A': 20, 'B': 80, 'C': 22, 'D': 24}.items():
             sheet.column_dimensions[column].width = width
         workbook.save(ICOC_BATCH_OUTPUT_FILE)
+
+
+def _prepare_serial_lookup_output_workbook(workbook):
+    """Validate and format the cumulative two-column serial lookup output."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    sheet = (workbook['Tra_Cuu_Seri'] if 'Tra_Cuu_Seri' in workbook.sheetnames
+             else workbook.active)
+    sheet.title = 'Tra_Cuu_Seri'
+    current_headers = tuple(
+        str(sheet.cell(row=1, column=index).value or '').strip()
+        for index in range(1, 3)
+    )
+    if not any(current_headers):
+        for index, header in enumerate(SERIAL_LOOKUP_OUTPUT_HEADERS, start=1):
+            sheet.cell(row=1, column=index, value=header)
+    elif current_headers != SERIAL_LOOKUP_OUTPUT_HEADERS:
+        raise ValueError(
+            'Tra_Cuu_Seri_Output.xlsx không còn đúng 2 cột '
+            'MSIN / Seri SIM và SĐT; hãy đóng/di chuyển file cũ để ứng dụng tạo lại.'
+        )
+
+    for cell in sheet[1][:2]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    sheet.column_dimensions['A'].width = 28
+    sheet.column_dimensions['B'].width = 18
+    sheet.freeze_panes = 'A2'
+    sheet.auto_filter.ref = f'A1:B{max(1, sheet.max_row)}'
+    for row in sheet.iter_rows(min_row=2, max_col=2):
+        for cell in row:
+            cell.number_format = '@'
+
+    if SERIAL_LOOKUP_OUTPUT_META_SHEET not in workbook.sheetnames:
+        metadata = workbook.create_sheet(SERIAL_LOOKUP_OUTPUT_META_SHEET)
+        metadata.append(['entry_id', 'saved_at', 'output_row'])
+    else:
+        metadata = workbook[SERIAL_LOOKUP_OUTPUT_META_SHEET]
+        metadata.cell(row=1, column=1, value='entry_id')
+        metadata.cell(row=1, column=2, value='saved_at')
+        metadata.cell(row=1, column=3, value='output_row')
+    metadata.sheet_state = 'hidden'
+    return sheet, metadata
+
+
+def _ensure_serial_lookup_files():
+    """Create the stable one-column input and two-column cumulative output."""
+    from openpyxl import Workbook, load_workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    os.makedirs(SERIAL_LOOKUP_BATCH_DIR, exist_ok=True)
+    if not os.path.exists(SERIAL_LOOKUP_INPUT_FILE):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'Input'
+        sheet.append(['MSIN / Seri SIM'])
+        sheet.freeze_panes = 'A2'
+        sheet.column_dimensions['A'].width = 28
+        cell = sheet['A1']
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        for row in sheet.iter_rows(min_row=2, max_col=1):
+            row[0].number_format = '@'
+        workbook.save(SERIAL_LOOKUP_INPUT_FILE)
+        workbook.close()
+
+    if not os.path.exists(SERIAL_LOOKUP_OUTPUT_FILE):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'Tra_Cuu_Seri'
+        sheet.append(list(SERIAL_LOOKUP_OUTPUT_HEADERS))
+        _prepare_serial_lookup_output_workbook(workbook)
+        workbook.save(SERIAL_LOOKUP_OUTPUT_FILE)
+        workbook.close()
+    else:
+        workbook = load_workbook(SERIAL_LOOKUP_OUTPUT_FILE)
+        _prepare_serial_lookup_output_workbook(workbook)
+        workbook.close()
 
 def _open_local_file(path):
     path = os.path.abspath(path)
@@ -329,6 +533,7 @@ def _ensure_application_storage():
         _write_saved_accounts([])
     _ensure_sim_batch_files()
     _ensure_icoc_batch_files()
+    _ensure_serial_lookup_files()
 
 def _account_id(username):
     return hashlib.sha256(username.strip().casefold().encode('utf-8')).hexdigest()[:24]
@@ -805,6 +1010,8 @@ def api_call(method, path, **kwargs):
 # single menu selected in the sidebar cannot be reused for calls made by a tab
 # that contains more than one module (Cashless/DCRS is the common example).
 ENDPOINT_MENU_ROUTES = (
+    ('/ccbs/pttb/get_sotb_by_msin', '699060'),
+    ('/ccbs/tracuu/ts_tracuu_stb_serial', '699060'),
     ('/ccbs/chonSo/', '699161'),
     ('/app-banhang/donhang_simkit/', '699161'),
     ('/app-com/danhmuc/get_danhmuc', '699161'),
@@ -1488,6 +1695,8 @@ _ICOC_MUTATION_ENDPOINTS = frozenset({
     '/app-banhang/thuebaodidong/khoamo_ic_oc',
 })
 _LOOKUP_ENDPOINTS = frozenset({
+    '/ccbs/pttb/get_sotb_by_msin',
+    '/ccbs/tracuu/ts_tracuu_stb_serial',
     '/app-banhang/ccbs/tracuu_anh_thuebao',
     '/app-banhang/ccbs/tracuu_thongtin_thuebao',
     '/app-banhang/ccbs/verify_otp',
@@ -1809,6 +2018,10 @@ def proxy():
         '/ccbs/chonSo/app_ds_dauso',
         # Mobile sends only ?so_msin=... for this final read-only status check.
         '/ccbs/chonSo/checkSimStatus',
+        # Tra SIM ra số sends only ?msin=...; do not add menu_id to the query.
+        '/ccbs/pttb/get_sotb_by_msin',
+        # The Employee serial lookup DTO contains only so_sim.
+        '/ccbs/tracuu/ts_tracuu_stb_serial',
     }
     inject_menu_id = endpoint_path not in strict_body_endpoints
     if inject_menu_id and isinstance(body, dict) and 'menu_id' not in body:
@@ -3171,6 +3384,154 @@ def api_sim_batch_files():
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
 
+@app.route('/api/serial-lookup/files')
+@login_required
+def api_serial_lookup_files():
+    """Create and return the one-column input/two-column output workbooks."""
+    try:
+        from openpyxl import load_workbook
+        with _serial_lookup_file_lock:
+            _ensure_serial_lookup_files()
+            workbook = load_workbook(SERIAL_LOOKUP_OUTPUT_FILE, read_only=True, data_only=True)
+            sheet = (workbook['Tra_Cuu_Seri'] if 'Tra_Cuu_Seri' in workbook.sheetnames
+                     else workbook.active)
+            total_rows = max(0, sheet.max_row - 1)
+            workbook.close()
+        return jsonify({
+            'ok': True,
+            'input_path': SERIAL_LOOKUP_INPUT_FILE,
+            'output_path': SERIAL_LOOKUP_OUTPUT_FILE,
+            'output_dir': SERIAL_LOOKUP_BATCH_DIR,
+            'total_rows': total_rows,
+        })
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/serial-lookup/open', methods=['POST'])
+@login_required
+def api_serial_lookup_open():
+    """Open an application-owned serial lookup workbook."""
+    payload = request.get_json(silent=True) or {}
+    kind = str(payload.get('type', '')).strip().lower()
+    path = {
+        'input': SERIAL_LOOKUP_INPUT_FILE,
+        'output': SERIAL_LOOKUP_OUTPUT_FILE,
+    }.get(kind)
+    if not path:
+        return jsonify({'ok': False, 'error': 'type phải là input hoặc output'}), 400
+    try:
+        with _serial_lookup_file_lock:
+            _ensure_serial_lookup_files()
+        _open_local_file(path)
+        return jsonify({'ok': True, 'path': path})
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/serial-lookup/append-output', methods=['POST'])
+@login_required
+def api_serial_lookup_append_output():
+    """Append finished input rows to the cumulative two-column output."""
+    payload = request.get_json(silent=True) or {}
+    table = payload.get('table')
+    if not isinstance(table, list) or len(table) < 2 or not isinstance(table[0], list):
+        return jsonify({'ok': False, 'error': 'Thiếu bảng kết quả gồm header và dữ liệu'}), 400
+    headers = tuple(str(value or '').strip() for value in table[0][:2])
+    if headers != SERIAL_LOOKUP_OUTPUT_HEADERS or len(table[0]) != 2:
+        return jsonify({
+            'ok': False,
+            'error': 'Output tra cứu seri phải đúng 2 cột MSIN / Seri SIM và SĐT',
+        }), 400
+    if len(table) > 5001:
+        return jsonify({'ok': False, 'error': 'Mỗi lần chỉ ghi tối đa 5000 dòng'}), 400
+    rows = [list(row[:2]) for row in table[1:] if isinstance(row, list)]
+    if not rows:
+        return jsonify({'ok': False, 'error': 'Không có dòng kết quả để ghi'}), 400
+    requested_ids = payload.get('entry_ids')
+    if not isinstance(requested_ids, list):
+        requested_ids = []
+    try:
+        from openpyxl import load_workbook
+        with _serial_lookup_file_lock:
+            _ensure_serial_lookup_files()
+            workbook = load_workbook(SERIAL_LOOKUP_OUTPUT_FILE)
+            sheet, metadata = _prepare_serial_lookup_output_workbook(workbook)
+            existing_rows = {}
+            for meta_row in range(2, metadata.max_row + 1):
+                existing_id = str(metadata.cell(row=meta_row, column=1).value or '').strip()
+                if not existing_id:
+                    continue
+                output_row = metadata.cell(row=meta_row, column=3).value
+                try:
+                    output_row = int(output_row)
+                except (TypeError, ValueError):
+                    output_row = meta_row
+                existing_rows[existing_id] = (meta_row, output_row)
+            appended = 0
+            skipped = 0
+            updated = 0
+            for index, row in enumerate(rows):
+                entry_id = str(
+                    requested_ids[index] if index < len(requested_ids) else ''
+                ).strip()[:200] or secrets.token_hex(16)
+                serial = str(row[0] if len(row) > 0 and row[0] is not None else '')
+                phone = str(row[1] if len(row) > 1 and row[1] is not None else '')
+                if entry_id in existing_rows:
+                    meta_row, output_row = existing_rows[entry_id]
+                    if output_row < 2 or output_row > sheet.max_row:
+                        skipped += 1
+                        continue
+                    changed = (
+                        str(sheet.cell(row=output_row, column=1).value or '') != serial or
+                        str(sheet.cell(row=output_row, column=2).value or '') != phone
+                    )
+                    sheet.cell(row=output_row, column=1, value=serial).number_format = '@'
+                    sheet.cell(row=output_row, column=2, value=phone).number_format = '@'
+                    metadata.cell(row=meta_row, column=2, value=time.strftime('%Y-%m-%d %H:%M:%S'))
+                    metadata.cell(row=meta_row, column=3, value=output_row)
+                    if changed:
+                        updated += 1
+                    else:
+                        skipped += 1
+                    continue
+                sheet.append([serial, phone])
+                for cell in sheet[sheet.max_row][:2]:
+                    cell.number_format = '@'
+                metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S'), sheet.max_row])
+                existing_rows[entry_id] = (metadata.max_row, sheet.max_row)
+                appended += 1
+            sheet.auto_filter.ref = f'A1:B{max(1, sheet.max_row)}'
+            total_rows = max(0, sheet.max_row - 1)
+            temp_path = f'{SERIAL_LOOKUP_OUTPUT_FILE}.{secrets.token_hex(4)}.tmp.xlsx'
+            try:
+                workbook.save(temp_path)
+                workbook.close()
+                os.replace(temp_path, SERIAL_LOOKUP_OUTPUT_FILE)
+            finally:
+                try:
+                    workbook.close()
+                except Exception:
+                    pass
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except OSError:
+                    pass
+        return jsonify({
+            'ok': True, 'appended': appended, 'updated': updated, 'skipped': skipped,
+            'path': SERIAL_LOOKUP_OUTPUT_FILE, 'total_rows': total_rows,
+            'cumulative': True,
+        })
+    except PermissionError:
+        return jsonify({
+            'ok': False,
+            'error': 'File output đang mở trong Excel. Hãy đóng file; các dòng chưa ghi sẽ được thử lại.',
+        }), 409
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
 @app.route('/api/sim-batch/open', methods=['POST'])
 @login_required
 def api_sim_batch_open():
@@ -3216,56 +3577,72 @@ def api_sim_batch_read_input():
 @app.route('/api/sim-batch/append-output', methods=['POST'])
 @login_required
 def api_sim_batch_append_output():
-    """Write one completed run to a new workbook; never merge old runs."""
+    """Append completed rows to the stable log, deduplicated by entry ID."""
     payload = request.get_json(silent=True) or {}
     table = payload.get('table')
     if not isinstance(table, list) or len(table) < 2 or not isinstance(table[0], list):
         return jsonify({'ok': False, 'error': 'Thiếu bảng kết quả gồm header và dữ liệu'}), 400
     if len(table) > 5001:
         return jsonify({'ok': False, 'error': 'Mỗi lần chỉ ghi tối đa 5000 dòng'}), 400
-    raw_headers = table[0][:100]
-    kept_columns = [
-        index for index, value in enumerate(raw_headers)
-        if str(value or '').strip().casefold() != 'địa chỉ đầy đủ'.casefold()
-    ]
-    incoming_headers = [
-        str(raw_headers[index] or '').strip() or f'Cột {index + 1}'
-        for index in kept_columns
-    ]
+    incoming_headers = [str(value or '').strip() or f'Cột {index + 1}'
+                        for index, value in enumerate(table[0][:100])]
     incoming_rows = [
-        [row[index] if index < len(row) else '' for index in kept_columns]
+        list(row[:len(incoming_headers)])
         for row in table[1:] if isinstance(row, list)
     ]
     if not incoming_rows:
         return jsonify({'ok': False, 'error': 'Không có dòng kết quả để ghi'}), 400
+    requested_entry_ids = payload.get('entry_ids')
+    if not isinstance(requested_entry_ids, list):
+        requested_entry_ids = []
     try:
-        from openpyxl import Workbook
-        from openpyxl.utils import get_column_letter
+        from openpyxl import load_workbook
         with _sim_batch_file_lock:
             _ensure_sim_batch_files()
-            output_path = _new_batch_output_path(SIM_BATCH_DIR, 'SIM_Kit_Output')
-            workbook = Workbook()
-            sheet = workbook.active
-            sheet.title = 'SIM_Output'
-            sheet.append(incoming_headers)
+            workbook = load_workbook(SIM_BATCH_OUTPUT_FILE)
+            sheet, metadata, _ = _prepare_sim_batch_output_workbook(workbook)
+            existing_ids = {
+                str(cell.value or '').strip()
+                for cell in metadata['A'][1:]
+                if str(cell.value or '').strip()
+            }
             user_name, authenticated_users = _authenticated_batch_user_map()
-            user_index = next((index for index, header in enumerate(incoming_headers)
-                               if header.casefold() == 'user chạy'.casefold()), None)
-            for incoming in incoming_rows:
-                mapped = (list(incoming) + [''] * len(incoming_headers))[:len(incoming_headers)]
-                if user_index is not None:
-                    requested_user = str(mapped[user_index] or '').strip().casefold()
-                    mapped[user_index] = authenticated_users.get(requested_user, user_name)
+            appended = 0
+            skipped = 0
+            for index, incoming in enumerate(incoming_rows):
+                supplied_id = requested_entry_ids[index] if index < len(requested_entry_ids) else ''
+                entry_id = str(supplied_id or secrets.token_hex(16)).strip()[:200]
+                if entry_id in existing_ids:
+                    skipped += 1
+                    continue
+                mapped = _sim_batch_convert_output_row(incoming_headers, incoming)
+                requested_user = str(mapped[9] or '').strip().casefold()
+                mapped[9] = authenticated_users.get(requested_user, user_name)
                 sheet.append(mapped)
-            for index, header in enumerate(incoming_headers, start=1):
-                width = 80 if header.casefold() in {'kết quả'.casefold(), 'địa chỉ'.casefold()} else (24 if index > 2 else 20)
-                sheet.column_dimensions[get_column_letter(index)].width = width
-            sheet.freeze_panes = 'A2'
-            workbook.save(output_path)
-            workbook.close()
-        return jsonify({'ok': True, 'appended': len(incoming_rows),
-                        'path': output_path, 'total_rows': len(incoming_rows),
-                        'new_file': True})
+                metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S')])
+                existing_ids.add(entry_id)
+                appended += 1
+            sheet.auto_filter.ref = f'A1:J{max(1, sheet.max_row)}'
+            total_rows = max(0, sheet.max_row - 1)
+            temp_path = f'{SIM_BATCH_OUTPUT_FILE}.{secrets.token_hex(4)}.tmp.xlsx'
+            try:
+                workbook.save(temp_path)
+                workbook.close()
+                os.replace(temp_path, SIM_BATCH_OUTPUT_FILE)
+            finally:
+                try:
+                    workbook.close()
+                except Exception:
+                    pass
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except OSError:
+                    pass
+        return jsonify({'ok': True, 'appended': appended, 'skipped': skipped,
+                        'path': SIM_BATCH_OUTPUT_FILE,
+                        'total_rows': total_rows,
+                        'cumulative': True})
     except PermissionError:
         return jsonify({
             'ok': False,
