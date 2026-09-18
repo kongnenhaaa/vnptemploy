@@ -87,6 +87,7 @@ _documents_root = os.path.join(
 SIM_BATCH_DIR = os.path.join(_documents_root, 'VNPTEmploy', 'SIM_Kit_Batch')
 SIM_BATCH_INPUT_FILE = os.path.join(SIM_BATCH_DIR, 'SIM_Kit_Input.xlsx')
 SIM_BATCH_OUTPUT_FILE = os.path.join(SIM_BATCH_DIR, 'SIM_Kit_Output.xlsx')
+SIM_BATCH_RUN_PREFIX = 'SIM_Kit_Phien'
 SIM_BATCH_OUTPUT_HEADERS = (
     'SĐT', 'Serial SIM', 'Kết quả', 'Mã đơn hàng', 'Loại đăng ký',
     'Tên khách hàng', 'Địa chỉ khách hàng', 'Số tiền', 'Thời gian', 'User chạy'
@@ -109,7 +110,25 @@ _serial_lookup_file_lock = threading.Lock()
 ICOC_BATCH_DIR = os.path.join(_documents_root, 'VNPTEmploy', 'IC_OC_Batch')
 ICOC_BATCH_INPUT_FILE = os.path.join(ICOC_BATCH_DIR, 'IC_OC_Input.xlsx')
 ICOC_BATCH_OUTPUT_FILE = os.path.join(ICOC_BATCH_DIR, 'IC_OC_Output.xlsx')
+ICOC_BATCH_RUN_PREFIX = 'IC_OC_Phien'
+ICOC_BATCH_OUTPUT_HEADERS = ('SĐT', 'Kết quả', 'Thời gian', 'User chạy')
+ICOC_BATCH_OUTPUT_META_SHEET = '_Luu_tu_dong'
 _icoc_batch_file_lock = threading.Lock()
+
+# Đăng ký gói cước (menu 11077): output phiên và nhật ký cộng dồn. Mỗi kết
+# quả được ghi ngay sau khi OneBSS trả lời để dừng/lỗi giữa danh sách không làm
+# mất các thuê bao đã xử lý.
+PACKAGE_REGISTRATION_DIR = os.path.join(
+    _documents_root, 'VNPTEmploy', 'Dang_Ky_Goi_Cuoc')
+PACKAGE_REGISTRATION_OUTPUT_FILE = os.path.join(
+    PACKAGE_REGISTRATION_DIR, 'Dang_Ky_Goi_Cuoc_Output.xlsx')
+PACKAGE_REGISTRATION_RUN_PREFIX = 'Dang_Ky_Goi_Cuoc_Phien'
+PACKAGE_REGISTRATION_HEADERS = (
+    'STT', 'SĐT', 'Mã gói', 'Hệ thống', 'Chu kỳ (ngày)', 'Giá',
+    'Trạng thái', 'Kết quả', 'Thời gian', 'User chạy',
+)
+PACKAGE_REGISTRATION_META_SHEET = '_Luu_tu_dong'
+_package_registration_file_lock = threading.Lock()
 
 
 def _batch_header_key(value):
@@ -226,6 +245,237 @@ def _prepare_sim_batch_output_workbook(workbook):
         metadata.sheet_state = 'hidden'
     return sheet, metadata, changed
 
+
+def _migrate_legacy_sim_run_files():
+    """Merge old SIM_Kit_Output_* workbooks into the all-time log once."""
+    from openpyxl import load_workbook
+
+    if not os.path.isfile(SIM_BATCH_OUTPUT_FILE):
+        return 0
+    legacy_pattern = re.compile(
+        r'^SIM_Kit_Output_\d{8}_\d{6}_[0-9a-fA-F]{6}\.xlsx$')
+    legacy_names = sorted(
+        name for name in os.listdir(SIM_BATCH_DIR)
+        if legacy_pattern.match(name)
+    )
+    if not legacy_names:
+        return 0
+
+    workbook = load_workbook(SIM_BATCH_OUTPUT_FILE)
+    sheet, metadata, _ = _prepare_sim_batch_output_workbook(workbook)
+    existing_ids = {
+        str(cell.value or '').strip()
+        for cell in metadata['A'][1:]
+        if str(cell.value or '').strip()
+    }
+    existing_rows = {
+        tuple(str(value or '') for value in row)
+        for row in sheet.iter_rows(min_row=2, max_col=len(SIM_BATCH_OUTPUT_HEADERS), values_only=True)
+    }
+    appended = 0
+    changed = False
+    for name in legacy_names:
+        file_marker = f'legacy-file:{name}'
+        if file_marker in existing_ids:
+            continue
+        legacy_path = os.path.join(SIM_BATCH_DIR, name)
+        try:
+            legacy = load_workbook(legacy_path, data_only=True, read_only=True)
+            legacy_sheet = (legacy['SIM_Output']
+                            if 'SIM_Output' in legacy.sheetnames else legacy.active)
+            rows = legacy_sheet.iter_rows(values_only=True)
+            headers = [str(value or '').strip() for value in next(rows, ())]
+            for row_number, row in enumerate(rows, start=2):
+                entry_id = f'legacy:{name}:{row_number}'
+                if entry_id in existing_ids or not any(value not in (None, '') for value in row):
+                    continue
+                converted = _sim_batch_convert_output_row(headers, row)
+                fingerprint = tuple(str(value or '') for value in converted)
+                if fingerprint in existing_rows:
+                    continue
+                sheet.append(converted)
+                metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S')])
+                existing_ids.add(entry_id)
+                existing_rows.add(fingerprint)
+                appended += 1
+                changed = True
+            legacy.close()
+            metadata.append([file_marker, time.strftime('%Y-%m-%d %H:%M:%S')])
+            existing_ids.add(file_marker)
+            changed = True
+        except (OSError, ValueError, KeyError):
+            continue
+    if changed:
+        sheet.auto_filter.ref = f'A1:J{max(1, sheet.max_row)}'
+        _atomic_save_workbook(workbook, SIM_BATCH_OUTPUT_FILE)
+    else:
+        workbook.close()
+    return appended
+
+
+def _prepare_icoc_cumulative_workbook(workbook):
+    """Normalize the all-time IC/OC log while preserving legacy rows."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    changed = False
+    sheet = workbook['IC_OC_Output'] if 'IC_OC_Output' in workbook.sheetnames else workbook.active
+    sheet.title = 'IC_OC_Output'
+    current_headers = [cell.value for cell in sheet[1]][:sheet.max_column] if sheet.max_row else []
+    normalized_headers = tuple(str(value or '').strip() for value in current_headers)
+    if normalized_headers != ICOC_BATCH_OUTPUT_HEADERS:
+        old_rows = list(sheet.iter_rows(min_row=2, values_only=True)) if sheet.max_row > 1 else []
+        header_indexes = {
+            _batch_header_key(header): index for index, header in enumerate(current_headers)
+        }
+
+        def old_value(row, *names):
+            for name in names:
+                index = header_indexes.get(_batch_header_key(name))
+                if index is not None and index < len(row):
+                    return row[index]
+            return ''
+
+        converted = [[
+            old_value(row, 'SĐT', 'Số điện thoại', 'MSISDN', 'Số TB'),
+            old_value(row, 'Kết quả'),
+            old_value(row, 'Thời gian'),
+            old_value(row, 'User chạy'),
+        ] for row in old_rows]
+        if sheet.max_row:
+            sheet.delete_rows(1, sheet.max_row)
+        sheet.append(list(ICOC_BATCH_OUTPUT_HEADERS))
+        for row in converted:
+            sheet.append(row)
+        changed = True
+
+    for cell in sheet[1][:4]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    for column, width in {'A': 20, 'B': 80, 'C': 22, 'D': 24}.items():
+        sheet.column_dimensions[column].width = width
+    sheet.freeze_panes = 'A2'
+    sheet.auto_filter.ref = f'A1:D{max(1, sheet.max_row)}'
+
+    if ICOC_BATCH_OUTPUT_META_SHEET not in workbook.sheetnames:
+        metadata = workbook.create_sheet(ICOC_BATCH_OUTPUT_META_SHEET)
+        metadata.append(['entry_id', 'saved_at'])
+        changed = True
+    else:
+        metadata = workbook[ICOC_BATCH_OUTPUT_META_SHEET]
+    metadata.sheet_state = 'hidden'
+    return sheet, metadata, changed
+
+
+def _prepare_icoc_run_workbook(workbook, headers):
+    """Prepare a per-run IC/OC workbook that keeps the imported columns."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    sheet = workbook['IC_OC_Output'] if 'IC_OC_Output' in workbook.sheetnames else workbook.active
+    sheet.title = 'IC_OC_Output'
+    if sheet.max_row == 0 or not any(cell.value not in (None, '') for cell in sheet[1]):
+        sheet.append(list(headers))
+    current_headers = tuple(str(cell.value or '').strip() for cell in sheet[1][:len(headers)])
+    if current_headers != tuple(headers):
+        raise ValueError('Header file output phiên IC/OC không khớp phiên đang chạy')
+    for index, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=1, column=index)
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        sheet.column_dimensions[get_column_letter(index)].width = (
+            80 if _batch_header_key(header) == _batch_header_key('Kết quả')
+            else (20 if index == 1 else 24)
+        )
+    sheet.freeze_panes = 'A2'
+    sheet.auto_filter.ref = f'A1:{get_column_letter(max(1, len(headers)))}{max(1, sheet.max_row)}'
+    if ICOC_BATCH_OUTPUT_META_SHEET not in workbook.sheetnames:
+        metadata = workbook.create_sheet(ICOC_BATCH_OUTPUT_META_SHEET)
+        metadata.append(['entry_id', 'saved_at'])
+    else:
+        metadata = workbook[ICOC_BATCH_OUTPUT_META_SHEET]
+    metadata.sheet_state = 'hidden'
+    return sheet, metadata
+
+
+def _migrate_legacy_icoc_run_files():
+    """Merge old per-run IC_OC_Output_* workbooks into the all-time log once."""
+    from openpyxl import load_workbook
+
+    if not os.path.isfile(ICOC_BATCH_OUTPUT_FILE):
+        return 0
+    legacy_pattern = re.compile(
+        r'^IC_OC_Output_\d{8}_\d{6}_[0-9a-fA-F]{6}\.xlsx$')
+    legacy_names = sorted(
+        name for name in os.listdir(ICOC_BATCH_DIR)
+        if legacy_pattern.match(name)
+    )
+    if not legacy_names:
+        return 0
+
+    workbook = load_workbook(ICOC_BATCH_OUTPUT_FILE)
+    sheet, metadata, _ = _prepare_icoc_cumulative_workbook(workbook)
+    existing_ids = {
+        str(cell.value or '').strip()
+        for cell in metadata['A'][1:]
+        if str(cell.value or '').strip()
+    }
+    existing_rows = {
+        tuple(str(value or '') for value in row)
+        for row in sheet.iter_rows(min_row=2, max_col=len(ICOC_BATCH_OUTPUT_HEADERS), values_only=True)
+    }
+    appended = 0
+    changed = False
+    for name in legacy_names:
+        file_marker = f'legacy-file:{name}'
+        if file_marker in existing_ids:
+            continue
+        legacy_path = os.path.join(ICOC_BATCH_DIR, name)
+        try:
+            legacy = load_workbook(legacy_path, data_only=True, read_only=True)
+            legacy_sheet = (legacy['IC_OC_Output']
+                            if 'IC_OC_Output' in legacy.sheetnames else legacy.active)
+            rows = legacy_sheet.iter_rows(values_only=True)
+            headers = [str(value or '').strip() for value in next(rows, ())]
+            phone_index = _icoc_header_index(
+                headers, 'SĐT', 'Số điện thoại', 'MSISDN', 'Số TB')
+            result_index = _icoc_header_index(headers, 'Kết quả')
+            time_index = _icoc_header_index(headers, 'Thời gian')
+            user_index = _icoc_header_index(headers, 'User chạy')
+            for row_number, row in enumerate(rows, start=2):
+                entry_id = f'legacy:{name}:{row_number}'
+                if entry_id in existing_ids or not any(value not in (None, '') for value in row):
+                    continue
+                converted = [
+                    row[phone_index] if phone_index is not None and phone_index < len(row) else row[0],
+                    row[result_index] if result_index is not None and result_index < len(row) else '',
+                    row[time_index] if time_index is not None and time_index < len(row) else '',
+                    row[user_index] if user_index is not None and user_index < len(row) else '--',
+                ]
+                fingerprint = tuple(str(value or '') for value in converted)
+                if fingerprint in existing_rows:
+                    continue
+                sheet.append(converted)
+                metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S')])
+                existing_ids.add(entry_id)
+                existing_rows.add(fingerprint)
+                appended += 1
+                changed = True
+            legacy.close()
+            metadata.append([file_marker, time.strftime('%Y-%m-%d %H:%M:%S')])
+            existing_ids.add(file_marker)
+            changed = True
+        except (OSError, ValueError, KeyError):
+            # A damaged/open historical workbook must not block current runs.
+            continue
+    if changed:
+        sheet.auto_filter.ref = f'A1:D{max(1, sheet.max_row)}'
+        _atomic_save_workbook(workbook, ICOC_BATCH_OUTPUT_FILE)
+    else:
+        workbook.close()
+    return appended
+
 def _ensure_sim_batch_files():
     """Create the stable input template and cumulative SIM output log."""
     from openpyxl import Workbook, load_workbook
@@ -299,6 +549,12 @@ def _ensure_sim_batch_files():
         except PermissionError:
             pass
 
+    try:
+        _migrate_legacy_sim_run_files()
+    except PermissionError:
+        # The cumulative file may be open in Excel during application startup.
+        pass
+
 
 def _ensure_icoc_batch_files():
     """Create the stable input/output workbooks for batch IC/OC changes."""
@@ -342,11 +598,24 @@ def _ensure_icoc_batch_files():
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = 'IC_OC_Output'
-        sheet.append(['SĐT', 'Kết quả', 'Thời gian', 'User chạy'])
-        sheet.freeze_panes = 'A2'
-        for column, width in {'A': 20, 'B': 80, 'C': 22, 'D': 24}.items():
-            sheet.column_dimensions[column].width = width
+        sheet.append(list(ICOC_BATCH_OUTPUT_HEADERS))
+        _prepare_icoc_cumulative_workbook(workbook)
         workbook.save(ICOC_BATCH_OUTPUT_FILE)
+        workbook.close()
+    else:
+        try:
+            workbook = load_workbook(ICOC_BATCH_OUTPUT_FILE)
+            _, _, changed = _prepare_icoc_cumulative_workbook(workbook)
+            if changed:
+                workbook.save(ICOC_BATCH_OUTPUT_FILE)
+            workbook.close()
+        except PermissionError:
+            pass
+    try:
+        _migrate_legacy_icoc_run_files()
+    except PermissionError:
+        # The cumulative file may be open in Excel during application startup.
+        pass
 
 
 def _prepare_serial_lookup_output_workbook(workbook):
@@ -428,6 +697,109 @@ def _ensure_serial_lookup_files():
         _prepare_serial_lookup_output_workbook(workbook)
         workbook.close()
 
+
+def _prepare_package_registration_workbook(workbook):
+    """Validate and format a package-registration audit workbook."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    sheet = (workbook['Dang_Ky_Goi_Cuoc']
+             if 'Dang_Ky_Goi_Cuoc' in workbook.sheetnames else workbook.active)
+    sheet.title = 'Dang_Ky_Goi_Cuoc'
+    header_count = len(PACKAGE_REGISTRATION_HEADERS)
+    current_headers = tuple(
+        str(sheet.cell(row=1, column=index).value or '').strip()
+        for index in range(1, header_count + 1)
+    )
+    if not any(current_headers):
+        for index, header in enumerate(PACKAGE_REGISTRATION_HEADERS, start=1):
+            sheet.cell(row=1, column=index, value=header)
+    elif current_headers != PACKAGE_REGISTRATION_HEADERS:
+        raise ValueError(
+            'File output Đăng ký gói cước đã bị đổi cấu trúc; '
+            'hãy đóng hoặc đổi tên file để ứng dụng tạo lại.'
+        )
+
+    for cell in sheet[1][:header_count]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    widths = (7, 18, 24, 14, 16, 16, 14, 62, 21, 24)
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    sheet.freeze_panes = 'A2'
+    sheet.auto_filter.ref = (
+        f'A1:{get_column_letter(header_count)}{max(1, sheet.max_row)}'
+    )
+    for row in sheet.iter_rows(min_row=2, max_col=header_count):
+        row[1].number_format = '@'
+
+    if PACKAGE_REGISTRATION_META_SHEET not in workbook.sheetnames:
+        metadata = workbook.create_sheet(PACKAGE_REGISTRATION_META_SHEET)
+        metadata.append(['entry_id', 'saved_at'])
+    else:
+        metadata = workbook[PACKAGE_REGISTRATION_META_SHEET]
+        metadata.cell(row=1, column=1, value='entry_id')
+        metadata.cell(row=1, column=2, value='saved_at')
+    metadata.sheet_state = 'hidden'
+    return sheet, metadata
+
+
+def _ensure_package_registration_files():
+    """Create the cumulative output used by menu 11077."""
+    from openpyxl import Workbook, load_workbook
+
+    os.makedirs(PACKAGE_REGISTRATION_DIR, exist_ok=True)
+    if not os.path.exists(PACKAGE_REGISTRATION_OUTPUT_FILE):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'Dang_Ky_Goi_Cuoc'
+        sheet.append(list(PACKAGE_REGISTRATION_HEADERS))
+        _prepare_package_registration_workbook(workbook)
+        workbook.save(PACKAGE_REGISTRATION_OUTPUT_FILE)
+        workbook.close()
+        return
+    workbook = load_workbook(PACKAGE_REGISTRATION_OUTPUT_FILE)
+    _prepare_package_registration_workbook(workbook)
+    workbook.close()
+
+
+def _append_package_registration_workbook(
+        path, rows, entry_ids, authenticated_users, fallback_user):
+    """Append completed rows idempotently and replace the workbook atomically."""
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path)
+    sheet, metadata = _prepare_package_registration_workbook(workbook)
+    existing_ids = {
+        str(cell.value or '').strip()
+        for cell in metadata['A'][1:]
+        if str(cell.value or '').strip()
+    }
+    appended = 0
+    skipped = 0
+    expected = len(PACKAGE_REGISTRATION_HEADERS)
+    for index, incoming in enumerate(rows):
+        entry_id = str(
+            entry_ids[index] if index < len(entry_ids) else ''
+        ).strip()[:200] or secrets.token_hex(16)
+        if entry_id in existing_ids:
+            skipped += 1
+            continue
+        mapped = (list(incoming) + [''] * expected)[:expected]
+        requested_user = str(mapped[9] or '').strip().casefold()
+        mapped[9] = authenticated_users.get(requested_user, fallback_user)
+        mapped[1] = str(mapped[1] or '').strip()
+        sheet.append(mapped)
+        sheet.cell(row=sheet.max_row, column=2).number_format = '@'
+        metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S')])
+        existing_ids.add(entry_id)
+        appended += 1
+    _prepare_package_registration_workbook(workbook)
+    total_rows = max(0, sheet.max_row - 1)
+    _atomic_save_workbook(workbook, path)
+    return appended, skipped, total_rows
+
 def _open_local_file(path):
     path = os.path.abspath(path)
     if not os.path.isfile(path):
@@ -463,6 +835,140 @@ def _owned_batch_file_path(requested, directory, fallback):
     except ValueError:
         return os.path.abspath(fallback)
     return candidate
+
+
+def _owned_batch_run_path(requested, directory, prefix):
+    """Validate a per-run workbook path created by this application."""
+    if not requested:
+        return ''
+    candidate = os.path.abspath(str(requested).strip())
+    root = os.path.abspath(directory)
+    name = os.path.basename(candidate)
+    try:
+        if (os.path.commonpath([candidate, root]) != root or
+                not candidate.lower().endswith('.xlsx') or
+                not name.startswith(f'{prefix}_')):
+            return ''
+    except ValueError:
+        return ''
+    return candidate
+
+
+def _atomic_save_workbook(workbook, path):
+    """Replace one workbook atomically so an interrupted save keeps the old file."""
+    temp_path = f'{path}.{secrets.token_hex(4)}.tmp.xlsx'
+    try:
+        workbook.save(temp_path)
+        workbook.close()
+        os.replace(temp_path, path)
+    finally:
+        try:
+            workbook.close()
+        except Exception:
+            pass
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
+def _append_sim_output_workbook(path, incoming_headers, incoming_rows,
+                                entry_ids, authenticated_users, fallback_user):
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path)
+    sheet, metadata, _ = _prepare_sim_batch_output_workbook(workbook)
+    existing_ids = {
+        str(cell.value or '').strip()
+        for cell in metadata['A'][1:]
+        if str(cell.value or '').strip()
+    }
+    appended = 0
+    skipped = 0
+    for index, incoming in enumerate(incoming_rows):
+        supplied_id = entry_ids[index] if index < len(entry_ids) else ''
+        entry_id = str(supplied_id or secrets.token_hex(16)).strip()[:200]
+        if entry_id in existing_ids:
+            skipped += 1
+            continue
+        mapped = _sim_batch_convert_output_row(incoming_headers, incoming)
+        requested_user = str(mapped[9] or '').strip().casefold()
+        mapped[9] = authenticated_users.get(requested_user, fallback_user)
+        sheet.append(mapped)
+        metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S')])
+        existing_ids.add(entry_id)
+        appended += 1
+    sheet.auto_filter.ref = f'A1:J{max(1, sheet.max_row)}'
+    total_rows = max(0, sheet.max_row - 1)
+    _atomic_save_workbook(workbook, path)
+    return appended, skipped, total_rows
+
+
+def _icoc_header_index(headers, *names):
+    indexes = {_batch_header_key(header): index for index, header in enumerate(headers)}
+    for name in names:
+        index = indexes.get(_batch_header_key(name))
+        if index is not None:
+            return index
+    return None
+
+
+def _append_icoc_output_workbook(path, incoming_headers, incoming_rows,
+                                 entry_ids, authenticated_users, fallback_user,
+                                 cumulative=False):
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+
+    workbook = load_workbook(path)
+    if cumulative:
+        sheet, metadata, _ = _prepare_icoc_cumulative_workbook(workbook)
+    else:
+        sheet, metadata = _prepare_icoc_run_workbook(workbook, incoming_headers)
+    existing_ids = {
+        str(cell.value or '').strip()
+        for cell in metadata['A'][1:]
+        if str(cell.value or '').strip()
+    }
+    phone_index = _icoc_header_index(
+        incoming_headers, 'SĐT', 'Số điện thoại', 'MSISDN', 'Số TB')
+    result_index = _icoc_header_index(incoming_headers, 'Kết quả')
+    time_index = _icoc_header_index(incoming_headers, 'Thời gian')
+    user_index = _icoc_header_index(incoming_headers, 'User chạy')
+    appended = 0
+    skipped = 0
+    for index, incoming in enumerate(incoming_rows):
+        supplied_id = entry_ids[index] if index < len(entry_ids) else ''
+        entry_id = str(supplied_id or secrets.token_hex(16)).strip()[:200]
+        if entry_id in existing_ids:
+            skipped += 1
+            continue
+        requested_user = (
+            str(incoming[user_index] or '').strip().casefold()
+            if user_index is not None and user_index < len(incoming) else '')
+        safe_user = authenticated_users.get(requested_user, fallback_user)
+        if cumulative:
+            mapped = [
+                incoming[phone_index] if phone_index is not None and phone_index < len(incoming) else incoming[0],
+                incoming[result_index] if result_index is not None and result_index < len(incoming) else '',
+                incoming[time_index] if time_index is not None and time_index < len(incoming) else '',
+                safe_user,
+            ]
+        else:
+            mapped = (list(incoming) + [''] * len(incoming_headers))[:len(incoming_headers)]
+            if user_index is not None:
+                mapped[user_index] = safe_user
+        sheet.append(mapped)
+        metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S')])
+        existing_ids.add(entry_id)
+        appended += 1
+    sheet.auto_filter.ref = (
+        f'A1:D{max(1, sheet.max_row)}' if cumulative else
+        f'A1:{get_column_letter(max(1, len(incoming_headers)))}{max(1, sheet.max_row)}'
+    )
+    total_rows = max(0, sheet.max_row - 1)
+    _atomic_save_workbook(workbook, path)
+    return appended, skipped, total_rows
 
 
 def _authenticated_batch_user_map():
@@ -534,6 +1040,7 @@ def _ensure_application_storage():
     _ensure_sim_batch_files()
     _ensure_icoc_batch_files()
     _ensure_serial_lookup_files()
+    _ensure_package_registration_files()
 
 def _account_id(username):
     return hashlib.sha256(username.strip().casefold().encode('utf-8')).hexdigest()[:24]
@@ -563,9 +1070,24 @@ def get_saved_employee_account(account_id):
     return next((a for a in _read_saved_accounts()
                  if a.get('id') == account_id), None)
 
+
+def delete_saved_employee_account(account_id):
+    """Delete one encrypted saved credential without touching other accounts."""
+    account_id = str(account_id or '').strip()
+    if not account_id:
+        return False
+    with _saved_accounts_lock:
+        accounts = _read_saved_accounts()
+        remaining = [account for account in accounts
+                     if str(account.get('id') or '') != account_id]
+        if len(remaining) == len(accounts):
+            return False
+        _write_saved_accounts(remaining)
+    return True
+
 # ─── CONFIG (Dynamic) ───────────────────────
 BASE_URL = 'https://api-onebss.vnpt.vn'
-DEFAULT_APP_VERSION = '1.5.41.086'
+DEFAULT_APP_VERSION = '1.5.41.090'
 APP_SETTINGS_FILE = os.path.join(_credential_root, 'app_settings.json')
 _app_settings_lock = threading.RLock()
 
@@ -583,7 +1105,14 @@ def _load_saved_app_version():
         with _app_settings_lock:
             with open(APP_SETTINGS_FILE, 'r', encoding='utf-8') as settings_file:
                 settings = json.load(settings_file)
-        return _normalize_app_version(settings.get('app_version'))
+        saved = _normalize_app_version(settings.get('app_version'))
+        # OneBSS mobile capture for menu 11077 uses 1.5.41.090.  An older
+        # persisted version produces an app-secret that the current gateway
+        # rejects with 401, so upgrade old settings while preserving any newer
+        # version the operator configured later.
+        saved_parts = tuple(int(part) for part in saved.split('.'))
+        minimum_parts = tuple(int(part) for part in DEFAULT_APP_VERSION.split('.'))
+        return saved if saved_parts >= minimum_parts else DEFAULT_APP_VERSION
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return DEFAULT_APP_VERSION
 
@@ -1010,6 +1539,9 @@ def api_call(method, path, **kwargs):
 # single menu selected in the sidebar cannot be reused for calls made by a tab
 # that contains more than one module (Cashless/DCRS is the common example).
 ENDPOINT_MENU_ROUTES = (
+    ('/quantri/user/log_sudung_chucnang', '11077'),
+    ('/ccbs/oneBss/app_tb_tc_thongtin', '11077'),
+    ('/ccbs/goicuoc/', '11077'),
     ('/ccbs/pttb/get_sotb_by_msin', '699060'),
     ('/ccbs/tracuu/ts_tracuu_stb_serial', '699060'),
     ('/ccbs/chonSo/', '699161'),
@@ -1088,6 +1620,8 @@ def endpoint_menu_id(endpoint_path, fallback=None, body=None):
             return '11175'
         if permission_code == 'CATMODICHVU':
             return '11213'
+        if permission_code == 'BANGOICUOCDIDONG':
+            return '11077'
     for prefix, menu_id in ENDPOINT_MENU_ROUTES:
         if endpoint_path.startswith(prefix):
             return menu_id
@@ -1553,6 +2087,41 @@ def api_accounts_remove():
     return jsonify({'ok': True, 'removed': bool(removed)})
 
 
+@app.post('/api/accounts/delete')
+@login_required
+def api_accounts_delete():
+    """Delete a saved account and sign out its active token, if present."""
+    account_id = str((request.get_json(silent=True) or {}).get('account_id') or '').strip()
+    if not account_id:
+        return jsonify({'ok': False, 'error': 'Thiếu tài khoản cần xóa'}), 400
+
+    primary_id = _primary_account_context().get('id')
+    deleted_saved = delete_saved_employee_account(account_id)
+    if account_id == primary_id:
+        session.clear()
+        _clear_persistent_session()
+        return jsonify({
+            'ok': True,
+            'deleted': True,
+            'deleted_saved': deleted_saved,
+            'logout_required': True,
+        })
+
+    with _multi_account_lock:
+        extras = session.get('multi_accounts') or {}
+        extras = dict(extras) if isinstance(extras, dict) else {}
+        removed_session = extras.pop(account_id, None) is not None
+        session['multi_accounts'] = extras
+    _save_persistent_session()
+    return jsonify({
+        'ok': True,
+        'deleted': bool(deleted_saved or removed_session),
+        'deleted_saved': deleted_saved,
+        'removed_session': removed_session,
+        'logout_required': False,
+    })
+
+
 @app.post('/api/accounts/refresh')
 @login_required
 def api_accounts_refresh():
@@ -1561,6 +2130,14 @@ def api_accounts_refresh():
         context = _get_account_context(account_id)
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 404
+    remaining = _account_seconds_remaining(context)
+    if remaining > 120:
+        return jsonify({
+            'ok': True,
+            'skipped': True,
+            'message': f'Token vẫn còn {remaining} giây; chưa cần làm mới',
+            'account': _public_account_summary(context),
+        })
     if not context.get('refresh_token'):
         return jsonify({'ok': False, 'error': 'Tài khoản không có refresh token; hãy thêm lại và nhập OTP'}), 400
     try:
@@ -1686,6 +2263,7 @@ _business_db_lock = threading.RLock()
 
 _SIM_MUTATION_ENDPOINTS = frozenset({
     '/app-banhang/donhang_simkit/chonso_kit_v2',
+    '/app-banhang/donhang_simkit/huy_donhang',
     '/app-banhang/donhang_simkit/dangky_goicuoc',
     '/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3',
     '/app-banhang/donhang_simkit/xacnhan_thanhtoan',
@@ -1693,6 +2271,9 @@ _SIM_MUTATION_ENDPOINTS = frozenset({
 })
 _ICOC_MUTATION_ENDPOINTS = frozenset({
     '/app-banhang/thuebaodidong/khoamo_ic_oc',
+})
+_PACKAGE_REGISTRATION_MUTATION_ENDPOINTS = frozenset({
+    '/ccbs/goicuoc/dangky',
 })
 _LOOKUP_ENDPOINTS = frozenset({
     '/ccbs/pttb/get_sotb_by_msin',
@@ -1742,6 +2323,21 @@ def _business_endpoint_policy(endpoint_path, body):
             'workflow': 'icoc',
             'mutation': path in _ICOC_MUTATION_ENDPOINTS,
             'cooldown': BUSINESS_ICOC_COOLDOWN_SECONDS,
+        }
+
+    is_package_registration = (
+        path == '/quantri/user/log_sudung_chucnang' or
+        path == '/ccbs/onebss/app_tb_tc_thongtin' or
+        path.startswith('/ccbs/goicuoc/') or
+        (path == '/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen' and
+         str(payload.get('ma_quyen') or '').strip().upper() ==
+         'BANGOICUOCDIDONG')
+    )
+    if is_package_registration:
+        return {
+            'workflow': 'package_registration',
+            'mutation': path in _PACKAGE_REGISTRATION_MUTATION_ENDPOINTS,
+            'cooldown': BUSINESS_LOOKUP_COOLDOWN_SECONDS,
         }
     if path == _LOOKUP_OTP_ENDPOINT:
         return {
@@ -1846,6 +2442,8 @@ def _business_operation_key(account_key, endpoint_path, body):
     identity = {'account': account_key, 'endpoint': path}
     if path.endswith('/chonso_kit_v2'):
         identity['phone'] = payload.get('p_so_dt')
+    elif path.endswith('/huy_donhang'):
+        identity['order'] = payload.get('p_id_donhang')
     elif path.endswith('/dangky_goicuoc'):
         identity['order'] = payload.get('p_id_donhang')
         identity['recharge'] = payload.get('p_id_hinhthuc_napthe')
@@ -3378,7 +3976,32 @@ def api_sim_batch_files():
             'ok': True,
             'input_path': SIM_BATCH_INPUT_FILE,
             'output_path': SIM_BATCH_OUTPUT_FILE,
+            'cumulative_output_path': SIM_BATCH_OUTPUT_FILE,
             'output_dir': SIM_BATCH_DIR,
+        })
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/sim-batch/start-output', methods=['POST'])
+@login_required
+def api_sim_batch_start_output():
+    """Create the immutable-looking workbook for one SIM batch run."""
+    try:
+        from openpyxl import Workbook
+        with _sim_batch_file_lock:
+            _ensure_sim_batch_files()
+            run_path = _new_batch_output_path(SIM_BATCH_DIR, SIM_BATCH_RUN_PREFIX)
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = 'SIM_Output'
+            sheet.append(list(SIM_BATCH_OUTPUT_HEADERS))
+            _prepare_sim_batch_output_workbook(workbook)
+            _atomic_save_workbook(workbook, run_path)
+        return jsonify({
+            'ok': True,
+            'run_output_path': run_path,
+            'cumulative_output_path': SIM_BATCH_OUTPUT_FILE,
         })
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
@@ -3535,14 +4158,14 @@ def api_serial_lookup_append_output():
 @app.route('/api/sim-batch/open', methods=['POST'])
 @login_required
 def api_sim_batch_open():
-    """Open only one of the two application-owned workbooks."""
+    """Open the input, all-time output, or current-run output workbook."""
     payload = request.get_json(silent=True) or {}
     kind = str(payload.get('type', '')).strip().lower()
     path = {'input': SIM_BATCH_INPUT_FILE, 'output': SIM_BATCH_OUTPUT_FILE}.get(kind)
-    if kind == 'output':
-        path = _owned_batch_file_path(payload.get('path'), SIM_BATCH_DIR, SIM_BATCH_OUTPUT_FILE)
+    if kind == 'run':
+        path = _owned_batch_run_path(payload.get('path'), SIM_BATCH_DIR, SIM_BATCH_RUN_PREFIX)
     if not path:
-        return jsonify({'ok': False, 'error': 'type phải là input hoặc output'}), 400
+        return jsonify({'ok': False, 'error': 'Chưa có file output của phiên đang chạy'}), 400
     try:
         with _sim_batch_file_lock:
             _ensure_sim_batch_files()
@@ -3595,58 +4218,41 @@ def api_sim_batch_append_output():
     requested_entry_ids = payload.get('entry_ids')
     if not isinstance(requested_entry_ids, list):
         requested_entry_ids = []
+    run_path = _owned_batch_run_path(
+        payload.get('run_output_path'), SIM_BATCH_DIR, SIM_BATCH_RUN_PREFIX)
+    if payload.get('run_output_path') and (not run_path or not os.path.isfile(run_path)):
+        return jsonify({'ok': False, 'error': 'File output phiên SIM không hợp lệ hoặc không còn tồn tại'}), 400
     try:
-        from openpyxl import load_workbook
         with _sim_batch_file_lock:
             _ensure_sim_batch_files()
-            workbook = load_workbook(SIM_BATCH_OUTPUT_FILE)
-            sheet, metadata, _ = _prepare_sim_batch_output_workbook(workbook)
-            existing_ids = {
-                str(cell.value or '').strip()
-                for cell in metadata['A'][1:]
-                if str(cell.value or '').strip()
-            }
             user_name, authenticated_users = _authenticated_batch_user_map()
-            appended = 0
-            skipped = 0
-            for index, incoming in enumerate(incoming_rows):
-                supplied_id = requested_entry_ids[index] if index < len(requested_entry_ids) else ''
-                entry_id = str(supplied_id or secrets.token_hex(16)).strip()[:200]
-                if entry_id in existing_ids:
-                    skipped += 1
-                    continue
-                mapped = _sim_batch_convert_output_row(incoming_headers, incoming)
-                requested_user = str(mapped[9] or '').strip().casefold()
-                mapped[9] = authenticated_users.get(requested_user, user_name)
-                sheet.append(mapped)
-                metadata.append([entry_id, time.strftime('%Y-%m-%d %H:%M:%S')])
-                existing_ids.add(entry_id)
-                appended += 1
-            sheet.auto_filter.ref = f'A1:J{max(1, sheet.max_row)}'
-            total_rows = max(0, sheet.max_row - 1)
-            temp_path = f'{SIM_BATCH_OUTPUT_FILE}.{secrets.token_hex(4)}.tmp.xlsx'
-            try:
-                workbook.save(temp_path)
-                workbook.close()
-                os.replace(temp_path, SIM_BATCH_OUTPUT_FILE)
-            finally:
-                try:
-                    workbook.close()
-                except Exception:
-                    pass
-                try:
-                    if os.path.exists(temp_path):
-                        os.remove(temp_path)
-                except OSError:
-                    pass
-        return jsonify({'ok': True, 'appended': appended, 'skipped': skipped,
-                        'path': SIM_BATCH_OUTPUT_FILE,
-                        'total_rows': total_rows,
-                        'cumulative': True})
+            run_appended = run_skipped = run_total = 0
+            # Ghi file phiên trước: nếu file tổng đang bị Excel khóa thì kết quả
+            # vừa chạy vẫn còn an toàn trong workbook của riêng phiên này.
+            if run_path:
+                run_appended, run_skipped, run_total = _append_sim_output_workbook(
+                    run_path, incoming_headers, incoming_rows, requested_entry_ids,
+                    authenticated_users, user_name)
+            appended, skipped, total_rows = _append_sim_output_workbook(
+                SIM_BATCH_OUTPUT_FILE, incoming_headers, incoming_rows,
+                requested_entry_ids, authenticated_users, user_name)
+        return jsonify({
+            'ok': True,
+            'appended': appended,
+            'skipped': skipped,
+            'path': SIM_BATCH_OUTPUT_FILE,
+            'cumulative_output_path': SIM_BATCH_OUTPUT_FILE,
+            'total_rows': total_rows,
+            'run_output_path': run_path,
+            'run_appended': run_appended,
+            'run_skipped': run_skipped,
+            'run_total_rows': run_total,
+            'cumulative': True,
+        })
     except PermissionError:
         return jsonify({
             'ok': False,
-            'error': 'File output đang mở trong Excel. Hãy đóng file rồi bấm ghi lại kết quả.'
+            'error': 'Một file output đang mở trong Excel. Hãy đóng file; các dòng chưa ghi đủ hai file sẽ được thử lại.'
         }), 409
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
@@ -3663,7 +4269,38 @@ def api_icoc_batch_files():
             'ok': True,
             'input_path': ICOC_BATCH_INPUT_FILE,
             'output_path': ICOC_BATCH_OUTPUT_FILE,
+            'cumulative_output_path': ICOC_BATCH_OUTPUT_FILE,
             'output_dir': ICOC_BATCH_DIR,
+        })
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/icoc-batch/start-output', methods=['POST'])
+@login_required
+def api_icoc_batch_start_output():
+    """Create one per-run IC/OC workbook before the first phone is handled."""
+    payload = request.get_json(silent=True) or {}
+    headers = payload.get('headers')
+    if not isinstance(headers, list) or not headers or len(headers) > 100:
+        return jsonify({'ok': False, 'error': 'Thiếu header output IC/OC của phiên chạy'}), 400
+    headers = [str(value or '').strip() or f'Cột {index + 1}'
+               for index, value in enumerate(headers)]
+    try:
+        from openpyxl import Workbook
+        with _icoc_batch_file_lock:
+            _ensure_icoc_batch_files()
+            run_path = _new_batch_output_path(ICOC_BATCH_DIR, ICOC_BATCH_RUN_PREFIX)
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = 'IC_OC_Output'
+            sheet.append(headers)
+            _prepare_icoc_run_workbook(workbook, headers)
+            _atomic_save_workbook(workbook, run_path)
+        return jsonify({
+            'ok': True,
+            'run_output_path': run_path,
+            'cumulative_output_path': ICOC_BATCH_OUTPUT_FILE,
         })
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
@@ -3675,10 +4312,10 @@ def api_icoc_batch_open():
     payload = request.get_json(silent=True) or {}
     kind = str(payload.get('type', '')).strip().lower()
     path = {'input': ICOC_BATCH_INPUT_FILE, 'output': ICOC_BATCH_OUTPUT_FILE}.get(kind)
-    if kind == 'output':
-        path = _owned_batch_file_path(payload.get('path'), ICOC_BATCH_DIR, ICOC_BATCH_OUTPUT_FILE)
+    if kind == 'run':
+        path = _owned_batch_run_path(payload.get('path'), ICOC_BATCH_DIR, ICOC_BATCH_RUN_PREFIX)
     if not path:
-        return jsonify({'ok': False, 'error': 'type phải là input hoặc output'}), 400
+        return jsonify({'ok': False, 'error': 'Chưa có file output của phiên đang chạy'}), 400
     try:
         with _icoc_batch_file_lock:
             _ensure_icoc_batch_files()
@@ -3713,7 +4350,7 @@ def api_icoc_batch_read_input():
 @app.route('/api/icoc-batch/append-output', methods=['POST'])
 @login_required
 def api_icoc_batch_append_output():
-    """Write one completed IC/OC run to a new workbook; never merge old runs."""
+    """Append completed IC/OC rows to both the run file and all-time log."""
     payload = request.get_json(silent=True) or {}
     table = payload.get('table')
     if not isinstance(table, list) or len(table) < 2 or not isinstance(table[0], list):
@@ -3730,40 +4367,193 @@ def api_icoc_batch_append_output():
     ]
     if not incoming_rows:
         return jsonify({'ok': False, 'error': 'Không có dòng kết quả để ghi'}), 400
-
+    requested_entry_ids = payload.get('entry_ids')
+    if not isinstance(requested_entry_ids, list):
+        requested_entry_ids = []
+    run_path = _owned_batch_run_path(
+        payload.get('run_output_path'), ICOC_BATCH_DIR, ICOC_BATCH_RUN_PREFIX)
+    if payload.get('run_output_path') and (not run_path or not os.path.isfile(run_path)):
+        return jsonify({'ok': False, 'error': 'File output phiên IC/OC không hợp lệ hoặc không còn tồn tại'}), 400
     try:
-        from openpyxl import Workbook
-        from openpyxl.utils import get_column_letter
         with _icoc_batch_file_lock:
             _ensure_icoc_batch_files()
-            output_path = _new_batch_output_path(ICOC_BATCH_DIR, 'IC_OC_Output')
-            workbook = Workbook()
-            sheet = workbook.active
-            sheet.title = 'IC_OC_Output'
-            sheet.append(incoming_headers)
             user_name, authenticated_users = _authenticated_batch_user_map()
-            user_index = next((index for index, header in enumerate(incoming_headers)
-                               if header.casefold() == 'user chạy'.casefold()), None)
-            for incoming in incoming_rows:
-                mapped = (list(incoming) + [''] * len(incoming_headers))[:len(incoming_headers)]
-                if user_index is not None:
-                    requested_user = str(mapped[user_index] or '').strip().casefold()
-                    mapped[user_index] = authenticated_users.get(requested_user, user_name)
-                sheet.append(mapped)
-            for index, header in enumerate(incoming_headers, start=1):
-                width = 80 if header.casefold() == 'kết quả'.casefold() else (24 if index > 1 else 20)
-                sheet.column_dimensions[get_column_letter(index)].width = width
-            sheet.freeze_panes = 'A2'
-            workbook.save(output_path)
-            workbook.close()
-        return jsonify({'ok': True, 'appended': len(incoming_rows),
-                        'path': output_path, 'total_rows': len(incoming_rows),
-                        'new_file': True})
+            run_appended = run_skipped = run_total = 0
+            if run_path:
+                run_appended, run_skipped, run_total = _append_icoc_output_workbook(
+                    run_path, incoming_headers, incoming_rows, requested_entry_ids,
+                    authenticated_users, user_name, cumulative=False)
+            appended, skipped, total_rows = _append_icoc_output_workbook(
+                ICOC_BATCH_OUTPUT_FILE, incoming_headers, incoming_rows,
+                requested_entry_ids, authenticated_users, user_name,
+                cumulative=True)
+        return jsonify({
+            'ok': True,
+            'appended': appended,
+            'skipped': skipped,
+            'path': ICOC_BATCH_OUTPUT_FILE,
+            'cumulative_output_path': ICOC_BATCH_OUTPUT_FILE,
+            'total_rows': total_rows,
+            'run_output_path': run_path,
+            'run_appended': run_appended,
+            'run_skipped': run_skipped,
+            'run_total_rows': run_total,
+            'cumulative': True,
+        })
     except PermissionError:
         return jsonify({
             'ok': False,
-            'error': 'File output đang mở trong Excel. Hãy đóng file rồi bấm ghi lại kết quả.'
+            'error': 'Một file output đang mở trong Excel. Hãy đóng file; các dòng chưa ghi đủ hai file sẽ được thử lại.'
         }), 409
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/package-registration/files')
+@login_required
+def api_package_registration_files():
+    """Return the user-visible cumulative output location."""
+    try:
+        with _package_registration_file_lock:
+            _ensure_package_registration_files()
+        return jsonify({
+            'ok': True,
+            'output_path': PACKAGE_REGISTRATION_OUTPUT_FILE,
+            'output_dir': PACKAGE_REGISTRATION_DIR,
+        })
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/package-registration/start-output', methods=['POST'])
+@login_required
+def api_package_registration_start_output():
+    """Create one fresh audit workbook for the current list run."""
+    try:
+        from openpyxl import Workbook
+        with _package_registration_file_lock:
+            _ensure_package_registration_files()
+            run_path = _new_batch_output_path(
+                PACKAGE_REGISTRATION_DIR, PACKAGE_REGISTRATION_RUN_PREFIX)
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = 'Dang_Ky_Goi_Cuoc'
+            sheet.append(list(PACKAGE_REGISTRATION_HEADERS))
+            _prepare_package_registration_workbook(workbook)
+            _atomic_save_workbook(workbook, run_path)
+        return jsonify({
+            'ok': True,
+            'run_output_path': run_path,
+            'cumulative_output_path': PACKAGE_REGISTRATION_OUTPUT_FILE,
+        })
+    except PermissionError:
+        return jsonify({
+            'ok': False,
+            'error': 'File output tổng đang mở trong Excel. Hãy đóng file rồi chạy lại.',
+        }), 409
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+
+@app.route('/api/package-registration/append-output', methods=['POST'])
+@login_required
+def api_package_registration_append_output():
+    """Persist completed package-registration rows to run and total outputs."""
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get('rows')
+    if not isinstance(rows, list) or not rows or len(rows) > 500:
+        return jsonify({
+            'ok': False,
+            'error': 'Cần từ 1 đến 500 dòng kết quả để ghi.',
+        }), 400
+    expected = len(PACKAGE_REGISTRATION_HEADERS)
+    clean_rows = [
+        list(row[:expected]) for row in rows
+        if isinstance(row, list) and len(row) >= expected - 1
+    ]
+    if len(clean_rows) != len(rows):
+        return jsonify({'ok': False, 'error': 'Dòng output không đúng cấu trúc.'}), 400
+    entry_ids = payload.get('entry_ids')
+    if not isinstance(entry_ids, list):
+        entry_ids = []
+    run_path = _owned_batch_run_path(
+        payload.get('run_output_path'),
+        PACKAGE_REGISTRATION_DIR,
+        PACKAGE_REGISTRATION_RUN_PREFIX,
+    )
+    if not run_path or not os.path.isfile(run_path):
+        return jsonify({'ok': False, 'error': 'File output phiên không hợp lệ.'}), 400
+
+    run_saved = False
+    try:
+        with _package_registration_file_lock:
+            _ensure_package_registration_files()
+            user_name, authenticated_users = _authenticated_batch_user_map()
+            run_appended, run_skipped, run_total = (
+                _append_package_registration_workbook(
+                    run_path, clean_rows, entry_ids,
+                    authenticated_users, user_name,
+                )
+            )
+            run_saved = True
+            appended, skipped, total_rows = (
+                _append_package_registration_workbook(
+                    PACKAGE_REGISTRATION_OUTPUT_FILE, clean_rows, entry_ids,
+                    authenticated_users, user_name,
+                )
+            )
+        return jsonify({
+            'ok': True,
+            'appended': appended,
+            'skipped': skipped,
+            'total_rows': total_rows,
+            'run_appended': run_appended,
+            'run_skipped': run_skipped,
+            'run_total_rows': run_total,
+            'run_output_path': run_path,
+            'cumulative_output_path': PACKAGE_REGISTRATION_OUTPUT_FILE,
+        })
+    except PermissionError:
+        return jsonify({
+            'ok': False,
+            'run_saved': run_saved,
+            'error': (
+                'Một file output đang mở trong Excel. Kết quả đã được giữ ở '
+                'output phiên.' if run_saved else
+                'File output phiên đang mở trong Excel; đã dừng để không mất kết quả.'
+            ),
+        }), 409
+    except Exception as exc:
+        return jsonify({
+            'ok': False,
+            'run_saved': run_saved,
+            'error': str(exc),
+        }), 500
+
+
+@app.route('/api/package-registration/open', methods=['POST'])
+@login_required
+def api_package_registration_open():
+    """Open either the per-run workbook or the cumulative workbook."""
+    payload = request.get_json(silent=True) or {}
+    kind = str(payload.get('type') or '').strip().lower()
+    if kind == 'total':
+        path = PACKAGE_REGISTRATION_OUTPUT_FILE
+    elif kind == 'run':
+        path = _owned_batch_run_path(
+            payload.get('path'),
+            PACKAGE_REGISTRATION_DIR,
+            PACKAGE_REGISTRATION_RUN_PREFIX,
+        )
+    else:
+        path = ''
+    if not path:
+        return jsonify({'ok': False, 'error': 'Chưa có file output cần mở.'}), 400
+    try:
+        with _package_registration_file_lock:
+            _ensure_package_registration_files()
+        _open_local_file(path)
+        return jsonify({'ok': True, 'path': path})
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 

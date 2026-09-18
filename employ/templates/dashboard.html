@@ -3,6 +3,7 @@
 
 {% block head %}
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='package_registration.css') }}">
 {% endblock %}
 
 {% block extra_style %}
@@ -94,7 +95,7 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 /* Giao diện vận hành rút gọn: chỉ hiện các nghiệp vụ đang được sử dụng. */
 #sidebar > .sidebar-section:first-child,
 #sidebar > .sidebar-section:last-child{display:none}
-#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="seriallookup"]):not([data-panel="donhang"]):not([data-panel="icoc"]):not([data-panel="doisim"]):not([data-panel="deviceauth"]){display:none}
+#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="seriallookup"]):not([data-panel="account"]):not([data-panel="donhang"]):not([data-panel="icoc"]):not([data-panel="package-registration"]):not([data-panel="doisim"]):not([data-panel="deviceauth"]){display:none}
 
 .doisim-progress{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:0 0 14px}
 .doisim-step{border:1px solid var(--border);background:var(--bg2);border-radius:9px;padding:10px 12px;color:var(--text3);font-size:12px}
@@ -831,10 +832,6 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
 <div id="topbar">
   <div class="brand"><span>📡</span> VNPT Employee</div>
   <div class="spacer"></div>
-  <div class="token-badge">
-    <div class="dot" id="token-dot"></div>
-    <span id="token-countdown">--:--</span>
-  </div>
   <!-- Menu ID Selector -->
   <div class="menu-selector-wrap" title="Click vào Chức năng để đổi menu">
     <div class="menu-badge" onclick="showPanel('menus')" id="active-menu-badge">
@@ -842,9 +839,6 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
       <span id="active-menu-name">Đang tải...</span>
       <span class="mid-txt" id="active-menu-id">—</span>
     </div>
-  </div>
-  <div class="user-btn" onclick="showPanel('account')">
-    👤 {{ user or 'User' }}
   </div>
   <button type="button" class="add-account-btn" onclick="openMultiAccountModal()">＋ Thêm tài khoản</button>
   <a href="/logout"><button class="logout-btn">Đăng xuất</button></a>
@@ -895,13 +889,15 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Nghiệp vụ</div>
-      <div class="nav-item active" onclick="showPanel('lookup')" data-panel="lookup" style="background:linear-gradient(135deg,rgba(88,166,255,.12),rgba(63,185,80,.08));border-left:2px solid var(--accent)"><span class="icon">🔎</span><span style="color:var(--accent);font-weight:700">Tra cứu theo SĐT</span></div>
+      <div class="nav-item active" onclick="showPanel('account')" data-panel="account"><span class="icon">👥</span>Quản lý account</div>
+      <div class="nav-item" onclick="showPanel('lookup')" data-panel="lookup"><span class="icon">🔎</span><span>Tra cứu theo SĐT</span></div>
       <div class="nav-item" onclick="showPanel('seriallookup')" data-panel="seriallookup"><span class="icon">💳</span>Tra cứu seri SIM</div>
       <div class="nav-item" onclick="showPanel('thuebao')" data-panel="thuebao"><span class="icon">📱</span>Tra cứu thuê bao</div>
       <div class="nav-item" onclick="showPanel('donhang')" data-panel="donhang"><span class="icon">🛒</span>Đơn hàng SIM</div>
       <div class="nav-item" onclick="showPanel('icoc')" data-panel="icoc"><span class="icon">🔓</span>Mở khóa thiết bị IC/OC</div>
       <div class="nav-item" onclick="showPanel('giohang')" data-panel="giohang"><span class="icon">🛍️</span>Giỏ hàng</div>
       <div class="nav-item" onclick="showPanel('cuoc')" data-panel="cuoc"><span class="icon">💰</span>Cước / Dịch vụ DĐ</div>
+      <div class="nav-item" onclick="showPanel('package-registration')" data-panel="package-registration"><span class="icon">📦</span>Đăng ký gói cước</div>
       <div class="nav-item" onclick="showPanel('doisim')" data-panel="doisim"><span class="icon">📲</span>Đổi SIM</div>
       <div class="nav-item" onclick="showPanel('deviceauth')" data-panel="deviceauth"><span class="icon">📷</span>Xác thực đổi thiết bị</div>
       <div class="nav-item" onclick="showPanel('cashless')" data-panel="cashless"><span class="icon">💳</span>Cashless / DCRS</div>
@@ -925,7 +921,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
     <div id="content">
 
       <!-- ══ LOOKUP CCBS ══ -->
-      <div class="panel active" id="panel-lookup">
+      <div class="panel" id="panel-lookup">
         <!-- Hero input -->
         <div class="lookup-hero">
           <h2>🔎 Tra cứu CCBS theo SĐT</h2>
@@ -1204,28 +1200,20 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
       </div>
 
       <!-- ══ ACCOUNT ══ -->
-      <div class="panel" id="panel-account">
-        <div class="section-header"><h2>👤 Tài khoản</h2></div>
-        <div class="grid2">
-          <div class="card">
-            <div class="card-header"><h3>Thông tin đăng nhập</h3></div>
-            <div class="card-body" id="account-info">
-              <div style="color:var(--text3);font-size:12px">Đang tải...</div>
-            </div>
+      <div class="panel active" id="panel-account">
+        <div class="section-header">
+          <h2>👥 Quản lý account</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn-sm" onclick="loadMultiAccounts(true)">Làm mới danh sách</button>
+            <button type="button" class="btn-primary" onclick="openMultiAccountModal()">＋ Thêm tài khoản</button>
           </div>
-          <div class="card">
-            <div class="card-header"><h3>Đổi OTP</h3></div>
-            <div class="card-body">
-              <div class="form-row">
-                <div class="form-group"><label>Số điện thoại</label><input type="text" id="otp-msisdn" placeholder="0901234567"></div>
-                <div style="display:flex;gap:8px">
-                  <button class="btn-primary" style="flex:1" onclick="sendOTP()">📲 Gửi OTP</button>
-                  <button class="btn-primary" style="flex:1;background:linear-gradient(135deg,#1a4a2a,#3fb950)" onclick="verifyOTP()">✅ Xác minh</button>
-                </div>
-                <div class="form-group"><label>Mã OTP</label><input type="text" id="otp-code" placeholder="123456" maxlength="6"></div>
-              </div>
-              <div class="resp-box" id="otp-resp"></div>
-            </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-header"><h3>Danh sách tài khoản dùng chung cho các chức năng</h3></div>
+          <div class="card-body">
+            <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:10px">Mật khẩu được mã hóa theo tài khoản Windows và chỉ hiển thị dạng ẩn. “Đăng xuất” chỉ gỡ token đang dùng; tài khoản đã lưu có thể đăng nhập lại từ nút “Thêm tài khoản”. “Xóa tài khoản” xóa hẳn token và mật khẩu đã lưu của riêng account đó. Bên các tab chạy SIM và IC/OC chỉ cần chọn account cần dùng.</div>
+            <div id="account-management-list" style="overflow:auto"><div style="color:var(--text3);font-size:12px">Đang tải danh sách...</div></div>
+            <div id="account-management-message" style="margin-top:9px;font-size:12px;color:var(--text2)"></div>
           </div>
         </div>
       </div>
@@ -1460,14 +1448,16 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                 <button id="sim-batch-import-btn" type="button" class="btn-primary" onclick="simBatchChooseFile()">Chọn Excel và chạy tự động</button>
                 <button id="sim-batch-run-default-btn" type="button" class="btn-sm" onclick="simBatchRunDefaultInput()">Chạy file input sẵn</button>
                 <button id="sim-batch-open-input-btn" type="button" class="btn-sm" onclick="simBatchOpenFile('input')">Mở file input</button>
-                <button id="sim-batch-open-output-btn" type="button" class="btn-sm" onclick="simBatchOpenFile('output')">Mở file output</button>
+                <button id="sim-batch-open-run-btn" type="button" class="btn-sm" onclick="simBatchOpenFile('run')" disabled>Mở output phiên này</button>
+                <button id="sim-batch-open-output-btn" type="button" class="btn-sm" onclick="simBatchOpenFile('output')">Mở output tổng</button>
                 <button id="sim-batch-stop-btn" type="button" class="btn-sm" disabled style="border-color:rgba(248,81,73,.45);color:#fca5a5" onclick="simBatchRequestStop()">Dừng chạy</button>
+                <button id="sim-batch-continue-btn" type="button" class="btn-sm" disabled style="display:none;border-color:rgba(74,222,128,.45);color:#86efac" onclick="simBatchContinueRun()">Chạy tiếp phiên này</button>
                 <button id="sim-batch-download-btn" type="button" class="btn-sm" style="display:none" onclick="simBatchDownloadOutput()">Xuất Excel kết quả</button>
                 <button id="sim-batch-copy-btn" type="button" class="btn-sm" style="display:none" onclick="simBatchCopyTable()">Copy bảng kết quả</button>
               </div>
-              <div id="sim-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang mở file input và output cộng dồn...</div>
+              <div id="sim-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input và output tổng...</div>
               <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">
-                SĐT trong Excel nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84 và tự chuẩn hóa về đầu 84. Mỗi tài khoản chạy một luồng tuần tự riêng và chờ 1,5 giây giữa API cùng tài khoản; các tài khoản khác nhau chạy độc lập. Lỗi của một SĐT chỉ được ghi vào kết quả, luồng vẫn tự chạy SĐT kế tiếp và chỉ dừng khi bấm “Dừng chạy”. Mỗi SĐT vừa hoàn tất sẽ tự nối ngay vào SIM_Kit_Output.xlsx; phiên chạy sau tiếp tục ghi vào file này, không xóa kết quả cũ. Nên đóng file output trong Excel khi batch chạy để Windows không khóa ghi. File được chọn sẽ chạy thật: tạo đơn, ghi thông tin khách hàng/địa chỉ do luồng batch sinh từ danh mục OneBSS, trừ Ví VNPT Pay, kiểm tra serial và khởi tạo thuê bao; chỉ chạy dữ liệu đã được phép.
+                SĐT trong Excel nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84 và tự chuẩn hóa về đầu 84. Mỗi tài khoản đã chọn chạy một luồng tuần tự riêng và tổng số dòng được chia vòng tròn đều giữa các luồng; các tài khoản khác nhau chạy độc lập. Lỗi của một SĐT, kể cả tài khoản không có Ví VNPT Pay hoặc ví không đủ số dư, chỉ được ghi vào kết quả tại bước thanh toán; luồng vẫn tự chạy SĐT kế tiếp và chỉ dừng khi bấm “Dừng chạy”. Mỗi SĐT hoàn tất được ghi ngay vào 2 file: một file riêng của phiên hiện tại và SIM_Kit_Output.xlsx tổng tích lũy từ trước đến nay; dừng ngang không làm mất các dòng đã chạy. Bấm “Chạy tiếp phiên này” sẽ tiếp tục các dòng chưa chạy và ghi vào đúng file phiên cũ; chỉ khi chọn/nạp file đầu vào mới mới tạo file phiên kế tiếp. Nên đóng cả hai file output trong Excel khi batch chạy để Windows không khóa ghi. File được chọn sẽ chạy thật: tạo đơn, ghi thông tin khách hàng/địa chỉ do luồng batch sinh từ danh mục OneBSS, trừ Ví VNPT Pay, kiểm tra serial và khởi tạo thuê bao; chỉ chạy dữ liệu đã được phép.
               </div>
               <div id="sim-batch-progress" style="display:none;margin-top:12px">
                 <div style="height:7px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="sim-batch-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#4ade80);transition:width .2s"></div></div>
@@ -1655,15 +1645,19 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
         <div class="card" id="sim-order-history-card">
           <div class="card-header">
             <h3><span class="method POST">POST</span> Lịch sử đơn hàng SIM Kit</h3>
-            <button id="sim-history-refresh-btn" type="button" class="btn-sm" onclick="simLoadOrderHistory({force:true})">Làm mới lịch sử</button>
+            <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+              <button id="sim-history-cancel-selected-btn" type="button" class="btn-sm" style="color:#fca5a5;border-color:rgba(248,81,73,.45)" onclick="simCancelSelectedOrders()" disabled>Hủy đơn đã chọn (0)</button>
+              <button id="sim-history-refresh-btn" type="button" class="btn-sm" onclick="simLoadOrderHistory({force:true})">Làm mới lịch sử</button>
+            </div>
           </div>
           <div class="card-body">
             <div class="inline-group">
+              <div class="form-group"><label>Tài khoản thực hiện</label><select id="sim-history-account" onchange="simLoadOrderHistory({force:true})"><option value="">Đang tải tài khoản...</option></select></div>
               <div class="form-group"><label>Từ ngày</label><input id="sim-history-from" type="date" onchange="simLoadOrderHistory({force:true})"></div>
               <div class="form-group"><label>Đến ngày</label><input id="sim-history-to" type="date" onchange="simLoadOrderHistory({force:true})"></div>
-              <div class="form-group"><label>Trạng thái</label><select id="sim-history-status" onchange="simLoadOrderHistory({force:true})"><option value="-1" selected>Tất cả trạng thái</option><option value="6">Đăng ký thuê bao</option></select></div>
+              <div class="form-group"><label>Trạng thái</label><select id="sim-history-status" onchange="simLoadOrderHistory({force:true})"><option value="pending" selected>Chỉ đơn đang treo</option><option value="-1">Tất cả</option><option value="0">Đã hủy</option><option value="name:chon-so-kit">Chọn số/KIT</option><option value="name:dang-ky-goi">Đăng ký gói cước</option><option value="name:nhap-thong-tin-kh">Nhập thông tin KH</option><option value="name:thanh-toan">Thanh toán</option><option value="5">Khởi tạo thuê bao</option><option value="6">Đăng ký thuê bao</option><option value="name:hoan-thanh-don">Hoàn thành đơn hàng</option><option value="name:het-han">Hết hạn</option><option value="name:de-nghi-huy">Đề nghị hủy</option></select></div>
             </div>
-            <div id="sim-history-status-text" style="font-size:12px;color:var(--text3);margin:2px 0 10px">Đang tải lịch sử hôm nay...</div>
+            <div id="sim-history-status-text" style="font-size:12px;color:var(--text3);margin:2px 0 10px">Đang tải các đơn SIM Kit đang treo hôm nay...</div>
             <div id="sim-history-table" class="table-wrap"></div>
           </div>
         </div>
@@ -2076,6 +2070,122 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
         </div>
       </div>
 
+      <!-- ══ ĐĂNG KÝ GÓI CƯỚC · MENU 11077 ══ -->
+      <div class="panel" id="panel-package-registration">
+        <div class="section-header package-registration-heading">
+          <div>
+            <h2>📦 Đăng ký gói cước</h2>
+            <div class="sub">Menu 11077 · Gói hợp lệ, thời hạn và giá được tải trực tiếp từ OneBSS.</div>
+          </div>
+          <div id="package-registration-permission" class="package-registration-badge loading">Chưa kiểm tra quyền</div>
+        </div>
+
+        <div class="package-registration-layout">
+          <section class="card package-registration-card">
+            <div class="card-header"><h3>1. Số thuê bao</h3></div>
+            <div class="card-body">
+              <div class="package-registration-lookup-row">
+                <div class="form-group">
+                  <label>Số thuê bao</label>
+                  <input id="package-registration-phone" inputmode="numeric" autocomplete="off"
+                    placeholder="0946287398 hoặc 84946287398"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();packageRegistrationLookup();}">
+                </div>
+                <button id="package-registration-lookup-btn" class="btn-primary" type="button"
+                  onclick="packageRegistrationLookup()">＋ Tra cứu gói</button>
+              </div>
+              <div id="package-registration-subscriber" class="package-registration-subscriber" hidden></div>
+              <div id="package-registration-message" class="package-registration-message">Nhập SĐT rồi bấm dấu + để tải gói Data được phép đăng ký.</div>
+            </div>
+          </section>
+
+          <section class="card package-registration-card">
+            <div class="card-header"><h3>2. Danh sách TXT</h3></div>
+            <div class="card-body">
+              <textarea id="package-registration-list" class="package-registration-list"
+                placeholder="Mỗi dòng một SĐT&#10;0946287398&#10;84943946216"></textarea>
+              <input id="package-registration-file" type="file" accept=".txt,text/plain" hidden
+                onchange="packageRegistrationLoadFile(this)">
+              <div class="package-registration-file-actions">
+                <button type="button" class="btn-sm" onclick="document.getElementById('package-registration-file').click()">📂 Chọn TXT</button>
+                <span id="package-registration-file-name">Chưa chọn file</span>
+              </div>
+              <div class="package-registration-note">Mỗi dòng một SĐT. Chấp nhận đầu 0, đầu 84 hoặc thiếu số 0. Các dòng trùng sẽ bị loại trước khi chạy.</div>
+            </div>
+          </section>
+        </div>
+
+        <section class="card package-registration-card package-registration-packages">
+          <div class="card-header package-registration-card-title">
+            <h3>3. Chọn gói cước Data</h3>
+            <span id="package-registration-package-count">0 gói</span>
+          </div>
+          <div class="package-registration-filter-row">
+            <label class="form-group">
+              <span>Thời hạn</span>
+              <select id="package-registration-duration">
+                <option value="30">1T · 30 ngày</option>
+                <option value="90">3T · 90 ngày</option>
+                <option value="180">6T · 180 ngày</option>
+                <option value="360">12T · 360 ngày</option>
+              </select>
+            </label>
+            <label class="form-group">
+              <span>Tìm mã gói</span>
+              <input id="package-registration-filter" type="search" placeholder="KM_DT30, MI_YOLO100M, SODA155, MI_YOLO125V"
+                oninput="packageRegistrationRenderPackages()">
+            </label>
+            <div id="package-registration-selected" class="package-registration-selected">Chưa chọn gói.</div>
+          </div>
+          <div class="package-registration-table-wrap">
+            <table class="package-registration-table">
+              <thead><tr><th>Chọn</th><th>Mã gói</th><th>Tên gói</th><th>Thời hạn</th><th>Giá</th><th>Mô tả</th></tr></thead>
+              <tbody id="package-registration-package-body">
+                <tr><td colspan="6" class="package-registration-empty">Tra cứu SĐT để tải danh sách gói từ API.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card package-registration-card package-registration-actions-card">
+          <div class="card-header"><h3>4. Xác nhận và chạy</h3></div>
+          <div class="card-body">
+            <div class="package-registration-toolbar">
+              <button id="package-registration-save-btn" class="btn-primary" type="button" disabled
+                onclick="packageRegistrationSaveSingle()">💾 Save một SĐT</button>
+              <button id="package-registration-run-btn" class="btn-primary" type="button" disabled
+                onclick="packageRegistrationRunBatch()">▶ Chạy danh sách</button>
+              <button id="package-registration-stop-btn" class="btn-sm" type="button" disabled
+                onclick="packageRegistrationStop()">⏹ Dừng</button>
+              <label class="package-registration-delay">1 luồng ·
+                <input id="package-registration-delay" type="number" min="5" max="3600" step="1" value="20">
+                giây/SĐT
+              </label>
+              <button id="package-registration-open-run" class="btn-sm" type="button" disabled
+                onclick="packageRegistrationOpenOutput('run')">📂 Output phiên</button>
+              <button id="package-registration-open-total" class="btn-sm" type="button"
+                onclick="packageRegistrationOpenOutput('total')">📂 Output tổng</button>
+            </div>
+            <div class="package-registration-warning">Đăng ký gói có thể phát sinh cước. Tool luôn hỏi xác nhận mã gói, thời hạn, giá và SĐT trước khi gửi. Nếu kết quả sau khi gửi không xác định, tool dừng và không tự gửi lại.</div>
+            <div class="package-registration-progress"><span id="package-registration-progress-fill"></span></div>
+            <div class="package-registration-status-row">
+              <strong id="package-registration-progress-text">0/0</strong>
+              <span id="package-registration-counts">Thành công 0 · Lỗi 0 · Còn lại 0</span>
+            </div>
+            <div id="package-registration-batch-message" class="package-registration-message">Chưa chạy danh sách.</div>
+            <div id="package-registration-output-paths" class="package-registration-paths"></div>
+          </div>
+          <div class="package-registration-table-wrap batch">
+            <table class="package-registration-table">
+              <thead><tr><th>STT</th><th>SĐT</th><th>Trạng thái</th><th>Mã gói</th><th>Thời hạn</th><th>Giá</th><th>Kết quả</th><th>Thời gian</th></tr></thead>
+              <tbody id="package-registration-batch-body">
+                <tr><td colspan="8" class="package-registration-empty">Chưa có danh sách.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
       <!-- ══ ĐỔI SIM ══ -->
       <div class="panel" id="panel-doisim">
         <div class="section-header">
@@ -2224,6 +2334,12 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
           <div class="card-body">
             <div class="form-row">
               <div class="form-group" style="flex:1;min-width:230px">
+                <label>Tài khoản thao tác *</label>
+                <select id="icoc-device-account" onchange="icocDeviceAccountChanged()">
+                  <option value="">-- Đang tải tài khoản --</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;min-width:230px">
                 <label>Số thuê bao *</label>
                 <input id="icoc-device-isdn" inputmode="numeric" placeholder="Ví dụ: 0849531207 hoặc 84849531207"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();icocDeviceLookupStatus();}">
@@ -2233,6 +2349,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
 
             <div class="icoc-device-status" id="icoc-device-status">
               <div style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span>Tài khoản: <b id="icoc-device-user">—</b></span>
                 <span>Thuê bao: <span id="icoc-device-phone" class="icoc-device-phone">—</span></span>
                 <span id="icoc-device-permission" class="icoc-device-state loading">Đang kiểm tra quyền…</span>
               </div>
@@ -2295,13 +2412,15 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               <button id="icoc-batch-import-btn" type="button" class="btn-primary" onclick="icocBatchChooseFile()">Chọn Excel và chạy tự động</button>
               <button id="icoc-batch-run-default-btn" type="button" class="btn-sm" onclick="icocBatchRunDefaultInput()">Chạy file input sẵn</button>
               <button id="icoc-batch-open-input-btn" type="button" class="btn-sm" onclick="icocBatchOpenFile('input')">Mở file input</button>
-              <button id="icoc-batch-open-output-btn" type="button" class="btn-sm" onclick="icocBatchOpenFile('output')">Mở file output</button>
+              <button id="icoc-batch-open-run-btn" type="button" class="btn-sm" onclick="icocBatchOpenFile('run')" disabled>Mở output phiên này</button>
+              <button id="icoc-batch-open-output-btn" type="button" class="btn-sm" onclick="icocBatchOpenFile('output')">Mở output tổng</button>
               <button id="icoc-batch-stop-btn" type="button" class="btn-sm" disabled style="border-color:rgba(248,81,73,.45);color:#fca5a5" onclick="icocBatchRequestStop()">Dừng chạy</button>
+              <button id="icoc-batch-continue-btn" type="button" class="btn-sm" disabled style="display:none;border-color:rgba(74,222,128,.45);color:#86efac" onclick="icocBatchContinueRun()">Chạy tiếp phiên này</button>
               <button id="icoc-batch-download-btn" type="button" class="btn-sm" style="display:none" onclick="icocBatchDownloadOutput()">Xuất Excel kết quả</button>
               <button id="icoc-batch-copy-btn" type="button" class="btn-sm" style="display:none" onclick="icocBatchCopyTable()">Copy bảng kết quả</button>
             </div>
-            <div id="icoc-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input/output cố định...</div>
-            <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">Chọn ít nhất một chiều cần đổi. Mỗi tài khoản xử lý một luồng tuần tự riêng với delay tối thiểu 2 giây; các tài khoản khác nhau chạy độc lập. Hệ thống tra cứu trạng thái trước, bỏ qua khi không cần đổi và xác minh lại sau thay đổi. Một SĐT lỗi chỉ bị ghi lỗi riêng; hàng đợi vẫn tự chạy SĐT kế tiếp và chỉ dừng khi bấm “Dừng chạy”.</div>
+            <div id="icoc-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input và output tổng...</div>
+            <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">Chọn ít nhất một chiều cần đổi. Mỗi tài khoản xử lý một luồng tuần tự riêng với delay tối thiểu 2 giây; các tài khoản khác nhau chạy độc lập. Hệ thống tra cứu trạng thái trước, bỏ qua khi không cần đổi và xác minh lại sau thay đổi. Một SĐT lỗi chỉ bị ghi lỗi riêng; hàng đợi vẫn tự chạy SĐT kế tiếp và chỉ dừng khi bấm “Dừng chạy”. Mỗi SĐT hoàn tất được ghi ngay vào file riêng của phiên và IC_OC_Output.xlsx tổng tích lũy; dừng ngang không làm mất kết quả đã chạy. “Chạy tiếp phiên này” giữ nguyên file output phiên; nạp file đầu vào mới mới tạo phiên tiếp theo.</div>
             <div id="icoc-batch-progress" style="display:none;margin-top:12px"><div style="height:7px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="icoc-batch-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#bc8cff);transition:width .2s"></div></div><div id="icoc-batch-status" style="margin-top:7px;color:var(--text2);font-size:12px">Chưa chạy</div></div>
             <div id="icoc-batch-table" style="display:none;margin-top:12px"></div>
           </div>
@@ -2491,6 +2610,7 @@ const PANEL_MENU_MAP = {
   'seriallookup': { id: 699060, name: 'Tra cứu seri sim' },
   'thuebao': { id: 11213, name: 'Tra cứu thuê bao di động' },
   'cuoc':    { id: 11213, name: 'Cước & Dịch vụ di động' },
+  'package-registration': { id: 11077, name: 'Đăng ký gói cước' },
   'doisim':  { id: 11175, name: 'Đổi SIM' },
   'deviceauth': { id: 810241, name: 'Xác thực đổi thiết bị' },
   'icoc':    { id: 11213, name: 'Mở khóa thiết bị IC/OC' },
@@ -2606,7 +2726,9 @@ async function showPanel(name) {
     n.classList.toggle('active', n.dataset.panel === name);
   });
   if (name === 'home') loadTokenDetails();
-  if (name === 'account') loadAccountInfo();
+  if (name === 'account') {
+    loadMultiAccounts(true).catch(() => {});
+  }
   if (name === 'menus') loadMenus();
   if (name === 'settings') loadSettingsMenus();
   // Tự động set SelectedMenuId đúng cho panel
@@ -2652,11 +2774,18 @@ async function showPanel(name) {
     simBatchEnsureFiles().catch(() => {});
   }
   if (name === 'icoc') {
-    icocBatchLoadAccounts().catch(() => {});
+    icocBatchLoadAccounts()
+      .then(accounts => icocDeviceRenderAccounts(accounts))
+      .catch(() => icocDeviceRenderAccounts([]));
     icocBatchEnsureFiles().catch(() => {});
   }
   if (name === 'seriallookup') {
     serialLookupEnsureFiles().catch(() => {});
+  }
+  if (name === 'package-registration' && window.packageRegistrationInitialize) {
+    window.packageRegistrationInitialize().catch(error => {
+      showToast(`Không khởi tạo được Đăng ký gói cước: ${error.message}`);
+    });
   }
 }
 
@@ -2669,11 +2798,14 @@ let expSeconds = Number(DASHBOARD_RUNTIME.expires_in) || 0;
 function updateCountdown() {
   const m = Math.floor(expSeconds/60);
   const s = expSeconds % 60;
-  document.getElementById('token-countdown').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  const countdown = document.getElementById('token-countdown');
+  if (countdown) countdown.textContent = `${m}:${s.toString().padStart(2,'0')}`;
   const dot = document.getElementById('token-dot');
-  if (expSeconds > 300) dot.className = 'dot';
-  else if (expSeconds > 60) { dot.className = 'dot warn'; }
-  else { dot.className = 'dot err'; }
+  if (dot) {
+    if (expSeconds > 300) dot.className = 'dot';
+    else if (expSeconds > 60) { dot.className = 'dot warn'; }
+    else { dot.className = 'dot err'; }
+  }
   const statEl = document.getElementById('stat-expire');
   if (statEl) statEl.textContent = expSeconds > 0 ? `${m}m${s}s` : 'Hết hạn';
   if (expSeconds > 0) expSeconds--;
@@ -2717,16 +2849,104 @@ async function multiAccountRequest(path, payload=null) {
   };
   const response = await fetch(path, options);
   const data = await response.json();
-  if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
   return data;
 }
 
 function multiAccountMessage(message, error=false) {
-  const target = document.getElementById('multi-account-message');
-  if (!target) return;
-  target.textContent = message || '';
-  target.style.color = error ? '#fca5a5' : 'var(--text2)';
+  ['multi-account-message', 'account-management-message'].forEach(id => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.textContent = message || '';
+    target.style.color = error ? '#fca5a5' : 'var(--text2)';
+  });
 }
+
+function managedAccountSeconds(account) {
+  if (!account?.authenticated) return 0;
+  if (account.expiresAt) return Math.max(0, Math.ceil((Number(account.expiresAt) - Date.now()) / 1000));
+  return Math.max(0, Number(account.expires_in || 0));
+}
+
+function managedAccountTimeText(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remain = total % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remain).padStart(2, '0')}`;
+}
+
+function renderAccountManagement() {
+  const target = document.getElementById('account-management-list');
+  if (!target) return;
+  const activeIds = new Set(multiAccountState.accounts.map(account => String(account.id || '')));
+  const rows = [
+    ...multiAccountState.accounts.map(account => ({...account, loggedIn:true})),
+    ...multiAccountState.savedAccounts
+      .filter(account => !activeIds.has(String(account.id || '')))
+      .map(account => ({...account, loggedIn:false, authenticated:false})),
+  ];
+  if (!rows.length) {
+    target.innerHTML = '<div style="color:var(--text3);font-size:12px">Chưa có tài khoản. Bấm “Thêm tài khoản” để đăng nhập.</div>';
+    return;
+  }
+  const body = rows.map((account, index) => {
+    const accountId = simEsc(String(account.id || ''));
+    const remaining = managedAccountSeconds(account);
+    const active = Boolean(account.loggedIn && account.authenticated && remaining > 0 && !account.reauthRequired);
+    const statusText = active ? (account.primary ? 'Đang đăng nhập · phiên chính' : 'Đang đăng nhập')
+      : (account.loggedIn ? (account.reauthRequired ? 'Cần đăng nhập lại' : 'Token đã hết hạn') : 'Đã đăng xuất');
+    const statusColor = active ? '#86efac' : (account.loggedIn ? '#fca5a5' : 'var(--text3)');
+    const logoutButton = account.loggedIn
+      ? (account.primary
+        ? '<a href="/logout"><button type="button" class="btn-sm" style="color:#fca5a5">Đăng xuất</button></a>'
+        : `<button type="button" class="btn-sm" style="color:#fca5a5" onclick="removeMultiAccount('${accountId}')">Đăng xuất</button>`)
+      : '<span style="color:var(--text3)">—</span>';
+    const refreshControl = remaining <= 120
+      ? `<button type="button" class="btn-sm" onclick="refreshMultiAccount('${accountId}')">Làm mới</button>`
+      : '<span style="color:var(--text3);font-size:10px">Tự làm mới khi còn ≤ 2 phút</span>';
+    const tokenCell = account.loggedIn
+      ? `<div style="display:flex;align-items:center;gap:7px;white-space:nowrap"><span class="mono" data-managed-expiry="${Number(account.expiresAt || 0)}">${managedAccountTimeText(remaining)}</span>${refreshControl}</div>`
+      : '<span class="mono" style="color:var(--text3)">00:00:00</span>';
+    const deleteButton = `<button type="button" class="btn-sm" style="color:#fca5a5;border-color:rgba(248,81,73,.45)" onclick="deleteManagedAccount('${accountId}')">Xóa</button>`;
+    return `<tr>
+      <td>${index + 1}</td>
+      <td><b>${account.primary ? '⭐ ' : ''}${simEsc(account.username || '--')}</b></td>
+      <td><span class="mono" title="Mật khẩu được mã hóa và không hiển thị">••••••••</span></td>
+      <td data-managed-status-expiry="${account.loggedIn ? Number(account.expiresAt || 0) : 0}" data-managed-primary="${account.primary ? '1' : '0'}" data-managed-logged-in="${account.loggedIn ? '1' : '0'}" data-managed-reauth="${account.reauthRequired ? '1' : '0'}" style="color:${statusColor};white-space:nowrap">${statusText}</td>
+      <td>${tokenCell}</td>
+      <td>${logoutButton}</td>
+      <td>${deleteButton}</td>
+    </tr>`;
+  }).join('');
+  target.innerHTML = `<table class="result-table" style="min-width:900px"><thead><tr><th>STT</th><th>User</th><th>Mật khẩu</th><th>Trạng thái user</th><th>Token còn lại</th><th>Đăng xuất</th><th>Xóa tài khoản</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function updateManagedAccountCountdowns() {
+  document.querySelectorAll('[data-managed-expiry]').forEach(element => {
+    const expiresAt = Number(element.dataset.managedExpiry || 0);
+    element.textContent = managedAccountTimeText(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+  });
+  document.querySelectorAll('[data-managed-status-expiry]').forEach(element => {
+    if (element.dataset.managedLoggedIn !== '1') return;
+    if (element.dataset.managedReauth === '1') {
+      element.textContent = 'Cần đăng nhập lại';
+      element.style.color = '#fca5a5';
+      return;
+    }
+    const active = Number(element.dataset.managedStatusExpiry || 0) > Date.now();
+    element.textContent = active
+      ? (element.dataset.managedPrimary === '1' ? 'Đang đăng nhập · phiên chính' : 'Đang đăng nhập')
+      : 'Token đã hết hạn';
+    element.style.color = active ? '#86efac' : '#fca5a5';
+  });
+}
+setInterval(updateManagedAccountCountdowns, 1000);
 
 function renderMultiAccounts() {
   const target = document.getElementById('multi-account-list');
@@ -2748,13 +2968,19 @@ function renderMultiAccounts() {
       ? `<div style="font-size:11px;font-weight:650;margin-bottom:7px">Tài khoản đã lưu trên máy</div><div style="display:flex;gap:7px;flex-wrap:wrap">${multiAccountState.savedAccounts.map(account => `<button type="button" class="btn-sm" onclick="beginMultiAccountLogin('${simEsc(account.id)}')">＋ ${simEsc(account.username)}</button>`).join('')}</div>`
       : '';
   }
+  renderAccountManagement();
 }
 
 async function loadMultiAccounts(showError=false) {
   try {
     const data = await multiAccountRequest('/api/accounts');
-    multiAccountState.accounts = Array.isArray(data.accounts) ? data.accounts : [];
+    const loadedAt = Date.now();
+    multiAccountState.accounts = (Array.isArray(data.accounts) ? data.accounts : []).map(account => ({
+      ...account,
+      expiresAt: loadedAt + Math.max(0, Number(account.expires_in || 0)) * 1000,
+    }));
     multiAccountState.savedAccounts = Array.isArray(data.saved_accounts) ? data.saved_accounts : [];
+    simRenderHistoryAccounts();
     renderMultiAccounts();
     if (typeof simBatchLoadAccounts === 'function') simBatchLoadAccounts(true, multiAccountState.accounts);
     if (typeof icocBatchLoadAccounts === 'function') icocBatchLoadAccounts(true, multiAccountState.accounts);
@@ -2833,7 +3059,7 @@ async function removeMultiAccount(accountId) {
   if (simBatchState?.running || icocBatchState?.running) { multiAccountMessage('Không thể gỡ tài khoản khi batch đang chạy', true); return; }
   try {
     await multiAccountRequest('/api/accounts/remove', {account_id:accountId});
-    multiAccountMessage('Đã gỡ tài khoản khỏi phiên chạy tự động.');
+    multiAccountMessage('Đã đăng xuất tài khoản khỏi phiên chạy; thông tin đăng nhập mã hóa vẫn được giữ trên máy.');
     await loadMultiAccounts(true);
   } catch (error) {
     multiAccountMessage(error.message, true);
@@ -2842,13 +3068,46 @@ async function removeMultiAccount(accountId) {
 
 async function refreshMultiAccount(accountId) {
   try {
-    await multiAccountRequest('/api/accounts/refresh', {account_id:accountId});
-    multiAccountMessage('Đã làm mới token tài khoản.');
+    const data = await multiAccountRequest('/api/accounts/refresh', {account_id:accountId});
+    multiAccountMessage(data.skipped
+      ? (data.message || 'Token vẫn còn hiệu lực nên chưa cần làm mới.')
+      : 'Đã làm mới token tài khoản.');
+    await loadMultiAccounts(true);
+  } catch (error) {
+    if (Number(error.status || 0) === 401) {
+      const account = multiAccountState.accounts.find(item => String(item.id) === String(accountId));
+      if (account) account.reauthRequired = true;
+      renderMultiAccounts();
+      multiAccountMessage(`${account?.username || 'Tài khoản'}: access token có thể vẫn còn thời gian, nhưng refresh-token đã bị OneBSS từ chối. Hãy bấm “Đăng nhập lại” để nhận OTP mới.`, true);
+    } else {
+      multiAccountMessage(error.message, true);
+    }
+  }
+}
+
+async function deleteManagedAccount(accountId) {
+  if (simBatchState?.running || icocBatchState?.running || icocDeviceState?.running) {
+    multiAccountMessage('Không thể xóa tài khoản khi chức năng đang chạy', true);
+    return;
+  }
+  const account = multiAccountState.accounts.find(item => String(item.id) === String(accountId))
+    || multiAccountState.savedAccounts.find(item => String(item.id) === String(accountId));
+  const username = account?.username || 'tài khoản này';
+  if (!confirm(`Xóa ${username} khỏi tool?\n\nToken đang đăng nhập và mật khẩu đã lưu của riêng tài khoản này sẽ bị xóa. Các tài khoản khác không bị ảnh hưởng.`)) return;
+  try {
+    const data = await multiAccountRequest('/api/accounts/delete', {account_id:accountId});
+    if (data.logout_required) {
+      window.location.href = '/login';
+      return;
+    }
+    multiAccountMessage(`Đã xóa ${username} khỏi tool.`);
     await loadMultiAccounts(true);
   } catch (error) {
     multiAccountMessage(error.message, true);
   }
 }
+
+loadMultiAccounts(false).catch(() => {});
 
 // ── Ảnh hồ sơ thuê bao ──
 let lookupImageCount = 0;
@@ -3050,11 +3309,13 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const ICOC_MIN_DELAY_SECONDS = 2;
 const BUSINESS_MUTATION_ENDPOINTS = new Set([
   '/app-banhang/donhang_simkit/chonso_kit_v2',
+  '/app-banhang/donhang_simkit/huy_donhang',
   '/app-banhang/donhang_simkit/dangky_goicuoc',
   '/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3',
   '/app-banhang/donhang_simkit/xacnhan_thanhtoan',
   '/app-banhang/donhang_simkit/khoitao_thuebao',
   '/app-banhang/thuebaodidong/khoamo_ic_oc',
+  '/ccbs/goicuoc/dangky',
 ]);
 
 function isBusinessMutationEndpoint(endpoint) {
@@ -3315,37 +3576,10 @@ async function loadTokenDetails() {
   }).join('');
 }
 
-async function loadAccountInfo() {
-  const r = await fetch('/session/info').then(r=>r.json());
-  const area = document.getElementById('account-info');
-  if (!area) return;
-  area.innerHTML = `
-    <div class="token-info-row"><span class="lbl">Tên hiển thị</span><span class="val">${r.user}</span></div>
-    <div class="token-info-row"><span class="lbl">Username</span><span class="val">${r.user_name}</span></div>
-    <div class="token-info-row"><span class="lbl">Server</span><span class="val">${r.base_url}</span></div> 
-    <div class="token-info-row" style="align-items: flex-start;"><span class="lbl" style="margin-top: 4px;">Token (JWT)</span>
-      <span class="val" style="white-space: normal; word-break: break-all; font-size: 10.5px; max-height: 80px; overflow-y: auto; padding-right: 8px;">${r.full_token}</span>
-      <button class="btn-sm" onclick="copyText('${r.full_token}')" style="min-width: 80px; margin-top: 4px;">Copy full</button>
-    </div>`;
-}
-
 async function doRefreshToken() {
   const r = await fetch('/token/refresh',{method:'POST'}).then(r=>r.json());
   showToast(r.ok ? `Token mới · còn ${r.expires_in}s` : `Lỗi: ${r.error}`, 3000);
   if (r.ok) { expSeconds = r.expires_in; updateCountdown(); }
-}
-
-// ── OTP ──
-async function sendOTP() {
-  const msisdn = document.getElementById('otp-msisdn').value;
-  const r = await callApi('/app-banhang/ccbs/send_otp','POST',{msisdn,msisdn_receive_otp:msisdn});
-  showResp('otp-resp', r);
-}
-async function verifyOTP() {
-  const msisdn = document.getElementById('otp-msisdn').value;
-  const otp = document.getElementById('otp-code').value;
-  const r = await callApi('/app-banhang/ccbs/verify_otp','POST',{msisdn,otp});
-  showResp('otp-resp', r);
 }
 
 // ── Tra cứu thuê bao ──
@@ -3355,6 +3589,13 @@ function serialLookupPhone(value) {
   return String(findApiValue(value, [
     'so_tb', 'SO_TB', 'msisdn', 'MSISDN', 'isdn', 'ISDN', 'sdt', 'SDT'
   ]) || '').replace(/\D/g, '');
+}
+
+async function loginSavedAccount(accountId) {
+  document.getElementById('multi-account-modal')?.classList.add('show');
+  resetMultiAccountLogin();
+  multiAccountMessage('Đang gửi yêu cầu đăng nhập và OTP...');
+  await beginMultiAccountLogin(accountId);
 }
 
 function serialLookupDomesticPhone(value) {
@@ -4126,6 +4367,8 @@ const SIM_BATCH_OUTPUT_HEADERS = [
 const simBatchState = {
   running: false,
   stopRequested: false,
+  paused: false,
+  runMode: 'main',
   serialItems: [],
   workbook: null,
   sheetName: '',
@@ -4151,8 +4394,36 @@ const simBatchState = {
   outputSaveTail: Promise.resolve(),
   outputSaveError: '',
   outputTotalRows: 0,
-  lastOutputSave: null
+  lastOutputSave: null,
+  runOutputPath: '',
+  runOutputTotalRows: 0
 };
+
+// Hai workflow chỉ xung đột khi thật sự dùng chung một tài khoản Employee.
+// Nhờ vậy User A có thể chạy Đơn hàng SIM trong lúc User B chạy IC/OC;
+// khóa tuần tự phía /proxy vẫn bảo vệ các request thuộc cùng một username.
+function batchAccountConflict(accounts, otherState, otherLabel) {
+  if (!otherState?.running) return '';
+  const otherAccounts = new Map(
+    (otherState.selectedAccounts || []).map(account => [String(account.id || ''), account])
+  );
+  const overlapping = (accounts || []).filter(account =>
+    account?.id && otherAccounts.has(String(account.id))
+  );
+  if (!overlapping.length) return '';
+  const usernames = overlapping.map(account => account.username || account.id).join(', ');
+  return `${usernames} đang chạy ${otherLabel}; hãy chọn tài khoản khác hoặc chờ đúng tài khoản này hoàn tất`;
+}
+
+function simBatchAccountConflict(accounts) {
+  return batchAccountConflict(accounts, icocBatchState, 'batch IC/OC') ||
+    batchAccountConflict(accounts, icocDeviceState, 'thao tác IC/OC');
+}
+
+function icocBatchAccountConflict(accounts) {
+  return batchAccountConflict(accounts, simBatchState, 'batch Đơn hàng SIM') ||
+    batchAccountConflict(accounts, icocDeviceState, 'thao tác IC/OC');
+}
 
 function simValue(row, keys) {
   if (!row || typeof row !== 'object') return '';
@@ -5721,13 +5992,15 @@ async function simBatchStartTxtFiles() {
 }
 
 async function simBatchPrepareTxtRun(sdtLines, serialLines, sdtName, serialName) {
-  if (simBatchState.running || icocBatchState?.running) throw new Error('Đang có batch khác chạy');
+  if (simBatchState.running) throw new Error('Đang có batch Đơn hàng SIM chạy');
   const districtSelect = document.getElementById('sim-batch-district');
   if (!districtSelect?.value) throw new Error('Chọn Quận/Huyện cố định trước khi chạy');
   const tttbSelect = document.getElementById('sim-batch-tttb-method');
   if (!tttbSelect?.value) throw new Error('Chọn hình thức đăng ký ĐKTTTB trước khi chạy');
   const selectedAccounts = simBatchSelectedAccounts();
   if (!selectedAccounts.length) throw new Error('Chọn ít nhất một tài khoản chạy');
+  const conflict = simBatchAccountConflict(selectedAccounts);
+  if (conflict) throw new Error(conflict);
   if (!sdtLines.length) throw new Error('TXT SĐT không có dữ liệu');
   if (!serialLines.length) throw new Error('TXT serial không có dữ liệu');
   if (!await simBatchEnsureFiles()) throw new Error('Không tạo được thư mục/file output');
@@ -5784,6 +6057,7 @@ async function simBatchPrepareTxtRun(sdtLines, serialLines, sdtName, serialName)
   simBatchState.tttbMethodId = String(tttbSelect.value);
   simBatchState.tttbMethodName = String(tttbSelect.selectedOptions?.[0]?.dataset.name || tttbSelect.selectedOptions?.[0]?.textContent || '').trim();
   simBatchState.delaySeconds = delaySeconds;
+  simBatchResetRunSession();
   simBatchRenderTable();
 
   const validCount = rows.filter(row => row.valid).length;
@@ -5810,8 +6084,8 @@ async function simBatchEnsureFiles() {
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     simBatchState.inputPath = data.input_path;
-    simBatchState.outputPath = data.output_path;
-    if (target) target.textContent = `Input: ${data.input_path} · Output tự lưu cộng dồn: ${data.output_path}`;
+    simBatchState.outputPath = data.cumulative_output_path || data.output_path;
+    if (target) target.textContent = `Input: ${data.input_path} · Output tổng: ${simBatchState.outputPath}${simBatchState.runOutputPath ? ` · Output phiên: ${simBatchState.runOutputPath}` : ''}`;
     return true;
   } catch (error) {
     if (target) target.textContent = `Không tạo được file Excel cố định: ${error.message}`;
@@ -5824,11 +6098,15 @@ async function simBatchOpenFile(type) {
     const response = await fetch('/api/sim-batch/open', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({type, path: type === 'output' ? simBatchState.outputPath : undefined})
+      body: JSON.stringify({
+        type,
+        path: type === 'run' ? simBatchState.runOutputPath : undefined,
+      })
     });
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    showToast(`Đã mở file ${type === 'input' ? 'input' : 'output'} bằng ứng dụng mặc định`);
+    const label = type === 'input' ? 'input' : (type === 'run' ? 'output phiên' : 'output tổng');
+    showToast(`Đã mở file ${label} bằng ứng dụng mặc định`);
   } catch (error) {
     showToast(`Không mở được file: ${error.message}`);
   }
@@ -5881,7 +6159,9 @@ function simBatchSetRunning(running) {
   const defaultButton = document.getElementById('sim-batch-run-default-btn');
   const openInputButton = document.getElementById('sim-batch-open-input-btn');
   const openOutputButton = document.getElementById('sim-batch-open-output-btn');
+  const openRunButton = document.getElementById('sim-batch-open-run-btn');
   const stopButton = document.getElementById('sim-batch-stop-btn');
+  const continueButton = document.getElementById('sim-batch-continue-btn');
   const downloadButton = document.getElementById('sim-batch-download-btn');
   const copyButton = document.getElementById('sim-batch-copy-btn');
   if (district) district.disabled = running || !simBatchState.districtOptions.length;
@@ -5892,10 +6172,16 @@ function simBatchSetRunning(running) {
   if (defaultButton) defaultButton.disabled = running;
   if (openInputButton) openInputButton.disabled = running;
   if (openOutputButton) openOutputButton.disabled = running;
+  if (openRunButton) openRunButton.disabled = running || !simBatchState.runOutputPath;
   if (stopButton) {
     stopButton.style.display = '';
     stopButton.disabled = !running;
     if (!running) stopButton.textContent = 'Dừng chạy';
+  }
+  const canContinue = !running && simBatchState.paused && simBatchState.rows.some(row => row.valid && !row.finishedAt);
+  if (continueButton) {
+    continueButton.style.display = canContinue ? '' : 'none';
+    continueButton.disabled = !canContinue;
   }
   // Luôn cho lấy snapshot các dòng đã có, kể cả khi batch khác còn chờ API.
   [downloadButton, copyButton].forEach(button => {
@@ -5925,6 +6211,37 @@ function simBatchRequestStop() {
     button.textContent = 'Đang dừng sau dòng hiện tại...';
   }
   simBatchSetStatus('Đã nhận yêu cầu dừng; hệ thống sẽ hoàn tất các dòng đang chạy rồi dừng cấp việc mới.');
+}
+
+function simBatchResetRunSession() {
+  simBatchState.stopRequested = false;
+  simBatchState.paused = false;
+  simBatchState.runMode = 'main';
+  simBatchState.runOutputPath = '';
+  simBatchState.runOutputTotalRows = 0;
+  simBatchState.outputSaveTail = Promise.resolve();
+  simBatchState.outputSaveError = '';
+  simBatchState.lastOutputSave = null;
+  const runButton = document.getElementById('sim-batch-open-run-btn');
+  if (runButton) runButton.disabled = true;
+  const continueButton = document.getElementById('sim-batch-continue-btn');
+  if (continueButton) { continueButton.style.display = 'none'; continueButton.disabled = true; }
+  const target = document.getElementById('sim-batch-file-paths');
+  if (target && simBatchState.inputPath && simBatchState.outputPath) {
+    target.textContent = `Input: ${simBatchState.inputPath} · Output tổng: ${simBatchState.outputPath}`;
+  }
+}
+
+function simBatchContinueRun() {
+  if (simBatchState.running) return;
+  const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt);
+  if (!simBatchState.paused || !simBatchState.runOutputPath || !remaining.length) {
+    showToast('Không có phiên SIM đang tạm dừng để chạy tiếp');
+    return;
+  }
+  if (simBatchState.runMode === 'legacy') simBatchRunLegacyExcel();
+  else if (simBatchState.runMode === 'two-phase') simBatchRunTwoPhase();
+  else simBatchRun();
 }
 
 function simBatchDelaySeconds(value) {
@@ -5963,7 +6280,7 @@ async function simBatchImportFile(input) {
   const file = input.files?.[0];
   if (!file) return;
   input.value = '';
-  if (simBatchState.running || icocBatchState?.running) { showToast('Đang có batch khác chạy'); return; }
+  if (simBatchState.running) { showToast('Đang có batch Đơn hàng SIM chạy'); return; }
   if (typeof XLSX === 'undefined') { showToast('SheetJS chưa tải xong, hãy thử lại'); return; }
   const districtSelect = document.getElementById('sim-batch-district');
   if (!districtSelect?.value) { showToast('Chọn Quận/Huyện cố định trước khi import'); return; }
@@ -5974,6 +6291,8 @@ async function simBatchImportFile(input) {
   if (delayInput) delayInput.value = String(delaySeconds);
   const selectedAccounts = simBatchSelectedAccounts();
   if (!selectedAccounts.length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
+  const conflict = simBatchAccountConflict(selectedAccounts);
+  if (conflict) { showToast(`⚠️ ${conflict}`, 4500); return; }
   try {
     // Bảo đảm file output tồn tại ngay cả khi người dùng chạy bằng file Excel
     // mới chọn, chưa từng mở tab hoặc chưa mở app đủ lâu để khởi tạo file.
@@ -6053,6 +6372,7 @@ async function simBatchImportFile(input) {
     simBatchState.tttbMethodId = String(tttbSelect.value);
     simBatchState.tttbMethodName = String(tttbSelect.selectedOptions?.[0]?.dataset.name || tttbSelect.selectedOptions?.[0]?.textContent || '').trim();
     simBatchState.delaySeconds = delaySeconds;
+    simBatchResetRunSession();
     simBatchRenderTable();
     const validCount = rows.filter(row => row.valid).length;
     const confirmed = window.confirm(
@@ -6208,6 +6528,37 @@ function simBatchOutputEntryId(row) {
   return row.outputEntryId;
 }
 
+async function simBatchStartRunOutput() {
+  simBatchState.outputSaveTail = Promise.resolve();
+  simBatchState.outputSaveError = '';
+  simBatchState.lastOutputSave = null;
+  simBatchState.runOutputPath = '';
+  simBatchState.runOutputTotalRows = 0;
+  simBatchState.rows.forEach(row => {
+    row.outputSaved = false;
+    row.outputSaveQueued = false;
+    row.outputSaveError = '';
+    row.outputEntryId = '';
+  });
+  const response = await fetch('/api/sim-batch/start-output', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  simBatchState.runOutputPath = data.run_output_path || '';
+  simBatchState.outputPath = data.cumulative_output_path || simBatchState.outputPath;
+  const button = document.getElementById('sim-batch-open-run-btn');
+  if (button) button.disabled = true;
+  const target = document.getElementById('sim-batch-file-paths');
+  if (target) target.textContent = `Input: ${simBatchState.inputPath} · Output phiên: ${simBatchState.runOutputPath} · Output tổng: ${simBatchState.outputPath}`;
+  return data;
+}
+
+async function simBatchEnsureRunOutput() {
+  if (simBatchState.runOutputPath) return {ok:true, resumed:true, run_output_path:simBatchState.runOutputPath};
+  return simBatchStartRunOutput();
+}
+
 async function simBatchPersistRows(rows) {
   const pending = (Array.isArray(rows) ? rows : [])
     .filter(row => row?.finishedAt && !row.outputSaved);
@@ -6222,7 +6573,8 @@ async function simBatchPersistRows(rows) {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({
       table: simBatchOutputRows(pending),
-      entry_ids: pending.map(simBatchOutputEntryId)
+      entry_ids: pending.map(simBatchOutputEntryId),
+      run_output_path: simBatchState.runOutputPath,
     })
   });
   const data = await response.json();
@@ -6233,11 +6585,12 @@ async function simBatchPersistRows(rows) {
   });
   simBatchState.outputSaveError = '';
   simBatchState.outputTotalRows = Number(data.total_rows || simBatchState.outputTotalRows || 0);
+  simBatchState.runOutputTotalRows = Number(data.run_total_rows || simBatchState.runOutputTotalRows || 0);
   simBatchState.lastOutputSave = data;
   simBatchState.outputPath = data.path || simBatchState.outputPath;
   const pathTarget = document.getElementById('sim-batch-file-paths');
   if (pathTarget && simBatchState.inputPath && simBatchState.outputPath) {
-    pathTarget.textContent = `Input: ${simBatchState.inputPath} · Output tự lưu cộng dồn: ${simBatchState.outputPath} (${data.total_rows} dòng)`;
+    pathTarget.textContent = `Input: ${simBatchState.inputPath} · Output phiên: ${simBatchState.runOutputPath} (${simBatchState.runOutputTotalRows} dòng) · Output tổng: ${simBatchState.outputPath} (${simBatchState.outputTotalRows} dòng)`;
   }
   return data;
 }
@@ -6279,12 +6632,17 @@ function simBatchDistributeRows(rows, accounts) {
 
 async function simBatchRunLegacyExcel() {
   if (simBatchState.running) return;
-  if (icocBatchState?.running) { showToast('Đang chạy batch IC/OC; hãy chờ hoàn tất'); return; }
   const accounts = simBatchState.selectedAccounts.length
     ? simBatchState.selectedAccounts.map(account => ({...account}))
     : simBatchSelectedAccounts().map(account => ({...account}));
   if (!accounts.length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
+  const conflict = simBatchAccountConflict(accounts);
+  if (conflict) { showToast(`⚠️ ${conflict}`, 4500); return; }
+  const validRows = simBatchState.rows.filter(row => row.valid && !row.finishedAt);
+  if (!validRows.length) { showToast('Phiên SIM này không còn dòng chưa chạy'); return; }
+  simBatchState.runMode = 'legacy';
   simBatchState.stopRequested = false;
+  simBatchState.paused = false;
   simBatchState.accountContexts = new Map();
   simBatchApiPacing.clear();
   const stopButton = document.getElementById('sim-batch-stop-btn');
@@ -6294,12 +6652,18 @@ async function simBatchRunLegacyExcel() {
   if (downloadButton) downloadButton.style.display = '';
   if (copyButton) copyButton.style.display = '';
 
-  const validRows = simBatchState.rows.filter(row => row.valid);
   const queues = simBatchDistributeRows(validRows, accounts);
   simBatchSetRunning(true);
-  let done = simBatchState.rows.filter(row => !row.valid).length;
-  let ok = 0;
-  let failed = done;
+  try {
+    await simBatchEnsureRunOutput();
+  } catch (error) {
+    simBatchSetRunning(false);
+    simBatchSetStatus(`Không tạo được 2 file output trước khi chạy: ${error.message}`, true);
+    return;
+  }
+  let done = simBatchState.rows.filter(row => row.finishedAt).length;
+  let ok = simBatchState.rows.filter(row => row.finishedAt && row.status === 'success').length;
+  let failed = done - ok;
 
   const finishRow = (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
@@ -6326,7 +6690,7 @@ async function simBatchRunLegacyExcel() {
     await Promise.all(accounts.map(async account => {
       try {
         await simBatchEnsureAccountFresh(account);
-        simBatchSetAccountStatus(account.id, 'Đang kiểm tra danh mục và Ví VNPT Pay...');
+        simBatchSetAccountStatus(account.id, 'Đang chuẩn bị danh mục và địa chỉ...');
         const shared = await simBatchPrepareSharedContext(account);
         shared.paymentTail = Promise.resolve();
         simBatchState.accountContexts.set(account.id, shared);
@@ -6385,14 +6749,14 @@ async function simBatchRunLegacyExcel() {
       }
     }));
 
-    simBatchState.rows.filter(row => row.valid && row.status === 'pending').forEach(row => {
-      row.status = 'stopped';
-      row.stage = 'Chưa chạy';
-      row.result = simBatchState.stopRequested
-        ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
-      finishRow(row, false);
-    });
+    if (!simBatchState.stopRequested) {
+      simBatchState.rows.filter(row => row.valid && !row.finishedAt).forEach(row => {
+        row.status = 'error';
+        row.stage = 'Chưa chạy';
+        row.result = `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
+        finishRow(row, false);
+      });
+    }
   } catch (error) {
     simBatchState.rows.filter(row => row.valid && row.status === 'pending').forEach(row => {
       row.status = 'error';
@@ -6402,16 +6766,20 @@ async function simBatchRunLegacyExcel() {
       finishRow(row, false);
     });
   } finally {
-    simBatchSetRunning(false);
     simBatchRenderTable();
+    const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt).length;
+    simBatchState.paused = simBatchState.stopRequested && remaining > 0;
     simBatchSetProgress(done, simBatchState.rows.length, ok, failed,
-      simBatchState.stopRequested ? 'Đã dừng' : 'Đã hoàn tất');
+      simBatchState.paused ? `Đã tạm dừng · còn ${remaining} dòng` : 'Đã hoàn tất');
     try {
       const appended = await simBatchWriteRunOutput();
-      simBatchSetStatus(`${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tự lưu cộng dồn: ${appended.path}`);
+      simBatchSetStatus(simBatchState.paused
+        ? `${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tạm dừng, còn ${remaining} dòng; bấm “Chạy tiếp phiên này” · Kết quả đã lưu đúng file phiên và file tổng`
+        : `${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tự lưu file phiên và file tổng`);
     } catch (error) {
       simBatchSetStatus(`Đã xử lý xong nhưng còn dòng chưa tự lưu được: ${error.message}`, true);
     }
+    simBatchSetRunning(false);
     if (downloadButton) downloadButton.style.display = '';
     if (copyButton) copyButton.style.display = '';
     // The last worker request has just completed. Keep the dashboard history
@@ -6425,13 +6793,29 @@ async function simBatchRunLegacyExcel() {
 
 async function simBatchRunTwoPhase() {
   if (simBatchState.running) return;
-  if (icocBatchState?.running) { showToast('Đang chạy batch IC/OC; hãy chờ hoàn tất'); return; }
   const accounts = simBatchState.selectedAccounts.length
     ? simBatchState.selectedAccounts.map(account => ({...account}))
     : simBatchSelectedAccounts().map(account => ({...account}));
   if (!accounts.length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
+  const conflict = simBatchAccountConflict(accounts);
+  if (conflict) { showToast(`⚠️ ${conflict}`, 4500); return; }
+  const validRows = simBatchState.rows.filter(row => row.valid && !row.finishedAt);
+  if (!validRows.length) { showToast('Phiên SIM này không còn dòng chưa chạy'); return; }
+  const serialStartIndex = simBatchState.rows.filter(row => row.finishedAt && row.serial).length;
+  validRows.forEach(row => {
+    row.status = 'pending';
+    row.stage = 'Chờ tra kho';
+    row.bucket = '';
+    row.result = '';
+    row.found = false;
+    row.selectedNumber = null;
+    row.serial = '';
+    row.original[simBatchState.serialColumn] = '';
+  });
 
+  simBatchState.runMode = 'two-phase';
   simBatchState.stopRequested = false;
+  simBatchState.paused = false;
   simBatchState.accountContexts = new Map();
   simBatchApiPacing.clear();
   const downloadButton = document.getElementById('sim-batch-download-btn');
@@ -6439,14 +6823,20 @@ async function simBatchRunTwoPhase() {
   if (downloadButton) downloadButton.style.display = '';
   if (copyButton) copyButton.style.display = '';
   simBatchSetRunning(true);
+  try {
+    await simBatchEnsureRunOutput();
+  } catch (error) {
+    simBatchSetRunning(false);
+    simBatchSetStatus(`Không tạo được 2 file output trước khi chạy: ${error.message}`, true);
+    return;
+  }
 
-  const validRows = simBatchState.rows.filter(row => row.valid);
-  let done = simBatchState.rows.filter(row => !row.valid).length;
-  let ok = 0;
-  let failed = done;
-  let notFound = simBatchState.rows.filter(row => row.bucket === 'not_found').length;
-  let lookupFailed = simBatchState.rows.filter(row => row.bucket === 'lookup_error').length;
-  let assignmentFailed = 0;
+  let done = simBatchState.rows.filter(row => row.finishedAt).length;
+  let ok = simBatchState.rows.filter(row => row.finishedAt && row.status === 'success').length;
+  let failed = done - ok;
+  let notFound = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'not_found').length;
+  let lookupFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'lookup_error').length;
+  let assignmentFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'assignment_error').length;
 
   const finishRow = (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
@@ -6539,7 +6929,7 @@ async function simBatchRunTwoPhase() {
       const foundRows = validRows.filter(row => row.found);
       const assignmentRows = [];
       foundRows.forEach((row, index) => {
-        const serialItem = simBatchState.serialItems[index];
+        const serialItem = simBatchState.serialItems[serialStartIndex + index];
         if (!serialItem) {
           failAssignment(row, 'Danh sách TXT đã hết serial SIM trắng');
           return;
@@ -6555,12 +6945,12 @@ async function simBatchRunTwoPhase() {
         assignmentRows.push(row);
       });
       simBatchRenderTable();
-      simBatchSetStatus(`Pha 2/2 · Tìm thấy ${foundRows.length} SĐT; đã ghép ${assignmentRows.length} serial hợp lệ. Đang chuẩn bị Ví VNPT Pay...`);
+      simBatchSetStatus(`Pha 2/2 · Tìm thấy ${foundRows.length} SĐT; đã ghép ${assignmentRows.length} serial hợp lệ. Đang chuẩn bị dữ liệu tạo đơn...`);
 
       const activeAccounts = [];
       await Promise.all(searchAccounts.map(async account => {
         try {
-          simBatchSetAccountStatus(account.id, 'Đang chuẩn bị địa chỉ và Ví VNPT Pay...');
+          simBatchSetAccountStatus(account.id, 'Đang chuẩn bị danh mục và địa chỉ...');
           const shared = await simBatchPrepareSharedContext(account);
           shared.paymentTail = Promise.resolve();
           simBatchState.accountContexts.set(account.id, shared);
@@ -6571,7 +6961,7 @@ async function simBatchRunTwoPhase() {
       }));
 
       if (!activeAccounts.length && assignmentRows.length) {
-        assignmentRows.forEach(row => failAssignment(row, 'Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, địa chỉ hoặc Ví VNPT Pay)'));
+        assignmentRows.forEach(row => failAssignment(row, 'Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, danh mục hoặc địa chỉ)'));
       } else if (assignmentRows.length) {
         const assignmentQueues = simBatchDistributeRows(assignmentRows, activeAccounts);
         await Promise.all(activeAccounts.map(async account => {
@@ -6601,7 +6991,11 @@ async function simBatchRunTwoPhase() {
                 ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại | '
                 : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo | ' : '');
               const order = error.batchOrderId ? `Đơn ${error.batchOrderId} | ` : '';
-              failAssignment(row, `${paid}${order}${error.batchStage || 'Xử lý'}: ${error.message}`);
+              failAssignment(
+                row,
+                `${paid}${order}${error.batchStage || 'Xử lý'}: ${error.message}`,
+                error.batchStage || 'Xử lý'
+              );
               if (Number(error.status || 0) === 401) account.expiresAt = 0;
               nextDelaySeconds = Math.max(nextDelaySeconds, Number(error.retryAfter || 0));
               simBatchSetAccountStatus(account.id, `Lỗi ${row.msisdn}; vẫn tiếp tục SĐT kế tiếp`, true);
@@ -6619,16 +7013,16 @@ async function simBatchRunTwoPhase() {
       }
     }
 
-    simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status)).forEach(row => {
-      row.status = 'error';
-      row.stage = 'Chưa chạy';
-      row.bucket = row.found ? 'assignment_error' : 'not_found';
-      row.result = simBatchState.stopRequested
-        ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : 'Chưa chạy do lỗi ngoài dự kiến của luồng phụ trách';
-      if (row.bucket === 'not_found') notFound++; else assignmentFailed++;
-      finishRow(row, false);
-    });
+    if (!simBatchState.stopRequested) {
+      simBatchState.rows.filter(row => row.valid && !row.finishedAt).forEach(row => {
+        row.status = 'error';
+        row.stage = 'Chưa chạy';
+        row.bucket = row.found ? 'assignment_error' : 'not_found';
+        row.result = 'Chưa chạy do lỗi ngoài dự kiến của luồng phụ trách';
+        if (row.bucket === 'not_found') notFound++; else assignmentFailed++;
+        finishRow(row, false);
+      });
+    }
   } catch (error) {
     simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status)).forEach(row => {
       row.status = 'error';
@@ -6639,17 +7033,19 @@ async function simBatchRunTwoPhase() {
       finishRow(row, false);
     });
   } finally {
-    simBatchSetRunning(false);
     simBatchRenderTable();
+    const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt).length;
+    simBatchState.paused = simBatchState.stopRequested && remaining > 0;
     try {
       const appended = await simBatchWriteRunOutput();
-      simBatchSetStatus(
-        `${done}/${simBatchState.rows.length} · Gán thành công ${ok} · SĐT không tìm thấy ${notFound} · ` +
-        `Lỗi tra kho ${lookupFailed} · Gán serial lỗi ${assignmentFailed} · Đã tự lưu cộng dồn: ${appended.path}`
-      );
+      simBatchSetStatus(simBatchState.paused
+        ? `${done}/${simBatchState.rows.length} · Gán thành công ${ok} · Đã tạm dừng, còn ${remaining} dòng; bấm “Chạy tiếp phiên này” · Kết quả đã lưu đúng file phiên và file tổng`
+        : `${done}/${simBatchState.rows.length} · Gán thành công ${ok} · SĐT không tìm thấy ${notFound} · ` +
+          `Lỗi tra kho ${lookupFailed} · Gán serial lỗi ${assignmentFailed} · Đã tự lưu file phiên và file tổng`);
     } catch (error) {
       simBatchSetStatus(`Đã xử lý xong nhưng chưa ghi được output: ${error.message}`, true);
     }
+    simBatchSetRunning(false);
     if (downloadButton) downloadButton.style.display = '';
     if (copyButton) copyButton.style.display = '';
     await new Promise(resolve => setTimeout(resolve, SIM_BATCH_API_DELAY_MS));
@@ -6661,29 +7057,40 @@ async function simBatchRunTwoPhase() {
 
 async function simBatchRun() {
   if (simBatchState.running) return;
-  if (icocBatchState?.running) { showToast('Đang chạy batch IC/OC; hãy chờ hoàn tất'); return; }
   const accounts = simBatchState.selectedAccounts.length
     ? simBatchState.selectedAccounts.map(account => ({...account}))
     : simBatchSelectedAccounts().map(account => ({...account}));
   if (!accounts.length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
+  const conflict = simBatchAccountConflict(accounts);
+  if (conflict) { showToast(`⚠️ ${conflict}`, 4500); return; }
+  const validRows = simBatchState.rows.filter(row => row.valid && !row.finishedAt);
+  if (!validRows.length) { showToast('Phiên SIM này không còn dòng chưa chạy'); return; }
+  simBatchState.runMode = 'main';
 
   simBatchState.stopRequested = false;
+  simBatchState.paused = false;
   simBatchState.accountContexts = new Map();
   simBatchApiPacing.clear();
   simBatchSetRunning(true);
+  try {
+    await simBatchEnsureRunOutput();
+  } catch (error) {
+    simBatchSetRunning(false);
+    simBatchSetStatus(`Không tạo được 2 file output trước khi chạy: ${error.message}`, true);
+    return;
+  }
   const downloadButton = document.getElementById('sim-batch-download-btn');
   const copyButton = document.getElementById('sim-batch-copy-btn');
   if (downloadButton) downloadButton.style.display = '';
   if (copyButton) copyButton.style.display = '';
 
-  const validRows = simBatchState.rows.filter(row => row.valid);
-  let done = simBatchState.rows.filter(row => !row.valid).length;
-  let ok = 0;
-  let failed = done;
-  let notFound = simBatchState.rows.filter(row => row.bucket === 'not_found').length;
-  let lookupFailed = simBatchState.rows.filter(row => row.bucket === 'lookup_error').length;
-  let assignmentFailed = 0;
-  let nextSerialIndex = 0;
+  let done = simBatchState.rows.filter(row => row.finishedAt).length;
+  let ok = simBatchState.rows.filter(row => row.finishedAt && row.status === 'success').length;
+  let failed = done - ok;
+  let notFound = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'not_found').length;
+  let lookupFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'lookup_error').length;
+  let assignmentFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'assignment_error').length;
+  let nextSerialIndex = simBatchState.rows.filter(row => row.finishedAt && row.serial).length;
 
   const finishRow = (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
@@ -6732,7 +7139,7 @@ async function simBatchRun() {
     await Promise.all(accounts.map(async account => {
       try {
         await simBatchEnsureAccountFresh(account);
-        simBatchSetAccountStatus(account.id, 'Đang chuẩn bị địa chỉ và Ví VNPT Pay...');
+        simBatchSetAccountStatus(account.id, 'Đang chuẩn bị danh mục và địa chỉ...');
         const shared = await simBatchPrepareSharedContext(account);
         shared.paymentTail = Promise.resolve();
         simBatchState.accountContexts.set(account.id, shared);
@@ -6741,7 +7148,7 @@ async function simBatchRun() {
         simBatchSetAccountStatus(account.id, `Không thể chạy: ${error.message}`, true);
       }
     }));
-    if (!activeAccounts.length) throw new Error('Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, địa chỉ hoặc Ví VNPT Pay)');
+    if (!activeAccounts.length) throw new Error('Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, danh mục hoặc địa chỉ)');
 
     const queues = simBatchDistributeRows(validRows, activeAccounts);
     await Promise.all(activeAccounts.map(async account => {
@@ -6820,16 +7227,16 @@ async function simBatchRun() {
       }
     }));
 
-    simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status)).forEach(row => {
-      row.status = 'error';
-      row.stage = 'Chưa chạy';
-      row.bucket = 'assignment_error';
-      row.result = simBatchState.stopRequested
-        ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
-      assignmentFailed++;
-      finishRow(row, false);
-    });
+    if (!simBatchState.stopRequested) {
+      simBatchState.rows.filter(row => row.valid && !row.finishedAt).forEach(row => {
+        row.status = 'error';
+        row.stage = 'Chưa chạy';
+        row.bucket = 'assignment_error';
+        row.result = `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
+        assignmentFailed++;
+        finishRow(row, false);
+      });
+    }
   } catch (error) {
     simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status)).forEach(row => {
       row.status = 'error';
@@ -6840,14 +7247,18 @@ async function simBatchRun() {
       finishRow(row, false);
     });
   } finally {
-    simBatchSetRunning(false);
     simBatchRenderTable();
+    const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt).length;
+    simBatchState.paused = simBatchState.stopRequested && remaining > 0;
     try {
       const appended = await simBatchWriteRunOutput();
-      simBatchSetStatus(`${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tự lưu cộng dồn: ${appended.path}`);
+      simBatchSetStatus(simBatchState.paused
+        ? `${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tạm dừng, còn ${remaining} dòng; bấm “Chạy tiếp phiên này” · Kết quả đã lưu đúng file phiên và file tổng`
+        : `${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tự lưu file phiên và file tổng`);
     } catch (error) {
       simBatchSetStatus(`Đã xử lý xong nhưng chưa ghi được output: ${error.message}`, true);
     }
+    simBatchSetRunning(false);
     if (downloadButton) downloadButton.style.display = '';
     if (copyButton) copyButton.style.display = '';
     await new Promise(resolve => setTimeout(resolve, SIM_BATCH_API_DELAY_MS));
@@ -7052,6 +7463,25 @@ async function simBatchRefreshWalletBalance(wallet, account=null) {
   return balance;
 }
 
+async function simBatchEnsureSharedWallet(shared) {
+  const current = shared?.wallet;
+  if (current?.id && current?.accountId && current?.token) return current;
+  try {
+    const wallet = await simBatchPrepareWallet(shared?.account || null);
+    shared.wallet = wallet;
+    if (shared?.account?.primary) simBatchState.wallet = wallet;
+    return wallet;
+  } catch (error) {
+    if (shared) shared.wallet = null;
+    const walletError = new Error(
+      `Tài khoản không có Ví VNPT Pay hoặc không thể sử dụng ví: ${error.message}`
+    );
+    walletError.status = error.status;
+    walletError.retryAfter = error.retryAfter;
+    throw walletError;
+  }
+}
+
 async function simBatchPrepareSharedContext(account) {
   const accountId = account?.id || '';
   const districtId = String(simBatchState.districtId || '').trim();
@@ -7090,8 +7520,6 @@ async function simBatchPrepareSharedContext(account) {
   if (!tttb) throw new Error(`Danh mục không có hình thức ĐKTTTB đã chọn (ID ${desiredTttbId})`);
   simBatchState.rechargeId = recharge.id;
   simBatchState.tttbMethodId = tttb.id;
-  const wallet = await simBatchPrepareWallet(account);
-  if (account?.primary) simBatchState.wallet = wallet;
   return {
     account,
     province: {id:'28', name:'TP Hồ Chí Minh'},
@@ -7100,7 +7528,9 @@ async function simBatchPrepareSharedContext(account) {
     rechargeId: recharge.id,
     tttbMethodId: tttb.id,
     tttbMethodName: tttb.name,
-    wallet,
+    // Ví được lấy lười tại đúng bước thanh toán của từng dòng. Một tài khoản
+    // chưa liên kết ví vì thế không làm toàn bộ batch thất bại từ bước chuẩn bị.
+    wallet:null,
     stopRequested:false
   };
 }
@@ -7380,20 +7810,33 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
     amount = simBatchItemsTotal(paymentItems);
 
     await simBatchWithPaymentLock(shared, async () => {
-      setStage('Chờ khóa thanh toán · kiểm tra số dư Ví VNPT Pay');
-      const balance = await simBatchRefreshWalletBalance(shared.wallet, shared.account);
+      setStage('Thanh toán · kiểm tra Ví VNPT Pay');
+      const walletWasReady = Boolean(
+        shared.wallet?.id && shared.wallet?.accountId && shared.wallet?.token
+      );
+      const wallet = await simBatchEnsureSharedWallet(shared);
+      let balance = Number(wallet.balance);
+      if (walletWasReady || !Number.isFinite(balance)) {
+        try {
+          balance = await simBatchRefreshWalletBalance(wallet, shared.account);
+        } catch (error) {
+          // Buộc dòng kế tiếp xin lại token ví thay vì tái sử dụng token lỗi.
+          shared.wallet = null;
+          throw error;
+        }
+      }
       if (balance < amount) {
-        throw new Error(`Số dư không đủ; thiếu ${simWalletMoneyLabel(amount - balance)}`);
+        throw new Error(`Ví VNPT Pay không đủ số dư; thiếu ${simWalletMoneyLabel(amount - balance)}`);
       }
 
       setStage('Thanh toán VNPT Pay');
       const payment = await simBatchCallApi(accountId, '/app-banhang/donhang_simkit/xacnhan_thanhtoan', 'POST', {
         p_id_donhang:apiNumericOrText(orderId), p_id_loai_sim:2,
         p_id_hinhthuc_thanhtoan:204, p_id_trangthai_thanhtoan:0,
-        p_sendWalletId:apiNumericOrText(shared.wallet.id),
-        p_sendWalletAccountId:apiNumericOrText(shared.wallet.accountId),
+        p_sendWalletId:apiNumericOrText(wallet.id),
+        p_sendWalletAccountId:apiNumericOrText(wallet.accountId),
         p_khoan_muc:paymentItems, menu_id:699161
-      }, 'json', {walletToken:shared.wallet.token});
+      }, 'json', {walletToken:wallet.token});
       simBatchRequireApi(payment, 'Thanh toán VNPT Pay thất bại');
       const paymentData = apiBodyObject(payment)?.data;
       const paidOrderId = String(simValue(paymentData, ['id_donhang','ID_DONHANG']) || '');
@@ -7402,7 +7845,7 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
         throw new Error('API thanh toán chưa xác nhận đúng đơn ở trạng thái Đã thu tiền');
       }
       paid = true;
-      shared.wallet.balance = Math.max(0, balance - amount);
+      wallet.balance = Math.max(0, balance - amount);
     });
 
     setStage('Kiểm tra serial SIM trắng');
@@ -7464,21 +7907,249 @@ function simHistoryApiDate(isoDate) {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
 }
 
+function simRenderHistoryAccounts() {
+  const select = document.getElementById('sim-history-account');
+  if (!select) return;
+  const accounts = Array.isArray(multiAccountState?.accounts)
+    ? multiAccountState.accounts.filter(account => account && account.id && account.username)
+    : [];
+  const previous = String(select.value || '');
+  if (!accounts.length) {
+    select.innerHTML = '<option value="">Phiên chính</option>';
+    return;
+  }
+  select.innerHTML = accounts.map(account =>
+    `<option value="${simEsc(account.id)}">${account.primary ? '⭐ ' : ''}${simEsc(account.username)}</option>`
+  ).join('');
+  const primary = accounts.find(account => account.primary) || accounts[0];
+  select.value = accounts.some(account => String(account.id) === previous)
+    ? previous : String(primary.id);
+}
+
+function simHistorySelectedAccountId() {
+  const select = document.getElementById('sim-history-account');
+  return String(select?.value || '').trim();
+}
+
+function simHistorySelectedAccount() {
+  const id = simHistorySelectedAccountId();
+  return (multiAccountState.accounts || []).find(account => String(account.id) === id) || null;
+}
+
+function simHistoryAccountBusy(accountId) {
+  if (!simBatchState?.running) return false;
+  const id = String(accountId || '').trim();
+  return (simBatchState.selectedAccounts || []).some(account => String(account?.id || '').trim() === id);
+}
+
+// Trạng thái trong app mobile OneBSS. Một số trạng thái không có mã ổn định
+// trong dữ liệu lịch sử, nên các lựa chọn đó được lọc theo tên sau khi tải -1.
+const SIM_HISTORY_STATUS_DEFINITIONS = Object.freeze([
+  {value:'pending', label:'Chỉ đơn đang treo'},
+  {value:'-1', label:'Tất cả'},
+  {value:'0', label:'Đã hủy', ids:['0'], names:['da huy']},
+  {value:'name:chon-so-kit', label:'Chọn số/KIT', names:['chon so/kit','chon so kit','chon so']},
+  {value:'name:dang-ky-goi', label:'Đăng ký gói cước', names:['dang ky goi cuoc']},
+  {value:'name:nhap-thong-tin-kh', label:'Nhập thông tin KH', names:['nhap thong tin kh','nhap thong tin khach hang']},
+  {value:'name:thanh-toan', label:'Thanh toán', names:['thanh toan']},
+  {value:'5', label:'Khởi tạo thuê bao', ids:['5'], names:['khoi tao thue bao']},
+  {value:'6', label:'Đăng ký thuê bao', ids:['6'], names:['dang ky thue bao']},
+  {value:'name:hoan-thanh-don', label:'Hoàn thành đơn hàng', names:['hoan thanh don hang','hoan tat don hang']},
+  {value:'name:het-han', label:'Hết hạn', names:['het han']},
+  {value:'name:de-nghi-huy', label:'Đề nghị hủy', names:['de nghi huy','de nghi huỷ']}
+]);
+
+function simHistoryNormalizeStatusText(value) {
+  return String(value ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function simHistoryStatusDefinition(value) {
+  const normalized = String(value ?? '').trim();
+  return SIM_HISTORY_STATUS_DEFINITIONS.find(item => item.value === normalized) || null;
+}
+
+function simHistoryStatusLabel(value) {
+  return simHistoryStatusDefinition(value)?.label || 'Trạng thái đã chọn';
+}
+
+function simHistoryMatchesStatus(row, value) {
+  const definition = simHistoryStatusDefinition(value);
+  if (!definition || definition.value === 'pending' || definition.value === '-1') return true;
+  const rowId = String(row?.id_trangthai ?? '').trim();
+  if (Array.isArray(definition.ids) && definition.ids.includes(rowId)) return true;
+  const rowName = simHistoryNormalizeStatusText(row?.ten_trangthai);
+  return (definition.names || []).some(name => {
+    const alias = simHistoryNormalizeStatusText(name);
+    return alias && (rowName === alias || rowName.includes(alias));
+  });
+}
+
+function simHistoryIsPending(row) {
+  const orderId = String(row?.id_donhang ?? '').trim();
+  if (!orderId) return false;
+  const statusId = String(row?.id_trangthai ?? '').trim();
+  const paymentStatus = String(row?.id_trangthai_thanhtoan ?? '').trim();
+  const initializationStatus = String(row?.trang_thai_khoitao ?? '').trim();
+  const statusName = simHistoryNormalizeStatusText(row?.ten_trangthai);
+  // Đã thu tiền hoặc OneBSS đã xác nhận khởi tạo thuê bao là hoàn tất,
+  // không đưa vào danh sách đơn treo/hủy.  Chỉ giữ đơn chưa thanh toán,
+  // chưa khởi tạo thành công và chưa ở trạng thái kết thúc/hủy.
+  if (paymentStatus === '1' || initializationStatus === '1' || statusId === '0' ||
+      /(huy|hoan tat|hoan thanh|da giao|da khoi tao|da dong|thanh cong|ket thuc)/i.test(statusName)) {
+    return false;
+  }
+  return true;
+}
+
+function simHistoryCanCancel(row) {
+  const orderId = String(row?.id_donhang ?? '').trim();
+  const statusId = String(row?.id_trangthai ?? '').trim();
+  const paid = String(row?.id_trangthai_thanhtoan ?? '') === '1';
+  const initialized = String(row?.trang_thai_khoitao ?? '').trim() === '1';
+  const alreadyCancelled = statusId === '0' || /đã\s*hủy|đã\s*huỷ/i.test(String(row?.ten_trangthai || ''));
+  return Boolean(orderId && !paid && !initialized && !alreadyCancelled);
+}
+
+function simHistoryCancelControl(row, accountId) {
+  const orderId = String(row?.id_donhang ?? '').trim();
+  if (!simHistoryCanCancel(row)) {
+    return '<span style="color:var(--text3);font-size:11px">—</span>';
+  }
+  return `<button type="button" class="btn-sm" style="color:#fca5a5;border-color:rgba(248,81,73,.45)" onclick="simCancelOrder('${simEsc(orderId)}','${simEsc(accountId)}')">Hủy giữ số</button>`;
+}
+
+function simHistoryToggleAll(checked) {
+  document.querySelectorAll('#sim-history-table input[data-sim-cancel-order]').forEach(input => {
+    input.checked = Boolean(checked);
+  });
+  simHistoryUpdateCancelSelection();
+}
+
+function simHistoryUpdateCancelSelection() {
+  const inputs = [...document.querySelectorAll('#sim-history-table input[data-sim-cancel-order]')];
+  const checked = inputs.filter(input => input.checked);
+  const selectAll = document.getElementById('sim-history-select-all');
+  if (selectAll) {
+    selectAll.checked = inputs.length > 0 && checked.length === inputs.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < inputs.length;
+    selectAll.disabled = inputs.length === 0;
+  }
+  const button = document.getElementById('sim-history-cancel-selected-btn');
+  if (button) {
+    button.disabled = checked.length === 0;
+    button.textContent = `Hủy đơn đã chọn (${checked.length})`;
+  }
+}
+
+const simHistoryCancelInFlight = new Set();
+
+async function simCancelOrder(orderId, accountId='', options={}) {
+  const {confirm=true, refresh=true, notify=true} = options || {};
+  const normalizedOrderId = String(orderId || '').trim();
+  const normalizedAccountId = String(accountId || simHistorySelectedAccountId() || '').trim();
+  const fail = (message, uncertain=false) => {
+    if (notify) showToast(message, uncertain ? 5000 : 3500);
+    return {ok:false, uncertain, message};
+  };
+  if (!/^\d+$/.test(normalizedOrderId)) {
+    return fail('Mã đơn hàng không hợp lệ');
+  }
+  if (simHistoryAccountBusy(normalizedAccountId)) {
+    return fail('Tài khoản này đang chạy batch Đơn hàng SIM; hãy chờ luồng hoàn tất');
+  }
+  const operationKey = `${normalizedAccountId}:${normalizedOrderId}`;
+  if (simHistoryCancelInFlight.has(operationKey)) {
+    return fail(`Đơn ${normalizedOrderId} đang được hủy, vui lòng chờ`);
+  }
+  const account = simHistorySelectedAccount();
+  const username = account?.username || 'tài khoản đang chọn';
+  if (confirm && !window.confirm(`Hủy giữ số/đơn SIM Kit ${normalizedOrderId} bằng ${username}?\n\nChỉ xác nhận khi đơn chưa thanh toán và cần giải phóng số.`)) {
+    return {ok:false, cancelled:true};
+  }
+  simHistoryCancelInFlight.add(operationKey);
+  try {
+    const response = await callApi('/app-banhang/donhang_simkit/huy_donhang', 'POST', {
+      p_id_donhang: apiNumericOrText(normalizedOrderId),
+      menu_id: 699161
+    }, 'json', {}, normalizedAccountId);
+    if (isBusinessMutationUncertain(response)) {
+      return fail('Kết quả hủy chưa xác định; hãy đối soát đơn trên OneBSS trước khi thao tác lại', true);
+    }
+    if (!apiSucceeded(response)) {
+      return fail(`Hủy đơn thất bại: ${apiFailureMessage(response, 'OneBSS từ chối hủy đơn')}`);
+    }
+    const body = apiBodyObject(response);
+    const cancelled = body?.data?.id_trangthai === 0 || /đã\s*hủy|đã\s*huỷ/i.test(String(body?.data?.ten_trangthai || ''));
+    if (notify) {
+      showToast(cancelled ? `Đã hủy đơn ${normalizedOrderId} và giải phóng giữ số` : `OneBSS đã nhận yêu cầu hủy đơn ${normalizedOrderId}`, 3500);
+    }
+    if (refresh) await simLoadOrderHistory({force:true});
+    return {ok:true, cancelled, response};
+  } finally {
+    simHistoryCancelInFlight.delete(operationKey);
+  }
+}
+
+async function simCancelSelectedOrders() {
+  const accountId = simHistorySelectedAccountId();
+  if (simHistoryAccountBusy(accountId)) {
+    showToast('Tài khoản này đang chạy batch Đơn hàng SIM; hãy chờ luồng hoàn tất');
+    return false;
+  }
+  const orderIds = [...new Set([...document.querySelectorAll('#sim-history-table input[data-sim-cancel-order]:checked')]
+    .map(input => String(input.dataset.simCancelOrder || '').trim())
+    .filter(id => /^\d+$/.test(id)))];
+  if (!orderIds.length) {
+    showToast('Hãy tích chọn ít nhất một đơn chưa thanh toán để hủy');
+    return false;
+  }
+  const account = simHistorySelectedAccount();
+  const username = account?.username || 'tài khoản đang chọn';
+  if (!window.confirm(`Hủy ${orderIds.length} đơn SIM Kit bằng ${username}?\n\nCác đơn đã chọn phải chưa thanh toán. Thao tác này sẽ giải phóng giữ số.`)) {
+    return false;
+  }
+  const button = document.getElementById('sim-history-cancel-selected-btn');
+  if (button) { button.disabled = true; button.textContent = 'Đang hủy...'; }
+  let success = 0;
+  let uncertain = false;
+  try {
+    for (const id of orderIds) {
+      const result = await simCancelOrder(id, accountId, {confirm:false, refresh:false, notify:false});
+      if (result?.uncertain) { uncertain = true; break; }
+      if (result?.ok) success++;
+    }
+  } finally {
+    if (button) { button.disabled = false; }
+  }
+  await simLoadOrderHistory({force:true});
+  if (uncertain) {
+    showToast(`Đã hủy ${success}/${orderIds.length} đơn; có đơn chưa xác định, cần đối soát OneBSS`, 5000);
+  } else {
+    showToast(`Đã hủy ${success}/${orderIds.length} đơn đã chọn`, 3500);
+  }
+  return success > 0;
+}
+
 function simRenderOrderHistory(rows) {
   const target = document.getElementById('sim-history-table');
   if (!target) return;
   if (!rows.length) {
     target.innerHTML = '<div style="padding:14px;color:var(--text3);border:1px solid var(--border);border-radius:8px">Không có đơn hàng trong khoảng thời gian đã chọn.</div>';
+    simHistoryUpdateCancelSelection();
     return;
   }
-  target.innerHTML = `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px"><table class="result-table" style="min-width:1350px">
-    <thead><tr><th>#</th><th>Mã đơn</th><th>Số thuê bao</th><th>Khách hàng</th><th>Trạng thái</th><th>Thanh toán</th><th>Tiền</th><th>SIM/MSIN</th><th>Ngày tạo</th><th>Ngày khởi tạo</th><th>Thời gian còn lại</th><th>Hình thức ĐK</th><th>Địa chỉ</th></tr></thead>
+  const accountId = simHistorySelectedAccountId();
+  target.innerHTML = `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px"><table class="result-table" style="min-width:1450px">
+    <thead><tr><th><input id="sim-history-select-all" type="checkbox" title="Chọn tất cả đơn chưa thanh toán" onchange="simHistoryToggleAll(this.checked)"></th><th>#</th><th>Mã đơn</th><th>Số thuê bao</th><th>Khách hàng</th><th>Trạng thái</th><th>Thanh toán</th><th>Tiền</th><th>SIM/MSIN</th><th>Ngày tạo</th><th>Ngày khởi tạo</th><th>Thời gian còn lại</th><th>Hình thức ĐK</th><th>Địa chỉ</th><th>Thao tác</th></tr></thead>
     <tbody>${rows.map((row, index) => {
       const paid = String(row?.id_trangthai_thanhtoan ?? '') === '1';
       const amount = Number(row?.tien);
       const amountLabel = Number.isFinite(amount) ? `${amount.toLocaleString('vi-VN')} đ` : '--';
       const orderCode = row?.ma_donhang || row?.ma_gd || row?.ma_gt || row?.id_donhang || '--';
       return `<tr>
+        <td>${simHistoryCanCancel(row) ? `<input type="checkbox" data-sim-cancel-order="${simEsc(row?.id_donhang ?? '')}" aria-label="Chọn hủy đơn ${simEsc(row?.id_donhang ?? '')}" onchange="simHistoryUpdateCancelSelection()">` : '<span style="color:var(--text3)">—</span>'}</td>
         <td>${index + 1}</td>
         <td><b>${simEsc(orderCode)}</b><div style="font-size:10px;color:var(--text3)">ID ${simEsc(row?.id_donhang ?? '--')}</div></td>
         <td style="font-family:monospace;color:var(--accent)">${simEsc(row?.so_dt ?? '--')}</td>
@@ -7492,19 +8163,26 @@ function simRenderOrderHistory(rows) {
         <td>${simEsc(row?.thoigian_conlai ?? '--')}</td>
         <td>${simEsc(row?.hinhthuc_dktttb ?? '--')}</td>
         <td style="max-width:300px;white-space:normal" title="${simEsc(row?.diachi ?? '')}">${simEsc(row?.diachi ?? '--')}</td>
+        <td>${simHistoryCancelControl(row, accountId)}</td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
+  simHistoryUpdateCancelSelection();
 }
 
 async function simLoadOrderHistory({force=false}={}) {
   if (window._simHistoryLoading) return false;
   if (window._simHistoryLoaded && !force) return true;
   simEnsureHistoryDates();
+  simRenderHistoryAccounts();
   const fromIso = document.getElementById('sim-history-from')?.value || '';
   const toIso = document.getElementById('sim-history-to')?.value || '';
   const fromDate = simHistoryApiDate(fromIso);
   const toDate = simHistoryApiDate(toIso);
+  const statusFilter = String(document.getElementById('sim-history-status')?.value || 'pending').trim();
+  const statusDefinition = simHistoryStatusDefinition(statusFilter);
+  const apiStatusFilter = !statusDefinition || statusFilter === 'pending' || statusFilter === '-1'
+    ? '-1' : (statusDefinition.apiId || (statusDefinition.ids?.length === 1 ? statusDefinition.ids[0] : '-1'));
   const statusText = document.getElementById('sim-history-status-text');
   const refreshButton = document.getElementById('sim-history-refresh-btn');
   if (!fromDate || !toDate || fromIso > toIso) {
@@ -7521,14 +8199,14 @@ async function simLoadOrderHistory({force=false}={}) {
     p_nguondon: '-1',
     p_loaidon: '-1',
     p_thoigian: `${fromDate}|${toDate}`,
-    p_id_trangthai: String(document.getElementById('sim-history-status')?.value || '-1'),
+    p_id_trangthai: apiStatusFilter,
     p_long: null,
     p_lat: null,
     p_id_hinhthuc_dk: -1,
     p_id_thoigian_conlai: 1,
     p_loai_thuebao_id: 21,
     menu_id: 699161
-  });
+  }, 'json', {}, simHistorySelectedAccountId());
   window._simHistoryLoading = false;
   if (refreshButton) { refreshButton.disabled = false; refreshButton.textContent = 'Làm mới lịch sử'; }
   if (!apiSucceeded(response)) {
@@ -7541,11 +8219,17 @@ async function simLoadOrderHistory({force=false}={}) {
     return false;
   }
   const body = apiBodyObject(response);
-  const rows = Array.isArray(body?.data) ? body.data : [];
+  const allRows = Array.isArray(body?.data) ? body.data : [];
+  const rows = statusFilter === 'pending'
+    ? allRows.filter(simHistoryIsPending)
+    : (statusFilter === '-1' ? allRows : allRows.filter(row => simHistoryMatchesStatus(row, statusFilter)));
   window._simHistoryLoaded = true;
   simRenderOrderHistory(rows);
   if (statusText) {
-    statusText.textContent = `Đã tải ${rows.length} đơn từ ${fromDate} đến ${toDate}.`;
+    const label = statusFilter === 'pending' ? 'Đang treo' : simHistoryStatusLabel(statusFilter);
+    statusText.textContent = `${label}: ${rows.length} đơn từ ${fromDate} đến ${toDate}` +
+      (statusFilter === 'pending' && allRows.length !== rows.length
+        ? ` · đã ẩn ${allRows.length - rows.length} đơn đã thanh toán/hoàn tất` : '.');
     statusText.style.color = rows.length ? '#86efac' : 'var(--text3)';
   }
   return true;
@@ -8458,6 +9142,10 @@ async function doiSimSubmit() {
 
 // ── Tab Mở/đóng thiết bị IC/OC ───────────────────────────────────────────
 const icocDeviceState = {
+  running: false,
+  selectedAccounts: [],
+  accountId: '',
+  accountUsername: '',
   msisdn: '',
   states: {IC: 'unknown', OC: 'unknown'},
   hasPermission: false,
@@ -8466,6 +9154,50 @@ const icocDeviceState = {
   permissionCheckedAt: 0,
   permissionResult: null,
 };
+
+function icocDeviceRenderAccounts(accounts=icocBatchState?.accounts || []) {
+  const select = document.getElementById('icoc-device-account');
+  if (!select) return;
+  const previousId = String(icocDeviceState.accountId || select.value || '');
+  const available = Array.isArray(accounts) ? accounts : [];
+  const selected = available.find(account => String(account.id) === previousId) ||
+    available.find(account => account.primary) || available[0] || null;
+  const accountChanged = String(selected?.id || '') !== String(icocDeviceState.accountId || '');
+  select.innerHTML = available.length
+    ? available.map(account => `<option value="${simEsc(account.id)}" ${account === selected ? 'selected' : ''}>${account.primary ? '⭐ ' : ''}${simEsc(account.username)}</option>`).join('')
+    : '<option value="">-- Chưa có tài khoản đã xác thực --</option>';
+  select.disabled = !available.length || icocDeviceState.loading || icocDeviceState.mutationInFlight;
+  icocDeviceState.accountId = selected?.id || '';
+  icocDeviceState.accountUsername = selected?.username || '';
+  icocDeviceState.selectedAccounts = selected ? [selected] : [];
+  if (accountChanged) {
+    icocDeviceState.permissionCheckedAt = 0;
+    icocDeviceState.permissionResult = null;
+    icocDeviceState.hasPermission = false;
+    icocDeviceState.states = {IC: 'unknown', OC: 'unknown'};
+    document.getElementById('icoc-device-status')?.classList.remove('show');
+  }
+}
+
+function icocDeviceSelectedAccount() {
+  const accountId = String(document.getElementById('icoc-device-account')?.value || '');
+  return (icocBatchState?.accounts || []).find(account => String(account.id) === accountId) || null;
+}
+
+function icocDeviceAccountChanged() {
+  if (icocDeviceState.loading || icocDeviceState.mutationInFlight) return;
+  const account = icocDeviceSelectedAccount();
+  icocDeviceState.accountId = account?.id || '';
+  icocDeviceState.accountUsername = account?.username || '';
+  icocDeviceState.selectedAccounts = account ? [account] : [];
+  icocDeviceState.msisdn = '';
+  icocDeviceState.states = {IC: 'unknown', OC: 'unknown'};
+  icocDeviceState.hasPermission = false;
+  icocDeviceState.permissionCheckedAt = 0;
+  icocDeviceState.permissionResult = null;
+  document.getElementById('icoc-device-status')?.classList.remove('show');
+  ['IC', 'OC'].forEach(type => icocDeviceSetActions(type, false));
+}
 
 function icocDeviceSetActions(type, enabled) {
   ['open', 'close'].forEach(action => {
@@ -8504,6 +9236,8 @@ function icocDeviceRenderState(type, rawValue) {
 
 function icocDeviceSetLoading(loading) {
   icocDeviceState.loading = loading;
+  const accountSelect = document.getElementById('icoc-device-account');
+  if (accountSelect) accountSelect.disabled = loading || icocDeviceState.mutationInFlight;
   const lookupButton = document.getElementById('icoc-device-lookup-btn');
   if (lookupButton) {
     lookupButton.disabled = loading;
@@ -8536,7 +9270,7 @@ async function icocDeviceCheckPermission({force=false}={}) {
   }
   const response = await callApi('/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', 'POST', {
     ma_quyen: 'CATMODICHVU',
-  });
+  }, 'json', {}, icocDeviceState.accountId);
   const data = icocDeviceSubscriberData(response);
   const allowed = apiSucceeded(response) && String(data.status ?? '').trim() === '1';
   const result = {
@@ -8553,22 +9287,41 @@ async function icocDeviceLookupStatus(options={}) {
   const input = document.getElementById('icoc-device-isdn');
   const msisdn = simBatchNormalizeMsisdn(input?.value || '');
   const silent = Boolean(options.silent);
+  const account = icocDeviceSelectedAccount();
+  if (!account) {
+    if (!silent) showToast('⚠️ Chọn tài khoản Employee đã xác thực để thao tác.');
+    return false;
+  }
+  const simConflict = batchAccountConflict([account], simBatchState, 'batch Đơn hàng SIM');
+  const icocConflict = batchAccountConflict([account], icocBatchState, 'batch IC/OC');
+  const conflict = simConflict || icocConflict;
+  if (conflict) {
+    if (!silent) showToast(`⚠️ ${conflict}`, 4500);
+    return false;
+  }
   if (!msisdn) {
     if (!silent) showToast('⚠️ Nhập SĐT hợp lệ: đầu 84, đầu 0 hoặc 9 số.');
     return false;
   }
 
+  icocDeviceState.accountId = account.id;
+  icocDeviceState.accountUsername = account.username;
+  icocDeviceState.selectedAccounts = [account];
+  icocDeviceState.running = true;
   icocDeviceState.msisdn = msisdn;
   icocDeviceState.states = {IC: 'unknown', OC: 'unknown'};
   icocDeviceState.hasPermission = false;
+  document.getElementById('icoc-device-user').textContent = account.username;
   document.getElementById('icoc-device-phone').textContent = msisdn;
   document.getElementById('icoc-device-status').classList.add('show');
   icocDeviceSetPermission('checking');
   icocDeviceSetLoading(true);
   try {
+    await icocBatchEnsureAccountFresh(account);
     const permission = await icocDeviceCheckPermission();
     const response = await callApi(
-      '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST', {p_so_tb: msisdn});
+      '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST', {p_so_tb: msisdn},
+      'json', {}, account.id);
     if (!apiSucceeded(response)) throw new Error(apiFailureMessage(response, 'Không tra cứu được trạng thái IC/OC'));
 
     icocDeviceState.hasPermission = permission.allowed;
@@ -8597,13 +9350,15 @@ async function icocDeviceLookupStatus(options={}) {
     if (!silent) showToast(`❌ ${error.message}`);
     return false;
   } finally {
+    icocDeviceState.running = false;
     icocDeviceSetLoading(false);
   }
 }
 
-async function icocDeviceRefreshStatusOnly(msisdn=icocDeviceState.msisdn) {
+async function icocDeviceRefreshStatusOnly(msisdn=icocDeviceState.msisdn, accountId=icocDeviceState.accountId) {
   const response = await callApi(
-    '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST', {p_so_tb: msisdn});
+    '/app-banhang/thuebaodidong/tracuu_tb_didong', 'POST', {p_so_tb: msisdn},
+    'json', {}, accountId);
   if (!apiSucceeded(response)) {
     throw new Error(apiFailureMessage(response, 'Không xác minh được trạng thái IC/OC sau thay đổi'));
   }
@@ -8634,6 +9389,7 @@ function icocDeviceChangePayload(type, nextState, note) {
 
 async function icocDeviceChange(type, nextState) {
   const msisdn = icocDeviceState.msisdn;
+  const accountId = icocDeviceState.accountId;
   const noteInput = document.getElementById('icoc-device-note');
   const note = String(noteInput?.value || '').trim();
   const actionLabel = nextState === 'MO' ? 'mở' : 'đóng/khóa';
@@ -8643,6 +9399,10 @@ async function icocDeviceChange(type, nextState) {
   }
   if (!msisdn || icocDeviceState.states[type] === 'unknown') {
     showToast('⚠️ Hãy tra cứu thành công trạng thái trước khi thao tác.');
+    return;
+  }
+  if (!accountId) {
+    showToast('⚠️ Chọn tài khoản Employee đã xác thực để thao tác.');
     return;
   }
   if (!icocDeviceState.hasPermission) {
@@ -8667,12 +9427,14 @@ async function icocDeviceChange(type, nextState) {
   ].filter(Boolean);
   buttons.forEach(button => { button.disabled = true; });
   icocDeviceState.mutationInFlight = true;
+  icocDeviceState.running = true;
   let mutationAccepted = false;
   try {
     const response = await callApi(
       '/app-banhang/thuebaodidong/khoamo_ic_oc',
       'POST',
       icocDeviceChangePayload(type, nextState, note),
+      'json', {}, accountId,
     );
     if (!apiSucceeded(response)) {
       const error = new Error(apiFailureMessage(response, `Không thể ${actionLabel} ${type}`));
@@ -8684,7 +9446,7 @@ async function icocDeviceChange(type, nextState) {
     icocDeviceRenderState(type, nextState);
     showToast(`✅ Đã gửi yêu cầu ${actionLabel} ${type}; đang xác minh trạng thái.`, 3000);
     await sleep(ICOC_MIN_DELAY_SECONDS * 1000);
-    await icocDeviceRefreshStatusOnly(msisdn);
+    await icocDeviceRefreshStatusOnly(msisdn, accountId);
   } catch (error) {
     if (mutationAccepted || error.mutationUncertain) {
       icocDeviceRenderState('IC', null);
@@ -8694,7 +9456,10 @@ async function icocDeviceChange(type, nextState) {
       showToast(`❌ ${error.message}`);
     }
   } finally {
+    icocDeviceState.running = false;
     icocDeviceState.mutationInFlight = false;
+    const accountSelect = document.getElementById('icoc-device-account');
+    if (accountSelect) accountSelect.disabled = false;
     icocDeviceSetActions(type, icocDeviceState.states[type] !== 'unknown');
   }
 }
@@ -8714,6 +9479,7 @@ async function openICOCDeviceTab(msisdn) {
 const icocBatchState = {
   running: false,
   stopRequested: false,
+  paused: false,
   workbook: null,
   sheetName: '',
   inputFileName: '',
@@ -8729,6 +9495,12 @@ const icocBatchState = {
   delaySeconds: ICOC_MIN_DELAY_SECONDS,
   inputPath: '',
   outputPath: '',
+  runOutputPath: '',
+  outputTotalRows: 0,
+  runOutputTotalRows: 0,
+  outputSaveTail: Promise.resolve(),
+  outputSaveError: '',
+  lastOutputSave: null,
 };
 
 function icocBatchDelaySeconds(value) {
@@ -8793,6 +9565,9 @@ async function icocBatchLoadAccounts(force=false, suppliedAccounts=null) {
     expiresAt: Date.now() + Math.max(0, Number(account.expires_in || 0)) * 1000,
   }));
   icocBatchRenderAccounts();
+  if (typeof icocDeviceRenderAccounts === 'function') {
+    icocDeviceRenderAccounts(icocBatchState.accounts);
+  }
   return icocBatchState.accounts;
 }
 
@@ -8854,6 +9629,7 @@ function icocBatchSetRunning(running) {
   const importButton = document.getElementById('icoc-batch-import-btn');
   if (importButton) importButton.textContent = running ? 'Đang chạy Excel...' : 'Chọn Excel và chạy tự động';
   const stopButton = document.getElementById('icoc-batch-stop-btn');
+  const continueButton = document.getElementById('icoc-batch-continue-btn');
   const downloadButton = document.getElementById('icoc-batch-download-btn');
   const copyButton = document.getElementById('icoc-batch-copy-btn');
   if (stopButton) {
@@ -8861,9 +9637,16 @@ function icocBatchSetRunning(running) {
     stopButton.disabled = !running;
     if (!running) stopButton.textContent = 'Dừng chạy';
   }
+  const canContinue = !running && icocBatchState.paused && icocBatchState.rows.some(row => row.valid && !row.finishedAt);
+  if (continueButton) {
+    continueButton.style.display = canContinue ? '' : 'none';
+    continueButton.disabled = !canContinue;
+  }
   [downloadButton, copyButton].forEach(button => {
     if (button) button.disabled = !icocBatchState.rows.length;
   });
+  const openRunButton = document.getElementById('icoc-batch-open-run-btn');
+  if (openRunButton) openRunButton.disabled = running || !icocBatchState.runOutputPath;
   document.querySelectorAll('[data-icoc-batch-account]').forEach(checkbox => { checkbox.disabled = running; });
 }
 
@@ -8878,14 +9661,42 @@ function icocBatchRequestStop() {
   icocBatchSetStatus('Đã nhận yêu cầu dừng; hệ thống sẽ hoàn tất các dòng đang chạy rồi dừng cấp việc mới.');
 }
 
+function icocBatchResetRunSession() {
+  icocBatchState.stopRequested = false;
+  icocBatchState.paused = false;
+  icocBatchState.runOutputPath = '';
+  icocBatchState.runOutputTotalRows = 0;
+  icocBatchState.outputSaveTail = Promise.resolve();
+  icocBatchState.outputSaveError = '';
+  icocBatchState.lastOutputSave = null;
+  const runButton = document.getElementById('icoc-batch-open-run-btn');
+  if (runButton) runButton.disabled = true;
+  const continueButton = document.getElementById('icoc-batch-continue-btn');
+  if (continueButton) { continueButton.style.display = 'none'; continueButton.disabled = true; }
+  const target = document.getElementById('icoc-batch-file-paths');
+  if (target && icocBatchState.inputPath && icocBatchState.outputPath) {
+    target.textContent = `Input: ${icocBatchState.inputPath} · Output tổng: ${icocBatchState.outputPath}`;
+  }
+}
+
+function icocBatchContinueRun() {
+  if (icocBatchState.running) return;
+  const remaining = icocBatchState.rows.filter(row => row.valid && !row.finishedAt);
+  if (!icocBatchState.paused || !icocBatchState.runOutputPath || !remaining.length) {
+    showToast('Không có phiên IC/OC đang tạm dừng để chạy tiếp');
+    return;
+  }
+  icocBatchRun();
+}
+
 async function icocBatchEnsureFiles() {
   const response = await fetch('/api/icoc-batch/files');
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
   icocBatchState.inputPath = data.input_path || '';
-  icocBatchState.outputPath = data.output_path || '';
+  icocBatchState.outputPath = data.cumulative_output_path || data.output_path || '';
   const target = document.getElementById('icoc-batch-file-paths');
-  if (target) target.textContent = `Input: ${icocBatchState.inputPath} · Mỗi lần chạy tạo file riêng trong: ${data.output_dir || data.output_path}`;
+  if (target) target.textContent = `Input: ${icocBatchState.inputPath} · Output tổng: ${icocBatchState.outputPath}${icocBatchState.runOutputPath ? ` · Output phiên: ${icocBatchState.runOutputPath}` : ''}`;
   return data;
 }
 
@@ -8894,11 +9705,15 @@ async function icocBatchOpenFile(type) {
   try {
     const response = await fetch('/api/icoc-batch/open', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({type, path: type === 'output' ? icocBatchState.outputPath : undefined})
+      body: JSON.stringify({
+        type,
+        path: type === 'run' ? icocBatchState.runOutputPath : undefined,
+      })
     });
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    showToast(`Đã mở file ${type === 'input' ? 'input' : 'output'}.`);
+    const label = type === 'input' ? 'input' : (type === 'run' ? 'output phiên' : 'output tổng');
+    showToast(`Đã mở file ${label}.`);
   } catch (error) {
     showToast(`❌ Không mở được file: ${error.message}`);
   }
@@ -8949,7 +9764,7 @@ async function icocBatchImportFile(input) {
   const file = input.files?.[0];
   if (!file) return;
   input.value = '';
-  if (icocBatchState.running || simBatchState.running) { showToast('Đang có batch khác chạy'); return; }
+  if (icocBatchState.running) { showToast('Đang có batch IC/OC chạy'); return; }
   if (typeof XLSX === 'undefined') { showToast('SheetJS chưa tải xong, hãy thử lại'); return; }
   const selectedAccounts = icocBatchSelectedAccounts();
   const icAction = document.getElementById('icoc-batch-ic-action')?.value;
@@ -8959,6 +9774,8 @@ async function icocBatchImportFile(input) {
   const delaySeconds = icocBatchDelaySeconds(delayInput?.value);
   if (delayInput) delayInput.value = String(delaySeconds);
   if (!selectedAccounts.length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
+  const conflict = icocBatchAccountConflict(selectedAccounts);
+  if (conflict) { showToast(`⚠️ ${conflict}`, 4500); return; }
   if (!['GIU', 'MO', 'KHOA'].includes(icAction) || !['GIU', 'MO', 'KHOA'].includes(ocAction) || (icAction === 'GIU' && ocAction === 'GIU')) {
     showToast('Chọn ít nhất một thao tác Mở hoặc Đóng cho IC/OC');
     return;
@@ -9006,6 +9823,7 @@ async function icocBatchImportFile(input) {
       workbook, sheetName, inputFileName: file.name, headers, phoneColumn: columns.phoneColumn, rows,
       selectedAccounts: selectedAccounts.map(account => ({...account})), icAction, ocAction, note, delaySeconds,
     });
+    icocBatchResetRunSession();
     icocBatchRenderTable();
     const validCount = rows.filter(row => row.valid).length;
     const actionLabel = icocBatchActionLabel(icAction, ocAction);
@@ -9052,7 +9870,7 @@ function icocBatchRenderTable() {
   });
 }
 
-function icocBatchOutputRows() {
+function icocBatchOutputRows(rows=icocBatchState.rows) {
   const headers = [...icocBatchState.headers];
   const ensureColumn = name => {
     let index = headers.findIndex(header => simBatchHeaderKey(header) === simBatchHeaderKey(name));
@@ -9062,7 +9880,7 @@ function icocBatchOutputRows() {
   const resultColumn = ensureColumn('Kết quả');
   const timeColumn = ensureColumn('Thời gian');
   const userColumn = ensureColumn('User chạy');
-  return [headers, ...icocBatchState.rows.map(row => {
+  return [headers, ...rows.map(row => {
     const values = Array.from({length: headers.length}, (_, index) => row.original[index] ?? '');
     values[resultColumn] = row.result || row.stage;
     values[timeColumn] = row.finishedAt || '';
@@ -9098,15 +9916,100 @@ function icocBatchCopyTable() {
 }
 
 async function icocBatchWriteRunOutput() {
-  const response = await fetch('/api/icoc-batch/append-output', {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({table: icocBatchOutputRows()})
+  await Promise.resolve(icocBatchState.outputSaveTail).catch(() => {});
+  const pending = icocBatchState.rows.filter(row => row.finishedAt && !row.outputSaved);
+  if (pending.length) return icocBatchPersistRows(pending);
+  return icocBatchState.lastOutputSave || {
+    ok:true, appended:0, skipped:0,
+    path:icocBatchState.outputPath, total_rows:icocBatchState.outputTotalRows,
+    run_output_path:icocBatchState.runOutputPath,
+    run_total_rows:icocBatchState.runOutputTotalRows,
+  };
+}
+
+function icocBatchOutputEntryId(row) {
+  if (row.outputEntryId) return row.outputEntryId;
+  const random = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  row.outputEntryId = `${random}-${row.excelRow || 0}`;
+  return row.outputEntryId;
+}
+
+async function icocBatchStartRunOutput() {
+  icocBatchState.outputSaveTail = Promise.resolve();
+  icocBatchState.outputSaveError = '';
+  icocBatchState.lastOutputSave = null;
+  icocBatchState.runOutputPath = '';
+  icocBatchState.runOutputTotalRows = 0;
+  icocBatchState.rows.forEach(row => {
+    row.outputSaved = false;
+    row.outputSaveQueued = false;
+    row.outputSaveError = '';
+    row.outputEntryId = '';
+  });
+  const headers = icocBatchOutputRows([])[0];
+  const response = await fetch('/api/icoc-batch/start-output', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({headers})
   });
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
-  icocBatchState.outputPath = data.path || icocBatchState.outputPath;
+  icocBatchState.runOutputPath = data.run_output_path || '';
+  icocBatchState.outputPath = data.cumulative_output_path || icocBatchState.outputPath;
+  const button = document.getElementById('icoc-batch-open-run-btn');
+  if (button) button.disabled = true;
   const target = document.getElementById('icoc-batch-file-paths');
-  if (target) target.textContent = `Input: ${icocBatchState.inputPath} · Output lần chạy này: ${icocBatchState.outputPath} (${data.total_rows} dòng)`;
+  if (target) target.textContent = `Input: ${icocBatchState.inputPath} · Output phiên: ${icocBatchState.runOutputPath} · Output tổng: ${icocBatchState.outputPath}`;
   return data;
+}
+
+async function icocBatchEnsureRunOutput() {
+  if (icocBatchState.runOutputPath) return {ok:true, resumed:true, run_output_path:icocBatchState.runOutputPath};
+  return icocBatchStartRunOutput();
+}
+
+async function icocBatchPersistRows(rows) {
+  const pending = (Array.isArray(rows) ? rows : [])
+    .filter(row => row?.finishedAt && !row.outputSaved);
+  if (!pending.length) return icocBatchState.lastOutputSave;
+  const response = await fetch('/api/icoc-batch/append-output', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      table:icocBatchOutputRows(pending),
+      entry_ids:pending.map(icocBatchOutputEntryId),
+      run_output_path:icocBatchState.runOutputPath,
+    })
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  pending.forEach(row => {
+    row.outputSaved = true;
+    row.outputSaveError = '';
+  });
+  icocBatchState.outputSaveError = '';
+  icocBatchState.lastOutputSave = data;
+  icocBatchState.outputPath = data.cumulative_output_path || data.path || icocBatchState.outputPath;
+  icocBatchState.runOutputPath = data.run_output_path || icocBatchState.runOutputPath;
+  icocBatchState.outputTotalRows = Number(data.total_rows || icocBatchState.outputTotalRows || 0);
+  icocBatchState.runOutputTotalRows = Number(data.run_total_rows || icocBatchState.runOutputTotalRows || 0);
+  const target = document.getElementById('icoc-batch-file-paths');
+  if (target) target.textContent = `Input: ${icocBatchState.inputPath} · Output phiên: ${icocBatchState.runOutputPath} (${icocBatchState.runOutputTotalRows} dòng) · Output tổng: ${icocBatchState.outputPath} (${icocBatchState.outputTotalRows} dòng)`;
+  return data;
+}
+
+function icocBatchQueueOutputRow(row) {
+  if (!row?.finishedAt || row.outputSaved || row.outputSaveQueued) return icocBatchState.outputSaveTail;
+  row.outputSaveQueued = true;
+  icocBatchState.outputSaveTail = Promise.resolve(icocBatchState.outputSaveTail)
+    .catch(() => {})
+    .then(() => icocBatchPersistRows([row]))
+    .catch(error => {
+      row.outputSaveError = error.message;
+      icocBatchState.outputSaveError = error.message;
+    })
+    .finally(() => { row.outputSaveQueued = false; });
+  return icocBatchState.outputSaveTail;
 }
 
 function icocBatchDistributeRows(rows, accounts) {
@@ -9217,28 +10120,40 @@ async function icocBatchProcessRow(row, shared) {
 
 async function icocBatchRun() {
   if (icocBatchState.running) return;
-  if (simBatchState.running) { showToast('Đang chạy batch Đơn hàng SIM; hãy chờ hoàn tất'); return; }
   const accounts = icocBatchState.selectedAccounts.length
     ? icocBatchState.selectedAccounts.map(account => ({...account}))
     : icocBatchSelectedAccounts().map(account => ({...account}));
   if (!accounts.length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
-  const queues = icocBatchDistributeRows(icocBatchState.rows.filter(row => row.valid), accounts);
+  const conflict = icocBatchAccountConflict(accounts);
+  if (conflict) { showToast(`⚠️ ${conflict}`, 4500); return; }
+  const pendingRows = icocBatchState.rows.filter(row => row.valid && !row.finishedAt);
+  if (!pendingRows.length) { showToast('Phiên IC/OC này không còn dòng chưa chạy'); return; }
+  const queues = icocBatchDistributeRows(pendingRows, accounts);
   icocBatchState.stopRequested = false;
+  icocBatchState.paused = false;
   icocBatchState.accountContexts = new Map();
   const stopButton = document.getElementById('icoc-batch-stop-btn');
   if (stopButton) { stopButton.disabled = false; stopButton.textContent = 'Dừng sau các dòng đang chạy'; }
   document.getElementById('icoc-batch-download-btn')?.style.setProperty('display', '');
   document.getElementById('icoc-batch-copy-btn')?.style.setProperty('display', '');
   icocBatchSetRunning(true);
-  let done = icocBatchState.rows.filter(row => !row.valid).length;
-  let ok = 0;
-  let failed = done;
+  try {
+    await icocBatchEnsureRunOutput();
+  } catch (error) {
+    icocBatchSetRunning(false);
+    icocBatchSetStatus(`Không tạo được 2 file output trước khi chạy: ${error.message}`, true);
+    return;
+  }
+  let done = icocBatchState.rows.filter(row => row.finishedAt).length;
+  let ok = icocBatchState.rows.filter(row => row.finishedAt && row.status === 'success').length;
+  let failed = done - ok;
   const finishRow = (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12: false});
     done++;
     if (success) ok++; else failed++;
     icocBatchRenderTable();
     icocBatchSetProgress(done, icocBatchState.rows.length, ok, failed, `${row.user} · ${row.msisdn}`);
+    icocBatchQueueOutputRow(row);
   };
   const failAccountPreparation = (account, error) => {
     icocBatchSetAccountStatus(account.id, `Không thể chạy: ${error.message}`, true);
@@ -9299,28 +10214,32 @@ async function icocBatchRun() {
         }
       }
     }));
-    icocBatchState.rows.filter(row => row.valid && row.status === 'pending').forEach(row => {
-      row.status = 'stopped'; row.stage = 'Chưa chạy';
-      row.result = icocBatchState.stopRequested
-        ? 'Chưa chạy: người dùng đã yêu cầu dừng batch'
-        : `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
-      finishRow(row, false);
-    });
+    if (!icocBatchState.stopRequested) {
+      icocBatchState.rows.filter(row => row.valid && !row.finishedAt).forEach(row => {
+        row.status = 'error'; row.stage = 'Chưa chạy';
+        row.result = `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
+        finishRow(row, false);
+      });
+    }
   } catch (error) {
     icocBatchState.rows.filter(row => row.valid && row.status === 'pending').forEach(row => {
       row.status = 'error'; row.stage = 'Không thể bắt đầu'; row.result = `Lỗi chuẩn bị: ${error.message}`;
       finishRow(row, false);
     });
   } finally {
-    icocBatchSetRunning(false);
     icocBatchRenderTable();
-    icocBatchSetProgress(done, icocBatchState.rows.length, ok, failed, icocBatchState.stopRequested ? 'Đã dừng' : 'Đã hoàn tất');
+    const remaining = icocBatchState.rows.filter(row => row.valid && !row.finishedAt).length;
+    icocBatchState.paused = icocBatchState.stopRequested && remaining > 0;
+    icocBatchSetProgress(done, icocBatchState.rows.length, ok, failed, icocBatchState.paused ? `Đã tạm dừng · còn ${remaining} dòng` : 'Đã hoàn tất');
     try {
       const appended = await icocBatchWriteRunOutput();
-      icocBatchSetStatus(`${done}/${icocBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã ghi file output riêng: ${appended.path}`);
+      icocBatchSetStatus(icocBatchState.paused
+        ? `${done}/${icocBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tạm dừng, còn ${remaining} dòng; bấm “Chạy tiếp phiên này” · Kết quả đã lưu đúng file phiên và file tổng`
+        : `${done}/${icocBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tự lưu file phiên và file tổng`);
     } catch (error) {
-      icocBatchSetStatus(`Đã xử lý xong nhưng chưa ghi được file output riêng: ${error.message}`, true);
+      icocBatchSetStatus(`Đã xử lý xong nhưng còn dòng chưa ghi đủ 2 file output: ${error.message}`, true);
     }
+    icocBatchSetRunning(false);
     document.getElementById('icoc-batch-download-btn')?.style.setProperty('display', '');
     document.getElementById('icoc-batch-copy-btn')?.style.setProperty('display', '');
   }
@@ -10330,7 +11249,7 @@ async function reloadMenus() {
 
 // Init
 loadTokenDetails();
-loadMenus().finally(() => showPanel('lookup'));
+loadMenus().finally(() => showPanel('account'));
 
 // ══════════════════════════════════════════════
 // ══  IMPORT FILE (TXT / XLSX / CSV)  ══
@@ -10577,4 +11496,5 @@ async function addCCBSRow(sdtRaw) {
   }
 }
 </script>
+<script src="{{ url_for('static', filename='package_registration.js') }}"></script>
 {% endblock %}

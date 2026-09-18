@@ -98,6 +98,61 @@ class SimBatchOutputTests(unittest.TestCase):
         self.assertEqual(sheet['G2'].value, '12 Phường Cầu Kiệu')
         migrated.close()
 
+    def test_completed_row_is_written_to_run_file_and_cumulative_file(self):
+        with app_module.app.test_request_context(json={}):
+            session['username'] = 'tester'
+            started = app_module.api_sim_batch_start_output.__wrapped__().get_json()
+
+        run_path = started['run_output_path']
+        row = [
+            '84911111111', '8984000001', 'Thành công', '4911598',
+            'Khách hàng tự đăng ký', 'Nguyễn Văn An', '12 Phường Cầu Kiệu',
+            75000, '15/09/2026 10:00:00', 'tester',
+        ]
+        payload = {
+            'table': [list(app_module.SIM_BATCH_OUTPUT_HEADERS), row],
+            'entry_ids': ['dual-output-row-1'],
+            'run_output_path': run_path,
+        }
+        with app_module.app.test_request_context(json=payload):
+            session['username'] = 'tester'
+            result = app_module.api_sim_batch_append_output.__wrapped__().get_json()
+
+        self.assertEqual(result['run_output_path'], run_path)
+        self.assertEqual(result['run_total_rows'], 1)
+        self.assertEqual(result['total_rows'], 1)
+        for path in (run_path, self.output_file):
+            workbook = load_workbook(path, data_only=True)
+            self.assertEqual(workbook['SIM_Output'].max_row, 2)
+            self.assertEqual(workbook['SIM_Output']['A2'].value, '84911111111')
+            workbook.close()
+
+    def test_old_per_run_files_are_merged_once_into_all_time_output(self):
+        os.makedirs(self.batch_dir, exist_ok=True)
+        legacy_path = os.path.join(
+            self.batch_dir, 'SIM_Kit_Output_20260914_090000_abcdef.xlsx')
+        legacy = Workbook()
+        sheet = legacy.active
+        sheet.title = 'SIM_Output'
+        sheet.append(['SĐT', 'Serial SIM', 'Kết quả', 'Thời gian', 'User chạy'])
+        sheet.append([
+            '84944444444', '8984000044', 'Thành công | Đơn 4911600',
+            '14/09/2026 09:00:00', 'old-user',
+        ])
+        legacy.save(legacy_path)
+        legacy.close()
+
+        app_module._ensure_sim_batch_files()
+        app_module._ensure_sim_batch_files()
+
+        total = load_workbook(self.output_file, data_only=True)
+        sheet = total['SIM_Output']
+        self.assertEqual(sheet.max_row, 2)
+        self.assertEqual(sheet['A2'].value, '84944444444')
+        self.assertEqual(sheet['B2'].value, '8984000044')
+        self.assertEqual(sheet['D2'].value, '4911600')
+        total.close()
+
 
 if __name__ == '__main__':
     unittest.main()

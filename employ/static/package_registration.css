@@ -1,0 +1,60 @@
+.package-registration-heading{align-items:center}
+.package-registration-badge{padding:7px 11px;border:1px solid var(--border);border-radius:999px;background:var(--bg3);color:var(--text2);font-size:11px;font-weight:700}
+.package-registration-badge.loading{color:var(--orange)}
+.package-registration-badge.ok{color:var(--green);border-color:rgba(63,185,80,.45);background:rgba(63,185,80,.08)}
+.package-registration-badge.error{color:var(--red);border-color:rgba(248,81,73,.45);background:rgba(248,81,73,.08)}
+.package-registration-layout{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.package-registration-card{overflow:hidden}
+.package-registration-card-title{display:flex;align-items:center;gap:10px}
+.package-registration-card-title h3{flex:1}
+#package-registration-package-count{padding:3px 8px;border-radius:999px;background:var(--bg4);color:var(--text2);font-size:10px}
+.package-registration-lookup-row{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:end}
+.package-registration-lookup-row .btn-primary{min-height:36px}
+.package-registration-subscriber{display:grid;grid-template-columns:repeat(3,minmax(130px,1fr));gap:1px;margin-top:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--border)}
+.package-registration-subscriber div{padding:9px 10px;background:var(--bg3);min-width:0}
+.package-registration-subscriber span{display:block;color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.4px}
+.package-registration-subscriber strong{display:block;margin-top:3px;color:var(--text);font-size:11px;overflow-wrap:anywhere}
+.package-registration-list{width:100%;min-height:96px;resize:vertical;padding:9px 11px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font:12px/1.5 'JetBrains Mono',monospace;outline:none}
+.package-registration-list:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.1)}
+.package-registration-file-actions{display:flex;align-items:center;gap:8px;margin-top:8px}
+#package-registration-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3);font-size:11px}
+.package-registration-note,.package-registration-message,.package-registration-paths{margin-top:8px;color:var(--text3);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.package-registration-message.error{color:#fca5a5}.package-registration-message.success{color:#86efac}
+.package-registration-filter-row{display:grid;grid-template-columns:minmax(150px,.35fr) minmax(260px,.65fr) minmax(280px,1fr);gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(33,38,45,.45);align-items:end}
+.package-registration-filter-row .form-group{margin:0}
+.package-registration-selected{min-height:36px;display:flex;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);font-size:11px;font-weight:650;color:var(--text2)}
+.package-registration-table-wrap{overflow:auto;max-height:360px}
+.package-registration-table-wrap.batch{max-height:430px;border-top:1px solid var(--border)}
+.package-registration-table{width:100%;min-width:860px;border-collapse:collapse;font-size:11px}
+.package-registration-table thead{position:sticky;top:0;z-index:2;background:var(--bg3)}
+.package-registration-table th{padding:8px 9px;text-align:left;white-space:nowrap;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.35px;border-bottom:2px solid var(--border)}
+.package-registration-table td{padding:8px 9px;vertical-align:top;border-bottom:1px solid rgba(48,54,61,.6);color:var(--text2)}
+.package-registration-table tbody tr:not(.package-registration-empty-row){cursor:pointer}
+.package-registration-table tbody tr:hover{background:rgba(88,166,255,.04)}
+.package-registration-table tbody tr.selected{background:rgba(88,166,255,.11)}
+.package-registration-table td.code{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);white-space:nowrap}
+.package-registration-table td.price{font-weight:700;color:#86efac;white-space:nowrap}
+.package-registration-table td.description{min-width:270px;white-space:normal;line-height:1.45}
+.package-registration-table input[type=radio]{width:16px;height:16px;accent-color:var(--accent)}
+.package-registration-empty{text-align:center!important;padding:24px!important;color:var(--text3)!important}
+.package-registration-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.package-registration-delay{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--text2);font-size:11px}
+.package-registration-delay input{width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);text-align:center}
+.package-registration-warning{margin-top:10px;padding:9px 11px;border:1px solid rgba(210,153,34,.4);border-radius:7px;background:rgba(210,153,34,.08);color:#f7d982;font-size:11px;line-height:1.5}
+.package-registration-progress{height:7px;margin-top:12px;border-radius:999px;overflow:hidden;background:var(--bg4)}
+.package-registration-progress span{display:block;width:0;height:100%;background:linear-gradient(90deg,var(--accent),var(--green));transition:width .25s}
+.package-registration-status-row{display:flex;align-items:center;gap:12px;margin-top:8px;color:var(--text2);font-size:11px}
+.package-registration-status-row strong{color:var(--text)}
+.package-registration-paths{font-family:'JetBrains Mono',monospace;font-size:10px}
+.package-registration-row-running{background:rgba(88,166,255,.08)}
+.package-registration-row-success td:nth-child(3){color:#86efac}
+.package-registration-row-error td:nth-child(3){color:#fca5a5}
+@media(max-width:980px){
+  .package-registration-layout,.package-registration-filter-row{grid-template-columns:1fr}
+  .package-registration-subscriber{grid-template-columns:1fr 1fr}
+  .package-registration-delay{margin-left:0}
+}
+@media(max-width:620px){
+  .package-registration-lookup-row{grid-template-columns:1fr}
+  .package-registration-subscriber{grid-template-columns:1fr}
+}
