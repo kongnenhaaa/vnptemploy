@@ -67,6 +67,15 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .sim-batch-account-card .account-main{min-width:0;flex:1}.sim-batch-account-card .account-name{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sim-batch-account-card .account-status{font-size:10px;color:var(--text3);margin-top:2px}
 .sim-batch-account-card input[type="number"]{width:52px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)}
+.sim-batch-wallet-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:8px;margin-top:8px}
+.sim-batch-wallet-card{padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg3)}
+.sim-batch-wallet-card.ready{border-color:rgba(46,160,67,.55);background:rgba(46,160,67,.06)}
+.sim-batch-wallet-card.error{border-color:rgba(248,81,73,.55);background:rgba(248,81,73,.05)}
+.sim-batch-wallet-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sim-batch-wallet-user{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sim-batch-wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px}
+.sim-batch-wallet-grid span{color:var(--text3);display:block;font-size:9px;text-transform:uppercase;margin-bottom:2px}
+.sim-batch-wallet-status{margin-top:7px;font-size:10px;color:var(--text3);overflow-wrap:anywhere}
 
 /* ── Layout ── */
 #app{display:flex;flex:1;overflow:hidden}
@@ -1388,7 +1397,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
           <div class="card-body">
             <div id="sim-wallet-balance-card" aria-live="polite" style="margin:0 0 16px;padding:12px;border:1px solid var(--accent);border-radius:10px;background:var(--bg2)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
-                <div><b>💳 Số dư Ví VNPT Pay</b><div id="sim-wallet-balance-time" style="font-size:11px;color:var(--text3);margin-top:2px">Chưa kiểm tra</div></div>
+                <div><b>💳 Ví luồng thủ công (tài khoản chính)</b><div id="sim-wallet-balance-time" style="font-size:11px;color:var(--text3);margin-top:2px">Chưa kiểm tra</div></div>
                 <button id="sim-wallet-balance-refresh" type="button" class="btn-sm" onclick="simRefreshVnptBalance()">Kiểm tra số dư</button>
               </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px">
@@ -1419,6 +1428,11 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                   </div>
                 </div>
                 <div id="sim-batch-account-list" class="sim-batch-account-list"><div style="font-size:11px;color:var(--text3)">Đang tải...</div></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+                  <div><b style="font-size:12px">Ví VNPT Pay theo từng tài khoản</b><div style="font-size:10px;color:var(--text3);margin-top:2px">Mỗi user dùng đúng wallet token và số dư ví riêng; chọn 2 user sẽ hiện 2 ví.</div></div>
+                  <button id="sim-batch-wallet-refresh" type="button" class="btn-sm" onclick="simBatchLoadSelectedWallets(true)">Làm mới tất cả ví</button>
+                </div>
+                <div id="sim-batch-wallet-list" class="sim-batch-wallet-list"><div style="font-size:11px;color:var(--text3)">Chọn tài khoản để kiểm tra ví.</div></div>
               </div>
               <div class="inline-group">
                 <div class="form-group">
@@ -2881,6 +2895,14 @@ function managedAccountTimeText(seconds) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remain).padStart(2, '0')}`;
 }
 
+function managedAccountPhoneText(account) {
+  if (account.phone) return simEsc(String(account.phone));
+  if (account.phoneLoading) return '<span style="color:var(--text3)">Đang tải...</span>';
+  return account.loggedIn
+    ? '<span style="color:var(--text3)">--</span>'
+    : '<span style="color:var(--text3)">Đăng nhập để lấy</span>';
+}
+
 function renderAccountManagement() {
   const target = document.getElementById('account-management-list');
   if (!target) return;
@@ -2913,18 +2935,27 @@ function renderAccountManagement() {
     const tokenCell = account.loggedIn
       ? `<div style="display:flex;align-items:center;gap:7px;white-space:nowrap"><span class="mono" data-managed-expiry="${Number(account.expiresAt || 0)}">${managedAccountTimeText(remaining)}</span>${refreshControl}</div>`
       : '<span class="mono" style="color:var(--text3)">00:00:00</span>';
+    const accessToken = String(account.access_token || '');
+    const tokenInputId = `managed-token-${accountId}`;
+    const tokenButtonId = `managed-token-login-${accountId}`;
+    const accessTokenCell = `<div style="display:flex;align-items:center;gap:6px;min-width:485px">
+      <input id="${tokenInputId}" type="text" value="${simEsc(accessToken)}" placeholder="Dán token vào đây" title="Dán token rồi bấm Dùng token hoặc nhấn Enter" onfocus="this.select()" onkeydown="if(event.key==='Enter') loginManagedAccountWithToken('${accountId}')" onpaste="setTimeout(() => loginManagedAccountWithToken('${accountId}'), 0)" style="width:360px;max-width:42vw;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text2);font:10px 'JetBrains Mono',monospace">
+      <button id="${tokenButtonId}" type="button" class="btn-sm" onclick="loginManagedAccountWithToken('${accountId}')">Dùng token</button>
+    </div>`;
     const deleteButton = `<button type="button" class="btn-sm" style="color:#fca5a5;border-color:rgba(248,81,73,.45)" onclick="deleteManagedAccount('${accountId}')">Xóa</button>`;
     return `<tr>
       <td>${index + 1}</td>
       <td><b>${account.primary ? '⭐ ' : ''}${simEsc(account.username || '--')}</b></td>
+      <td class="mono" style="color:var(--accent);white-space:nowrap">${managedAccountPhoneText(account)}</td>
       <td><span class="mono" title="Mật khẩu được mã hóa và không hiển thị">••••••••</span></td>
+      <td>${accessTokenCell}</td>
       <td data-managed-status-expiry="${account.loggedIn ? Number(account.expiresAt || 0) : 0}" data-managed-primary="${account.primary ? '1' : '0'}" data-managed-logged-in="${account.loggedIn ? '1' : '0'}" data-managed-reauth="${account.reauthRequired ? '1' : '0'}" style="color:${statusColor};white-space:nowrap">${statusText}</td>
       <td>${tokenCell}</td>
       <td>${logoutButton}</td>
       <td>${deleteButton}</td>
     </tr>`;
   }).join('');
-  target.innerHTML = `<table class="result-table" style="min-width:900px"><thead><tr><th>STT</th><th>User</th><th>Mật khẩu</th><th>Trạng thái user</th><th>Token còn lại</th><th>Đăng xuất</th><th>Xóa tài khoản</th></tr></thead><tbody>${body}</tbody></table>`;
+  target.innerHTML = `<table class="result-table" style="min-width:1400px"><thead><tr><th>STT</th><th>User</th><th>SĐT user</th><th>Mật khẩu</th><th>Token user</th><th>Trạng thái user</th><th>Token còn lại</th><th>Đăng xuất</th><th>Xóa tài khoản</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function updateManagedAccountCountdowns() {
@@ -2982,6 +3013,7 @@ async function loadMultiAccounts(showError=false) {
     multiAccountState.savedAccounts = Array.isArray(data.saved_accounts) ? data.saved_accounts : [];
     simRenderHistoryAccounts();
     renderMultiAccounts();
+    loadMultiAccountPhones();
     if (typeof simBatchLoadAccounts === 'function') simBatchLoadAccounts(true, multiAccountState.accounts);
     if (typeof icocBatchLoadAccounts === 'function') icocBatchLoadAccounts(true, multiAccountState.accounts);
     return multiAccountState.accounts;
@@ -3081,6 +3113,61 @@ async function refreshMultiAccount(accountId) {
       multiAccountMessage(`${account?.username || 'Tài khoản'}: access token có thể vẫn còn thời gian, nhưng refresh-token đã bị OneBSS từ chối. Hãy bấm “Đăng nhập lại” để nhận OTP mới.`, true);
     } else {
       multiAccountMessage(error.message, true);
+    }
+  }
+}
+
+async function loadMultiAccountPhones() {
+  const accounts = multiAccountState.accounts.filter(account =>
+    account && account.id && !account.phone);
+  if (!accounts.length) return;
+  accounts.forEach(account => { account.phoneLoading = true; });
+  renderAccountManagement();
+  await Promise.all(accounts.map(async account => {
+    try {
+      const data = await multiAccountRequest('/api/accounts/profile', {account_id:account.id});
+      const current = multiAccountState.accounts.find(item =>
+        String(item.id) === String(account.id));
+      if (current) current.phone = String(data.phone || '').trim();
+    } catch (_) {
+      // The account table remains usable when the profile endpoint is unavailable.
+    } finally {
+      const current = multiAccountState.accounts.find(item =>
+        String(item.id) === String(account.id));
+      if (current) current.phoneLoading = false;
+    }
+  }));
+  renderAccountManagement();
+}
+
+async function loginManagedAccountWithToken(accountId) {
+  const input = document.getElementById(`managed-token-${accountId}`);
+  const button = document.getElementById(`managed-token-login-${accountId}`);
+  const token = String(input?.value || '').trim();
+  if (!token) {
+    multiAccountMessage('Hãy dán access token trước.', true);
+    input?.focus();
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Đang kiểm tra...';
+  }
+  try {
+    const data = await multiAccountRequest('/api/accounts/token-login', {
+      account_id: accountId,
+      token,
+    });
+    multiAccountMessage(data.message || 'Đã đăng nhập bằng token.');
+    window.location.href = '/dashboard';
+    return;
+  } catch (error) {
+    multiAccountMessage(error.message, true);
+  } finally {
+    const currentButton = document.getElementById(`managed-token-login-${accountId}`);
+    if (currentButton) {
+      currentButton.disabled = false;
+      currentButton.textContent = 'Dùng token';
     }
   }
 }
@@ -4385,6 +4472,7 @@ const simBatchState = {
   accounts: [],
   selectedAccounts: [],
   accountContexts: new Map(),
+  walletStates: new Map(),
   addressCache: new Map(),
   wallet: null,
   rechargeId: '2',
@@ -5812,9 +5900,15 @@ async function simBatchLoadAccounts(force=false, suppliedAccounts=null) {
     ...account,
     expiresAt:Date.now() + Math.max(0, Number(account.expires_in || 0)) * 1000
   }));
+  const activeIds = new Set(simBatchState.accounts.map(account => account.id));
+  [...simBatchState.walletStates.keys()].forEach(accountId => {
+    if (!activeIds.has(accountId)) simBatchState.walletStates.delete(accountId);
+  });
   simBatchRenderAccounts();
   return simBatchState.accounts;
 }
+
+let simBatchWalletLoadTimer = null;
 
 function simBatchAccountSelectionChanged() {
   const selected = [];
@@ -5830,7 +5924,97 @@ function simBatchAccountSelectionChanged() {
       ? `${selected.length} tài khoản · ${selected.length} luồng độc lập`
       : 'Chưa chọn tài khoản';
   }
+  simBatchRenderWallets();
+  if (!simBatchState.running) {
+    clearTimeout(simBatchWalletLoadTimer);
+    simBatchWalletLoadTimer = setTimeout(() => simBatchLoadSelectedWallets(false), 80);
+  }
   return selected;
+}
+
+function simBatchRenderWallets() {
+  const target = document.getElementById('sim-batch-wallet-list');
+  if (!target) return;
+  const accounts = simBatchState.selectedAccounts || [];
+  if (!accounts.length) {
+    target.innerHTML = '<div style="font-size:11px;color:var(--text3)">Chọn tài khoản để kiểm tra ví.</div>';
+    return;
+  }
+  target.innerHTML = accounts.map(account => {
+    const state = simBatchState.walletStates.get(account.id) || {};
+    const wallet = state.wallet || null;
+    const ready = Boolean(wallet?.id && wallet?.accountId && wallet?.token && Number.isFinite(wallet?.balance));
+    const cardClass = state.error ? 'error' : (ready ? 'ready' : '');
+    const status = state.loading
+      ? 'Đang xác thực ví và lấy số dư...'
+      : (state.error || (ready ? `Cập nhật ${state.checkedAt ? new Date(state.checkedAt).toLocaleTimeString('vi-VN') : 'vừa xong'}` : 'Chưa kiểm tra ví'));
+    return `<div class="sim-batch-wallet-card ${cardClass}">
+      <div class="sim-batch-wallet-head">
+        <div class="sim-batch-wallet-user">💳 ${simEsc(account.username || '--')}</div>
+        <button type="button" class="btn-sm" onclick="simBatchLoadWalletForAccountId('${simEsc(account.id)}', true)" ${state.loading || simBatchState.running ? 'disabled' : ''}>${state.loading ? 'Đang tải...' : 'Làm mới'}</button>
+      </div>
+      <div class="sim-batch-wallet-grid">
+        <div><span>Chủ ví</span><b>${simEsc(wallet?.name || '--')}</b></div>
+        <div><span>SĐT ví</span><b>${simEsc(wallet?.phone || account.phone || '--')}</b></div>
+        <div><span>Số dư riêng</span><b style="color:${ready ? '#86efac' : ''}">${simEsc(simWalletMoneyLabel(wallet?.balance))}</b></div>
+        <div><span>Wallet ID</span><b class="mono">${simEsc(wallet?.id || '--')}</b></div>
+      </div>
+      <div class="sim-batch-wallet-status" style="color:${state.error ? '#fca5a5' : (ready ? '#86efac' : 'var(--text3)')}">${simEsc(status)}</div>
+    </div>`;
+  }).join('');
+}
+
+function simBatchSyncWalletState(wallet, {error='', loading=false}={}) {
+  const accountId = String(wallet?.accountIdOwner || '');
+  if (!accountId) return;
+  const state = simBatchState.walletStates.get(accountId) || {};
+  state.wallet = wallet || state.wallet || null;
+  state.loading = loading;
+  state.error = error;
+  if (wallet && Number.isFinite(wallet.balance)) state.checkedAt = new Date().toISOString();
+  simBatchState.walletStates.set(accountId, state);
+  simBatchRenderWallets();
+}
+
+async function simBatchLoadWalletForAccountId(accountId, force=false) {
+  const account = simBatchState.accounts.find(item => item.id === accountId) ||
+    simBatchState.selectedAccounts.find(item => item.id === accountId);
+  if (!account) return null;
+  const state = simBatchState.walletStates.get(accountId) || {};
+  if (state.loading) return state.promise || null;
+  if (!force && state.wallet?.token && Number.isFinite(state.wallet?.balance)) return state.wallet;
+  state.loading = true;
+  state.error = '';
+  state.promise = (async () => {
+    try {
+      await simBatchEnsureAccountFresh(account);
+      const wallet = await simBatchPrepareWallet(account);
+      state.wallet = wallet;
+      state.checkedAt = new Date().toISOString();
+      return wallet;
+    } catch (error) {
+      state.wallet = null;
+      state.error = error.message || 'Không lấy được Ví VNPT Pay';
+      return null;
+    } finally {
+      state.loading = false;
+      state.promise = null;
+      simBatchState.walletStates.set(accountId, state);
+      simBatchRenderWallets();
+    }
+  })();
+  simBatchState.walletStates.set(accountId, state);
+  simBatchRenderWallets();
+  return state.promise;
+}
+
+async function simBatchLoadSelectedWallets(force=true) {
+  const accounts = [...(simBatchState.selectedAccounts || [])];
+  if (!accounts.length) {
+    simBatchRenderWallets();
+    return [];
+  }
+  return Promise.all(accounts.map(account => simBatchLoadWalletForAccountId(account.id, force)));
 }
 
 function simBatchSelectAllAccounts(selected=true) {
@@ -6164,6 +6348,7 @@ function simBatchSetRunning(running) {
   const continueButton = document.getElementById('sim-batch-continue-btn');
   const downloadButton = document.getElementById('sim-batch-download-btn');
   const copyButton = document.getElementById('sim-batch-copy-btn');
+  const walletRefreshButton = document.getElementById('sim-batch-wallet-refresh');
   if (district) district.disabled = running || !simBatchState.districtOptions.length;
   if (importButton) {
     importButton.disabled = running;
@@ -6173,6 +6358,7 @@ function simBatchSetRunning(running) {
   if (openInputButton) openInputButton.disabled = running;
   if (openOutputButton) openOutputButton.disabled = running;
   if (openRunButton) openRunButton.disabled = running || !simBatchState.runOutputPath;
+  if (walletRefreshButton) walletRefreshButton.disabled = running;
   if (stopButton) {
     stopButton.style.display = '';
     stopButton.disabled = !running;
@@ -6190,6 +6376,7 @@ function simBatchSetRunning(running) {
   document.querySelectorAll('[data-batch-account]').forEach(input => {
     input.disabled = running;
   });
+  simBatchRenderWallets();
   const tttb = document.getElementById('sim-batch-tttb-method');
   const delay = document.getElementById('sim-batch-delay');
   if (tttb) tttb.disabled = running;
@@ -6404,7 +6591,7 @@ function simBatchRenderTable() {
   }
   target.style.display = '';
   const rowsHtml = simBatchState.rows.map((row, index) => {
-    const color = row.status === 'success' ? '#86efac' : (row.status === 'error' ? '#fca5a5' : (row.status === 'running' ? 'var(--accent)' : 'var(--text2)'));
+    const color = row.status === 'success' ? '#86efac' : (row.status === 'unused' ? '#f0b429' : (row.status === 'error' ? '#fca5a5' : (row.status === 'running' ? 'var(--accent)' : 'var(--text2)')));
     return `<tr data-batch-index="${index}" data-batch-running="${row.status === 'running' ? '1' : '0'}"><td>${row.excelRow}</td><td><b>${simEsc(row.msisdn || row.original[simBatchState.phoneColumn])}</b></td><td class="mono">${simEsc(row.serial || row.original[simBatchState.serialColumn])}</td><td style="color:${color};min-width:300px">${simEsc(row.result || row.stage)}</td><td>${simEsc(row.finishedAt || '--')}</td><td>${simEsc(row.user)}</td></tr>`;
   }).join('');
   let scroller = target.querySelector('[data-sim-batch-scroll]');
@@ -6526,6 +6713,48 @@ function simBatchOutputEntryId(row) {
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   row.outputEntryId = `${random}-${row.excelRow || 0}`;
   return row.outputEntryId;
+}
+
+function simBatchAppendUnusedSerialRows(startIndex, reason='Đã hết SĐT để ghép serial') {
+  const firstUnused = Math.max(0, Number(startIndex) || 0);
+  const existingPositions = new Set(simBatchState.rows
+    .filter(row => row?.bucket === 'unused_serial')
+    .map(row => Number(row.serialPosition || 0)));
+  const added = [];
+  simBatchState.serialItems.slice(firstUnused).forEach((serialItem, offset) => {
+    const serialPosition = firstUnused + offset + 1;
+    if (existingPositions.has(serialPosition)) return;
+    const serial = String(serialItem?.serial || serialItem?.raw || '').trim();
+    const original = Array.from({length:Math.max(simBatchState.phoneColumn, simBatchState.serialColumn) + 1}, () => '');
+    original[simBatchState.serialColumn] = serial;
+    const invalidNote = serialItem?.valid === false && serialItem?.error
+      ? ` | Serial không hợp lệ: ${serialItem.error}`
+      : '';
+    const row = {
+      excelRow:serialItem?.sourceRow || serialItem?.position || serialPosition,
+      original,
+      msisdn:'',
+      serial,
+      serialPosition,
+      valid:false,
+      status:'unused',
+      stage:'Serial chưa dùng',
+      bucket:'unused_serial',
+      result:`SERIAL CHƯA DÙNG | ${reason}${invalidNote}`,
+      finishedAt:new Date().toLocaleString('vi-VN', {hour12:false}),
+      user:'--',
+      found:false,
+      selectedNumber:null,
+      outputSaved:false,
+      outputSaveQueued:false,
+    };
+    simBatchState.rows.push(row);
+    existingPositions.add(serialPosition);
+    added.push(row);
+  });
+  added.forEach(simBatchQueueOutputRow);
+  if (added.length) simBatchRenderTable();
+  return added;
 }
 
 async function simBatchStartRunOutput() {
@@ -6837,6 +7066,7 @@ async function simBatchRunTwoPhase() {
   let notFound = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'not_found').length;
   let lookupFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'lookup_error').length;
   let assignmentFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'assignment_error').length;
+  let nextUnusedSerialIndex = serialStartIndex;
 
   const finishRow = (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
@@ -6944,6 +7174,10 @@ async function simBatchRunTwoPhase() {
         row.stage = `Đã ghép serial dòng ${serialItem.position} · chờ tạo đơn`;
         assignmentRows.push(row);
       });
+      nextUnusedSerialIndex = Math.min(
+        simBatchState.serialItems.length,
+        serialStartIndex + foundRows.length
+      );
       simBatchRenderTable();
       simBatchSetStatus(`Pha 2/2 · Tìm thấy ${foundRows.length} SĐT; đã ghép ${assignmentRows.length} serial hợp lệ. Đang chuẩn bị dữ liệu tạo đơn...`);
 
@@ -7033,6 +7267,13 @@ async function simBatchRunTwoPhase() {
       finishRow(row, false);
     });
   } finally {
+    const unusedSerialRows = simBatchState.stopRequested
+      ? []
+      : simBatchAppendUnusedSerialRows(
+          nextUnusedSerialIndex,
+          'Đã hết SĐT tìm thấy trong kho; serial chưa được sử dụng'
+        );
+    done += unusedSerialRows.length;
     simBatchRenderTable();
     const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt).length;
     simBatchState.paused = simBatchState.stopRequested && remaining > 0;
@@ -7041,7 +7282,7 @@ async function simBatchRunTwoPhase() {
       simBatchSetStatus(simBatchState.paused
         ? `${done}/${simBatchState.rows.length} · Gán thành công ${ok} · Đã tạm dừng, còn ${remaining} dòng; bấm “Chạy tiếp phiên này” · Kết quả đã lưu đúng file phiên và file tổng`
         : `${done}/${simBatchState.rows.length} · Gán thành công ${ok} · SĐT không tìm thấy ${notFound} · ` +
-          `Lỗi tra kho ${lookupFailed} · Gán serial lỗi ${assignmentFailed} · Đã tự lưu file phiên và file tổng`);
+          `Lỗi tra kho ${lookupFailed} · Gán serial lỗi ${assignmentFailed} · Serial chưa dùng ${unusedSerialRows.length} · Đã tự lưu file phiên và file tổng`);
     } catch (error) {
       simBatchSetStatus(`Đã xử lý xong nhưng chưa ghi được output: ${error.message}`, true);
     }
@@ -7247,6 +7488,13 @@ async function simBatchRun() {
       finishRow(row, false);
     });
   } finally {
+    const unusedSerialRows = simBatchState.stopRequested
+      ? []
+      : simBatchAppendUnusedSerialRows(
+          nextSerialIndex,
+          'Đã hết SĐT trong danh sách; serial chưa được sử dụng'
+        );
+    done += unusedSerialRows.length;
     simBatchRenderTable();
     const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt).length;
     simBatchState.paused = simBatchState.stopRequested && remaining > 0;
@@ -7254,7 +7502,7 @@ async function simBatchRun() {
       const appended = await simBatchWriteRunOutput();
       simBatchSetStatus(simBatchState.paused
         ? `${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tạm dừng, còn ${remaining} dòng; bấm “Chạy tiếp phiên này” · Kết quả đã lưu đúng file phiên và file tổng`
-        : `${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Đã tự lưu file phiên và file tổng`);
+        : `${done}/${simBatchState.rows.length} · Thành công ${ok} · Lỗi ${failed} · Serial chưa dùng ${unusedSerialRows.length} · Đã tự lưu file phiên và file tổng`);
     } catch (error) {
       simBatchSetStatus(`Đã xử lý xong nhưng chưa ghi được output: ${error.message}`, true);
     }
@@ -7451,6 +7699,7 @@ async function simBatchRefreshWalletBalance(wallet, account=null) {
   wallet.balance = balance;
   wallet.name = String(findApiValue(body, ['name','walletName','wallet_name','fullName','full_name']) || wallet.name || '').trim();
   wallet.phone = String(findApiValue(body, ['phoneNumber','phone_number','msisdn','so_dt']) || wallet.phone || '').trim();
+  simBatchSyncWalletState(wallet);
   if (account?.primary || (!account && !accountId)) {
     simWizardState.walletBalance = balance;
     simWizardState.walletName = wallet.name;
@@ -7469,10 +7718,20 @@ async function simBatchEnsureSharedWallet(shared) {
   try {
     const wallet = await simBatchPrepareWallet(shared?.account || null);
     shared.wallet = wallet;
+    simBatchSyncWalletState(wallet);
     if (shared?.account?.primary) simBatchState.wallet = wallet;
     return wallet;
   } catch (error) {
     if (shared) shared.wallet = null;
+    const accountId = String(shared?.account?.id || '');
+    if (accountId) {
+      const state = simBatchState.walletStates.get(accountId) || {};
+      state.wallet = null;
+      state.loading = false;
+      state.error = error.message || 'Không lấy được Ví VNPT Pay';
+      simBatchState.walletStates.set(accountId, state);
+      simBatchRenderWallets();
+    }
     const walletError = new Error(
       `Tài khoản không có Ví VNPT Pay hoặc không thể sử dụng ví: ${error.message}`
     );
@@ -7528,9 +7787,9 @@ async function simBatchPrepareSharedContext(account) {
     rechargeId: recharge.id,
     tttbMethodId: tttb.id,
     tttbMethodName: tttb.name,
-    // Ví được lấy lười tại đúng bước thanh toán của từng dòng. Một tài khoản
-    // chưa liên kết ví vì thế không làm toàn bộ batch thất bại từ bước chuẩn bị.
-    wallet:null,
+    // Dùng đúng ví đã hiển thị của user này nếu UI đã tải trước; nếu chưa có
+    // thì vẫn lấy lười tại bước thanh toán để một user lỗi ví không chặn user khác.
+    wallet:simBatchState.walletStates.get(accountId)?.wallet || null,
     stopRequested:false
   };
 }
@@ -7846,6 +8105,7 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
       }
       paid = true;
       wallet.balance = Math.max(0, balance - amount);
+      simBatchSyncWalletState(wallet);
     });
 
     setStage('Kiểm tra serial SIM trắng');

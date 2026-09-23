@@ -559,9 +559,48 @@ def _ensure_sim_batch_files():
 def _ensure_icoc_batch_files():
     """Create the stable input/output workbooks for batch IC/OC changes."""
     from openpyxl import Workbook, load_workbook
+    from zipfile import BadZipFile, is_zipfile
 
     os.makedirs(ICOC_BATCH_DIR, exist_ok=True)
-    if not os.path.exists(ICOC_BATCH_INPUT_FILE):
+
+    def quarantine_invalid_workbook(path):
+        """Keep the broken file for recovery, then allow a clean replacement."""
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        backup = f'{path}.corrupt-{stamp}'
+        suffix = 1
+        while os.path.exists(backup):
+            backup = f'{path}.corrupt-{stamp}-{suffix}'
+            suffix += 1
+        try:
+            shutil.move(path, backup)
+            print(f'[IC_OC] Workbook lỗi đã được giữ lại tại: {backup}')
+            return True
+        except OSError as exc:
+            print(f'[IC_OC] Không thể di chuyển workbook lỗi {path}: {exc}')
+            return False
+
+    def load_existing_workbook(path):
+        """Return None after quarantining any empty/non-OOXML workbook."""
+        try:
+            valid_archive = (
+                os.path.isfile(path)
+                and os.path.getsize(path) > 0
+                and is_zipfile(path)
+            )
+            if not valid_archive:
+                if not quarantine_invalid_workbook(path):
+                    raise PermissionError(path)
+                return None
+            return load_workbook(path)
+        except PermissionError:
+            raise
+        except (BadZipFile, KeyError, OSError, ValueError) as exc:
+            print(f'[IC_OC] Workbook không hợp lệ {path}: {exc}')
+            if not quarantine_invalid_workbook(path):
+                raise PermissionError(path) from exc
+            return None
+
+    def create_input_workbook():
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = 'IC_OC_Input'
@@ -574,27 +613,9 @@ def _ensure_icoc_batch_files():
         guide.append(['SĐT nhận dạng đầu 84, đầu 0 hoặc 9 chữ số không có tiền tố.'])
         guide.append(['Ví dụ tương đương: 84846216326 / 0846216326 / 846216326'])
         workbook.save(ICOC_BATCH_INPUT_FILE)
-    else:
-        try:
-            workbook = load_workbook(ICOC_BATCH_INPUT_FILE)
-            guide = workbook['Huong_dan'] if 'Huong_dan' in workbook.sheetnames else workbook.create_sheet('Huong_dan')
-            instructions = [
-                'Hướng dẫn',
-                'Mỗi dòng trong sheet IC_OC_Input gồm một SĐT thuê bao.',
-                'SĐT nhận dạng đầu 84, đầu 0 hoặc 9 chữ số không có tiền tố.',
-                'Ví dụ tương đương: 84846216326 / 0846216326 / 846216326',
-            ]
-            changed = False
-            for row_index, value in enumerate(instructions, start=1):
-                if guide.cell(row=row_index, column=1).value != value:
-                    guide.cell(row=row_index, column=1, value=value)
-                    changed = True
-            if changed:
-                workbook.save(ICOC_BATCH_INPUT_FILE)
-            workbook.close()
-        except PermissionError:
-            pass
-    if not os.path.exists(ICOC_BATCH_OUTPUT_FILE):
+        workbook.close()
+
+    def create_output_workbook():
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = 'IC_OC_Output'
@@ -602,13 +623,44 @@ def _ensure_icoc_batch_files():
         _prepare_icoc_cumulative_workbook(workbook)
         workbook.save(ICOC_BATCH_OUTPUT_FILE)
         workbook.close()
+
+    if not os.path.exists(ICOC_BATCH_INPUT_FILE):
+        create_input_workbook()
     else:
         try:
-            workbook = load_workbook(ICOC_BATCH_OUTPUT_FILE)
-            _, _, changed = _prepare_icoc_cumulative_workbook(workbook)
-            if changed:
-                workbook.save(ICOC_BATCH_OUTPUT_FILE)
-            workbook.close()
+            workbook = load_existing_workbook(ICOC_BATCH_INPUT_FILE)
+            if workbook is None:
+                create_input_workbook()
+            else:
+                guide = workbook['Huong_dan'] if 'Huong_dan' in workbook.sheetnames else workbook.create_sheet('Huong_dan')
+                instructions = [
+                    'Hướng dẫn',
+                    'Mỗi dòng trong sheet IC_OC_Input gồm một SĐT thuê bao.',
+                    'SĐT nhận dạng đầu 84, đầu 0 hoặc 9 chữ số không có tiền tố.',
+                    'Ví dụ tương đương: 84846216326 / 0846216326 / 846216326',
+                ]
+                changed = False
+                for row_index, value in enumerate(instructions, start=1):
+                    if guide.cell(row=row_index, column=1).value != value:
+                        guide.cell(row=row_index, column=1, value=value)
+                        changed = True
+                if changed:
+                    workbook.save(ICOC_BATCH_INPUT_FILE)
+                workbook.close()
+        except PermissionError:
+            pass
+    if not os.path.exists(ICOC_BATCH_OUTPUT_FILE):
+        create_output_workbook()
+    else:
+        try:
+            workbook = load_existing_workbook(ICOC_BATCH_OUTPUT_FILE)
+            if workbook is None:
+                create_output_workbook()
+            else:
+                _, _, changed = _prepare_icoc_cumulative_workbook(workbook)
+                if changed:
+                    workbook.save(ICOC_BATCH_OUTPUT_FILE)
+                workbook.close()
         except PermissionError:
             pass
     try:
@@ -1045,25 +1097,280 @@ def _ensure_application_storage():
 def _account_id(username):
     return hashlib.sha256(username.strip().casefold().encode('utf-8')).hexdigest()[:24]
 
-def save_employee_account(username, password):
+def _normalise_account_phone(value):
+    """Return a plausible phone value without exposing arbitrary profile data."""
+    if value is None or isinstance(value, (dict, list, tuple, set)):
+        return ''
+    text = str(value).strip()
+    digits = re.sub(r'\D', '', text)
+    if 9 <= len(digits) <= 15:
+        return text
+    return ''
+
+
+_ACCOUNT_PHONE_KEYS = {
+    'phone', 'phonenumber', 'mobile', 'mobilephone', 'telephone',
+    'sdt', 'sodt', 'sodienthoai', 'dienthoai', 'dienthoainguoidung',
+    'so_dt', 'so_dien_thoai', 'dien_thoai',
+}
+
+
+def _extract_account_phone(value):
+    """Extract the employee phone from the varying OneBSS profile shapes."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalised_key = re.sub(r'[^a-z0-9_]', '', str(key).casefold())
+            if normalised_key in _ACCOUNT_PHONE_KEYS:
+                phone = _normalise_account_phone(item)
+                if phone:
+                    return phone
+        for item in value.values():
+            phone = _extract_account_phone(item)
+            if phone:
+                return phone
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            phone = _extract_account_phone(item)
+            if phone:
+                return phone
+    return ''
+
+
+def _extract_account_phone_from_token(token):
+    """Use a phone claim when the access token already contains one."""
+    payload = _decode_access_token_payload(token)
+    return _extract_account_phone(payload)
+
+
+def _decode_access_token_payload(token):
+    try:
+        payload_part = str(token or '').split('.')[1]
+        payload_part += '=' * (-len(payload_part) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload_part).decode('utf-8'))
+    except (IndexError, ValueError, TypeError, UnicodeDecodeError,
+            json.JSONDecodeError):
+        return {}
+
+
+def _normalise_pasted_token(token):
+    """Accept a raw token or the common ``Bearer <token>`` clipboard form."""
+    value = str(token or '').strip()
+    if value[:7].casefold() == 'bearer ':
+        value = value[7:].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1].strip()
+    # Chat/Markdown and wrapped text can add escapes or line breaks which are
+    # not part of a base64url JWT. Normalising them makes clipboard login match
+    # the token that OneBSS originally issued.
+    value = value.replace('\\_', '_').replace('\\-', '-')
+    return ''.join(value.split())
+
+
+_ACCOUNT_USERNAME_KEYS = {
+    'username', 'preferredusername', 'uniquename', 'useraccount',
+    'account', 'accountname', 'login', 'loginname', 'tendangnhap',
+    'taikhoan', 'manv', 'manhanvien', 'employeecode', 'staffcode',
+}
+
+
+def _normalise_account_username(value):
+    if value is None or isinstance(value, (dict, list, tuple, set)):
+        return ''
+    username = str(value).strip()
+    if not username or len(username) > 160 or any(char.isspace() for char in username):
+        return ''
+    return username
+
+
+def _extract_account_username(value):
+    """Extract a OneBSS login name from a token/profile of varying shape."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalised_key = re.sub(r'[^a-z0-9]', '', str(key).casefold())
+            if normalised_key in _ACCOUNT_USERNAME_KEYS:
+                username = _normalise_account_username(item)
+                if username:
+                    return username
+        for item in value.values():
+            username = _extract_account_username(item)
+            if username:
+                return username
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            username = _extract_account_username(item)
+            if username:
+                return username
+    return ''
+
+
+def _extract_account_username_from_token(token):
+    claims = _decode_access_token_payload(token)
+    username = _extract_account_username(claims)
+    if username:
+        return username
+    # Some identity providers only expose the login in ``sub``. Avoid using a
+    # numeric/internal subject id as p_account for OneBSS business requests.
+    subject = _normalise_account_username(claims.get('sub'))
+    return subject if subject and not subject.isdigit() else ''
+
+
+def _extract_token_device_id(token):
+    claims = _decode_access_token_payload(token)
+    for key in ('id_thietbi', 'device_id', 'deviceId'):
+        value = claims.get(key)
+        if value is not None and not isinstance(value, (dict, list, tuple, set)):
+            value = str(value).strip()
+            if value:
+                return value
+    return ''
+
+
+def _is_plausible_signed_access_token(token):
+    """Allow offline login only for a signed-looking, unexpired identity JWT.
+
+    Signature verification remains the responsibility of OneBSS on every API
+    request. This fallback is needed because thongtin_nv also validates device
+    metadata, so it can reject a valid token pasted on another app instance.
+    """
+    parts = str(token or '').split('.')
+    if len(parts) != 3 or not all(parts):
+        return False
+    try:
+        encoded_header = parts[0] + '=' * (-len(parts[0]) % 4)
+        header = json.loads(base64.urlsafe_b64decode(encoded_header).decode('utf-8'))
+        algorithm = str(header.get('alg') or '').strip().casefold()
+        claims = _decode_access_token_payload(token)
+        expires_at = float(claims.get('exp'))
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return bool(
+        algorithm and algorithm != 'none' and
+        expires_at > time.time() and
+        _extract_account_username_from_token(token)
+    )
+
+
+def _token_seconds_remaining(token):
+    claims = _decode_access_token_payload(token)
+    try:
+        expires_at = float(claims.get('exp'))
+    except (TypeError, ValueError):
+        return 3600
+    return max(0, int(expires_at - time.time()))
+
+
+def _account_phone(context):
+    return (_normalise_account_phone(context.get('phone')) or
+            _extract_account_phone_from_token(context.get('access_token')))
+
+
+def _fetch_account_phone(context):
+    """Fetch the signed-in employee profile from OneBSS."""
+    cached = _account_phone(context)
+    if cached:
+        return cached
+    active_menu = session.get('active_menu_id', APP_CFG['SELECTED_MENU'])
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'authorization': f"Bearer {context.get('access_token', '')}",
+        'app-secret': _build_app_secret_value(
+            context.get('app_secret', ''), context.get('device_id', '')),
+        'selectedmenuid': active_menu,
+        'SelectedMenuId': active_menu,
+    }
+    try:
+        response = requests.post(
+            f"{BASE_URL}/quantri/user/thongtin_nv",
+            headers=headers, json={}, verify=False, timeout=8)
+        if 200 <= response.status_code < 300:
+            return _extract_account_phone(response.json())
+    except (requests.RequestException, ValueError, TypeError):
+        pass
+    return ''
+
+
+def _request_account_profile(context):
+    """Validate an account token and return the OneBSS employee profile."""
+    active_menu = session.get('active_menu_id', APP_CFG['SELECTED_MENU'])
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'authorization': f"Bearer {context.get('access_token', '')}",
+        'app-secret': _build_app_secret_value(
+            context.get('app_secret', ''), context.get('device_id', '')),
+        'selectedmenuid': active_menu,
+        'SelectedMenuId': active_menu,
+    }
+    try:
+        response = requests.post(
+            f"{BASE_URL}/quantri/user/thongtin_nv",
+            headers=headers, json={}, verify=False, timeout=8)
+        try:
+            body = response.json()
+        except (ValueError, TypeError):
+            body = None
+        return response, body
+    except requests.RequestException:
+        return None, None
+
+
+def _remember_account_phone(account_id, phone):
+    """Cache a profile phone in the active session and encrypted account list."""
+    phone = _normalise_account_phone(phone)
+    account_id = str(account_id or '').strip()
+    if not phone or not account_id:
+        return
+    primary_id = _account_id(str(session.get('username') or '').strip())
+    if account_id == primary_id:
+        session['account_phone'] = phone
+    else:
+        extras = session.get('multi_accounts') or {}
+        if isinstance(extras, dict) and isinstance(extras.get(account_id), dict):
+            extras = dict(extras)
+            context = dict(extras[account_id])
+            context['phone'] = phone
+            extras[account_id] = context
+            session['multi_accounts'] = extras
+    with _saved_accounts_lock:
+        saved = _read_saved_accounts()
+        changed = False
+        for account in saved:
+            if str(account.get('id') or '') == account_id:
+                if account.get('phone') != phone:
+                    account['phone'] = phone
+                    changed = True
+                break
+        if changed:
+            _write_saved_accounts(saved)
+    _save_persistent_session()
+
+
+def save_employee_account(username, password, phone=''):
     username = str(username or '').strip()
     password = str(password or '')
     if not username or not password:
         return False
     account_id = _account_id(username)
     with _saved_accounts_lock:
-        accounts = [a for a in _read_saved_accounts() if a.get('id') != account_id]
-        accounts.insert(0, {
+        all_accounts = _read_saved_accounts()
+        existing = next((account for account in all_accounts if account.get('id') == account_id), None)
+        accounts = [a for a in all_accounts if a.get('id') != account_id]
+        account_data = {
             'id': account_id,
             'username': username,
             'password': password,
             'saved_at': int(time.time())
-        })
+        }
+        if phone or (existing and existing.get('phone')):
+            account_data['phone'] = _normalise_account_phone(phone) or existing.get('phone', '')
+        accounts.insert(0, account_data)
         _write_saved_accounts(accounts)
     return True
 
 def saved_account_summaries():
-    return [{'id': a['id'], 'username': a['username']}
+    return [{'id': a['id'], 'username': a['username'],
+             **({'phone': a['phone']} if a.get('phone') else {})}
             for a in _read_saved_accounts()]
 
 def get_saved_employee_account(account_id):
@@ -1285,6 +1592,7 @@ def _save_persistent_session():
             'device_id': session.get('device_id'),
             'app_secret': session.get('app_secret'),
             'username': session.get('username'),
+            'account_phone': session.get('account_phone', ''),
             'menus': session.get('menus', []),
             'active_menu_id': session.get('active_menu_id'),
             'multi_accounts': session.get('multi_accounts', {}),
@@ -1368,6 +1676,7 @@ def _try_restore_persistent_session():
         session['device_id']      = data.get('device_id')
         session['app_secret']     = data.get('app_secret')
         session['username']       = data.get('username')
+        session['account_phone']  = data.get('account_phone', '')
         session['menus']          = data.get('menus', [])
         session['active_menu_id'] = data.get('active_menu_id')
         restored_accounts = data.get('multi_accounts') or {}
@@ -1475,6 +1784,7 @@ def _primary_account_context():
     return {
         'id': _account_id(username) if username else '',
         'username': username,
+        'phone': session.get('account_phone', ''),
         'access_token': session.get('access_token', ''),
         'refresh_token': session.get('refresh_token', ''),
         'expires_in': session.get('expires_in', 3600),
@@ -1745,6 +2055,80 @@ def _render_login():
         saved_accounts=saved_account_summaries(),
         app_version=APP_CFG['APP_VERSION'])
 
+
+def _activate_primary_token_session(token, expected_username='', device_id='', app_secret=''):
+    """Validate a pasted token and replace the current primary login session."""
+    token = _normalise_pasted_token(token)
+    expected_username = str(expected_username or '').strip()
+    if not token:
+        return None, 'Hãy dán access token.', 400
+
+    remaining = _token_seconds_remaining(token)
+    if remaining <= 0:
+        return None, 'Token đã hết hạn.', 401
+
+    # Prefer the device id embedded in a pasted JWT over stale OTP/session
+    # metadata. OneBSS may bind thongtin_nv to the device that obtained token.
+    device_id = str(
+        device_id or _extract_token_device_id(token) or
+        session.get('device_id') or secrets.token_hex(8))
+    app_secret = _build_app_secret_value(
+        app_secret or session.get('app_secret', ''), device_id)
+    context = {
+        'username': expected_username,
+        'access_token': token,
+        'refresh_token': '',
+        'expires_in': remaining,
+        'token_time': time.time(),
+        'device_id': device_id,
+        'app_secret': app_secret,
+        'primary': True,
+    }
+    response, profile = _request_account_profile(context)
+    profile_succeeded = bool(
+        response is not None and profile is not None and
+        _business_payload_succeeded(response.status_code, profile))
+    if not profile_succeeded:
+        # A newly-issued JWT can still be rejected by thongtin_nv when the
+        # pasted session lacks the original app-secret. Keep login usable and
+        # let OneBSS validate the signature on the first real business call.
+        if not _is_plausible_signed_access_token(token):
+            if response is None:
+                return None, 'Không kết nối được OneBSS để kiểm tra token.', 502
+            return None, 'Token không hợp lệ hoặc đã hết hạn.', 401
+        profile = {}
+
+    detected_username = (
+        _extract_account_username(profile) or
+        _extract_account_username_from_token(token)
+    )
+    if (expected_username and detected_username and
+            expected_username.casefold() != detected_username.casefold()):
+        return None, 'Token không khớp user được chọn.', 400
+    username = detected_username or expected_username
+    if not username:
+        return None, 'Token hợp lệ nhưng OneBSS không trả tên user.', 400
+
+    phone = _extract_account_phone(profile) or _extract_account_phone_from_token(token)
+    session.clear()
+    session['username'] = username
+    session['access_token'] = token
+    session['refresh_token'] = ''
+    session['expires_in'] = remaining
+    session['token_time'] = context['token_time']
+    session['device_id'] = device_id
+    session['app_secret'] = app_secret
+    session['menus'] = []
+    session['active_menu_id'] = str(APP_CFG['MENU_ID'])
+    session['multi_accounts'] = {}
+    session['account_phone'] = phone
+    account_id = _account_id(username)
+    if phone:
+        _remember_account_phone(account_id, phone)
+    else:
+        _save_persistent_session()
+    return _primary_account_context(), '', 200
+
 def _begin_employee_login(username, password):
     """Run OneBSS login step 1 and retain the password only until OTP succeeds."""
     import random
@@ -1803,6 +2187,17 @@ def login():
         if ok:
             return redirect(url_for('otp_page'))
     return _render_login()
+
+
+@app.post('/login/token')
+def login_token():
+    context, error, _status = _activate_primary_token_session(
+        request.form.get('token', ''))
+    if not context:
+        flash(error, 'error')
+        return redirect(url_for('login'))
+    flash(f"Đăng nhập {context.get('username', '')} bằng token thành công!", 'success')
+    return redirect(url_for('dashboard'))
 
 @app.post('/login/saved')
 def login_saved():
@@ -1914,13 +2309,20 @@ def logout():
 
 
 def _public_account_summary(context):
-    return {
+    summary = {
         'id': context.get('id', ''),
         'username': context.get('username', ''),
         'primary': bool(context.get('primary')),
         'expires_in': _account_seconds_remaining(context),
         'authenticated': bool(context.get('access_token')),
     }
+    phone = _account_phone(context)
+    if phone:
+        summary['phone'] = phone
+    token = str(context.get('access_token') or '')
+    if token:
+        summary['access_token'] = token
+    return summary
 
 
 @app.get('/api/accounts')
@@ -1942,6 +2344,67 @@ def api_accounts_list():
     saved = [account for account in saved_account_summaries()
              if account.get('id') not in logged_ids]
     return jsonify({'ok': True, 'accounts': accounts, 'saved_accounts': saved})
+
+
+@app.post('/api/accounts/profile')
+@login_required
+def api_accounts_profile():
+    """Return the employee phone for one active account."""
+    account_id = str((request.get_json(silent=True) or {}).get('account_id') or '').strip()
+    try:
+        context = _get_account_context(account_id)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 404
+    phone = _fetch_account_phone(context)
+    if phone:
+        _remember_account_phone(context.get('id') or account_id, phone)
+    return jsonify({'ok': True, 'account_id': context.get('id') or account_id,
+                    'phone': phone})
+
+
+@app.post('/api/accounts/token-login')
+@login_required
+def api_accounts_token_login():
+    """Activate a pasted access token for the selected account row."""
+    payload = request.get_json(silent=True) or {}
+    account_id = str(payload.get('account_id') or '').strip()
+    token = _normalise_pasted_token(
+        payload.get('token') or payload.get('access_token'))
+    if not token:
+        return jsonify({'ok': False, 'error': 'Hãy dán access token'}), 400
+
+    primary = _primary_account_context()
+    primary_id = primary.get('id')
+    extras = session.get('multi_accounts') or {}
+    existing = extras.get(account_id) if isinstance(extras, dict) else None
+    saved = get_saved_employee_account(account_id) if account_id else None
+    username = str(payload.get('username') or
+                   (existing or {}).get('username') or
+                   (saved or {}).get('username') or '').strip()
+    if account_id and account_id != primary_id and not username:
+        return jsonify({'ok': False, 'error': 'Không xác định được user của token'}), 400
+    if not account_id:
+        if not username:
+            return jsonify({'ok': False, 'error': 'Thiếu user hoặc account_id'}), 400
+        account_id = _account_id(username)
+    if not username:
+        username = primary.get('username', '')
+    if _account_id(username) != account_id:
+        return jsonify({'ok': False, 'error': 'Token không khớp user được chọn'}), 400
+
+    base_context = dict(existing or {})
+    if account_id == primary_id:
+        base_context = primary
+    context, error, status = _activate_primary_token_session(
+        token,
+        expected_username=username,
+        device_id=base_context.get('device_id') or session.get('device_id', ''),
+        app_secret=base_context.get('app_secret') or session.get('app_secret', ''),
+    )
+    if not context:
+        return jsonify({'ok': False, 'error': error}), status
+    return jsonify({'ok': True, 'account': _public_account_summary(context),
+                    'message': f"Đã đăng nhập {context.get('username', username)} bằng token"})
 
 
 @app.post('/api/accounts/begin')

@@ -40,13 +40,14 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;
 
 .form-group{margin-bottom:14px;position:relative}
 .form-group label{display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
-.form-group input{
+.form-group input,.form-group textarea{
   width:100%;background:var(--bg3);border:1px solid var(--border);
   border-radius:9px;padding:10px 14px;color:var(--text);font-size:14px;
   outline:none;transition:border-color .2s,box-shadow .2s;font-family:'Inter',sans-serif;
 }
-.form-group input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.12)}
-.form-group input::placeholder{color:var(--text3)}
+.form-group textarea{resize:vertical;min-height:72px;font:11px 'JetBrains Mono',monospace;line-height:1.45}
+.form-group input:focus,.form-group textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(88,166,255,.12)}
+.form-group input::placeholder,.form-group textarea::placeholder{color:var(--text3)}
 
 .pw-wrap{position:relative}
 .pw-wrap input{padding-right:42px}
@@ -151,6 +152,21 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;
     </form>
 
     <div class="divider"></div>
+    <form method="POST" action="{{ url_for('login_token') }}" id="token-login-form" autocomplete="off">
+      <div class="form-group">
+        <label>Đăng nhập bằng access token</label>
+        <textarea name="token" id="token-input" required
+                  placeholder="Dán token vào đây để đăng nhập ngay..."
+                  autocomplete="off" spellcheck="false"
+                  onpaste="submitTokenAfterPaste()"></textarea>
+      </div>
+      <button type="submit" class="submit-btn" id="token-login-btn">
+        <span class="spinner"></span>
+        <span class="btn-text">🔑 Đăng nhập bằng token</span>
+      </button>
+    </form>
+
+    <div class="divider"></div>
     <div class="info-row">
       <span>🔒 client_id <span class="val">clientapp</span></span>
       <span>🌐 selectedmenu <span class="val">810241</span></span>
@@ -174,6 +190,24 @@ document.getElementById('login-form').addEventListener('submit', function() {
   const btn = document.getElementById('login-btn');
   btn.classList.add('loading');
   btn.disabled = true;
+});
+
+let tokenLoginSubmitting = false;
+function submitTokenAfterPaste() {
+  setTimeout(() => {
+    const input = document.getElementById('token-input');
+    if (input && input.value.trim()) document.getElementById('token-login-form').requestSubmit();
+  }, 50);
+}
+document.getElementById('token-login-form').addEventListener('submit', function(event) {
+  if (tokenLoginSubmitting) { event.preventDefault(); return; }
+  const input = document.getElementById('token-input');
+  if (!input.value.trim()) { event.preventDefault(); return; }
+  tokenLoginSubmitting = true;
+  const btn = document.getElementById('token-login-btn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.querySelector('.btn-text').textContent = 'Đang kiểm tra token...';
 });
 
 // Saved-account buttons must also be single-submit: a second click would

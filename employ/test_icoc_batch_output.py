@@ -111,6 +111,36 @@ class IcocBatchOutputTests(unittest.TestCase):
         self.assertEqual(sheet['D2'].value, 'old-user')
         total.close()
 
+    def test_corrupt_startup_workbooks_are_quarantined_and_recreated(self):
+        os.makedirs(self.batch_dir, exist_ok=True)
+        with open(self.input_file, 'wb') as file_handle:
+            file_handle.write(b'not-an-xlsx-input')
+        with open(self.output_file, 'wb') as file_handle:
+            file_handle.write(b'<html>not-an-xlsx-output</html>')
+
+        app_module._ensure_icoc_batch_files()
+
+        input_book = load_workbook(self.input_file, data_only=True)
+        self.assertIn('IC_OC_Input', input_book.sheetnames)
+        self.assertIn('Huong_dan', input_book.sheetnames)
+        input_book.close()
+
+        output_book = load_workbook(self.output_file, data_only=True)
+        self.assertIn('IC_OC_Output', output_book.sheetnames)
+        self.assertEqual(
+            [cell.value for cell in output_book['IC_OC_Output'][1]],
+            list(app_module.ICOC_BATCH_OUTPUT_HEADERS),
+        )
+        output_book.close()
+
+        quarantined = os.listdir(self.batch_dir)
+        self.assertTrue(any(
+            name.startswith('IC_OC_Input.xlsx.corrupt-')
+            for name in quarantined))
+        self.assertTrue(any(
+            name.startswith('IC_OC_Output.xlsx.corrupt-')
+            for name in quarantined))
+
 
 if __name__ == '__main__':
     unittest.main()
