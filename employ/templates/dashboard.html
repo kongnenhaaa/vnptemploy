@@ -903,6 +903,12 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
           <button type="button" class="btn-sm" onclick="resetMultiAccountLogin()">Nhập lại tài khoản</button>
         </div>
       </div>
+      <div style="display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--text3);font-size:11px"><span style="height:1px;background:var(--border);flex:1"></span>HOẶC ĐĂNG NHẬP NHANH BẰNG TOKEN<span style="height:1px;background:var(--border);flex:1"></span></div>
+      <div class="form-group">
+        <label>Access token tài khoản mới</label>
+        <textarea id="multi-account-token" rows="3" placeholder="Dán token OneBSS vào đây; tool tự nhận diện tên user" onpaste="setTimeout(addMultiAccountByToken, 0)"></textarea>
+      </div>
+      <button id="multi-account-token-btn" type="button" class="btn-primary" style="margin-top:10px" onclick="addMultiAccountByToken()">🔑 Thêm tài khoản bằng token</button>
       <div id="multi-account-message" style="margin-top:10px;font-size:12px;color:var(--text2)"></div>
     </div>
   </div>
@@ -943,7 +949,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
     <div class="sidebar-section">
       <div class="sidebar-section-title">Khác</div>
       <div class="nav-item" onclick="showPanel('b2ab2c')" data-panel="b2ab2c"><span class="icon">📝</span>B2A / B2C</div>
-      <div class="nav-item" onclick="showPanel('baocao')" data-panel="baocao" style="display:none"><span class="icon">📊</span>Báo cáo</div>
+      <div class="nav-item" onclick="showPanel('baocao')" data-panel="baocao"><span class="icon">📊</span>Báo cáo OneBSS</div>
       <div class="nav-item" onclick="showPanel('explorer')" data-panel="explorer" style="display:none"><span class="icon">⚙️</span>API Explorer</div>
     </div>
   </div>
@@ -1418,7 +1424,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
             <span style="font-size:11px;color:var(--text3)">Thực hiện lần lượt từng bước để khởi tạo SIM Kit</span>
           </div>
           <div class="card-body">
-            <div id="sim-wallet-balance-card" aria-live="polite" style="margin:0 0 16px;padding:12px;border:1px solid var(--accent);border-radius:10px;background:var(--bg2)">
+            <div id="sim-wallet-balance-card" aria-live="polite" style="display:none;margin:0 0 16px;padding:12px;border:1px solid var(--accent);border-radius:10px;background:var(--bg2)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
                 <div><b>💳 Ví luồng thủ công (tài khoản chính)</b><div id="sim-wallet-balance-time" style="font-size:11px;color:var(--text3);margin-top:2px">Chưa kiểm tra</div></div>
                 <button id="sim-wallet-balance-refresh" type="button" class="btn-sm" onclick="simRefreshVnptBalance()">Kiểm tra số dư</button>
@@ -1437,11 +1443,14 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
                 <div>
                   <div style="font-weight:700;color:var(--accent)">⚡ Khởi tạo SIM hàng loạt từ Excel</div>
-                  <div style="font-size:11px;color:var(--text3);margin-top:3px">Mỗi dòng: SĐT thuê bao + Serial SIM. Chia đều theo tài khoản và xử lý song song bằng token/Ví VNPT Pay riêng.</div>
+                  <div style="font-size:11px;color:var(--text3);margin-top:3px">Mỗi dòng: SĐT thuê bao + Serial SIM + CCCD khách hàng. CCCD được dùng để kiểm tra số lượng thuê bao và ghi p_so_gt.</div>
                 </div>
                 <span id="sim-batch-user" style="padding:4px 8px;border:1px solid var(--border);border-radius:999px;color:var(--text2);font-size:11px">Đang tải tài khoản...</span>
               </div>
               <div style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
+                <div style="margin-bottom:10px;padding:8px 10px;border:1px solid rgba(248,166,49,.45);border-radius:8px;color:#fde68a;font-size:11px;line-height:1.5">
+                  Batch chỉ chạy nhánh “Khách hàng tự đăng ký TTTB” (ID 2), theo đúng chuỗi khởi tạo SIM → thanh toán VNPT Pay → hoàn tất đơn → đối soát lịch sử.
+                </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
                   <div><b style="font-size:12px">Tài khoản chạy *</b><div style="font-size:10px;color:var(--text3);margin-top:2px">Mỗi tài khoản là một luồng riêng và xử lý tuần tự; chọn bao nhiêu tài khoản thì chạy bấy nhiêu luồng độc lập. Các API cùng tài khoản chờ ít nhất 1,5 giây.</div></div>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -1463,16 +1472,16 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                   <input value="TP Hồ Chí Minh (ID 28)" readonly>
                 </div>
                 <div class="form-group">
-                  <label>Quận/Huyện cố định *</label>
+                  <label>Phường/Xã cố định *</label>
                   <select id="sim-batch-district" onfocus="simBatchLoadDistricts()">
-                    <option value="">-- Đang tải danh sách Quận/Huyện --</option>
+                    <option value="">-- Đang tải danh sách Phường/Xã --</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label>Hình thức đăng ký ĐKTTTB *</label>
                   <select id="sim-batch-tttb-method">
                     <option value="2" data-name="KH tự đăng ký ĐKTTTB" selected>KH tự đăng ký ĐKTTTB</option>
-                    <option value="1" data-name="Nhân viên hỗ trợ">Nhân viên hỗ trợ</option>
+                    <option value="1" data-name="Nhân viên hỗ trợ" disabled>Nhân viên hỗ trợ (chưa sửa trong đợt này)</option>
                   </select>
                 </div>
                 <div class="form-group">
@@ -1494,7 +1503,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               </div>
               <div id="sim-batch-file-paths" style="margin-top:7px;color:var(--text3);font-size:10px;overflow-wrap:anywhere">Đang tạo file input và output tổng...</div>
               <div style="margin-top:9px;padding:8px 10px;border:1px solid rgba(248,166,49,.35);border-radius:8px;background:rgba(248,166,49,.07);color:var(--text2);font-size:11px;line-height:1.5">
-                SĐT trong Excel nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84 và tự chuẩn hóa về đầu 84. Mỗi tài khoản đã chọn chạy một luồng tuần tự riêng và tổng số dòng được chia vòng tròn đều giữa các luồng; các tài khoản khác nhau chạy độc lập. Lỗi của một SĐT, kể cả tài khoản không có Ví VNPT Pay hoặc ví không đủ số dư, chỉ được ghi vào kết quả tại bước thanh toán; luồng vẫn tự chạy SĐT kế tiếp và chỉ dừng khi bấm “Dừng chạy”. Mỗi SĐT hoàn tất được ghi ngay vào 2 file: một file riêng của phiên hiện tại và SIM_Kit_Output.xlsx tổng tích lũy từ trước đến nay; dừng ngang không làm mất các dòng đã chạy. Bấm “Chạy tiếp phiên này” sẽ tiếp tục các dòng chưa chạy và ghi vào đúng file phiên cũ; chỉ khi chọn/nạp file đầu vào mới mới tạo file phiên kế tiếp. Nên đóng cả hai file output trong Excel khi batch chạy để Windows không khóa ghi. File được chọn sẽ chạy thật: tạo đơn, ghi thông tin khách hàng/địa chỉ do luồng batch sinh từ danh mục OneBSS, trừ Ví VNPT Pay, kiểm tra serial và khởi tạo thuê bao; chỉ chạy dữ liệu đã được phép.
+                Input bắt buộc có 3 cột SĐT, Serial SIM và CCCD. SĐT nhận cả dạng đầu 84, đầu 0 hoặc 9 chữ số không có 0/84; CCCD/số giấy tờ phải có 8–20 chữ số và được giữ theo từng dòng để gửi vào pidnumber, p_so_gt. Mỗi tài khoản đã chọn chạy một luồng tuần tự riêng và tổng số dòng được chia vòng tròn đều giữa các luồng; các tài khoản khác nhau chạy độc lập. Mỗi dòng chỉ được ghi thành công sau khi lịch sử OneBSS xác nhận đơn hoàn tất, đã thu tiền và đã khởi tạo.
               </div>
               <div id="sim-batch-progress" style="display:none;margin-top:12px">
                 <div style="height:7px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="sim-batch-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#4ade80);transition:width .2s"></div></div>
@@ -1541,13 +1550,14 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
 
             <div id="sim-step-3" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
               <div style="color:var(--accent);font-weight:600;margin-bottom:8px">Bước 2 – Đăng ký gói cước / hình thức nạp thẻ</div>
-              <div class="form-group"><label>Hình thức nạp thẻ</label><select id="sim-recharge-method" onchange="simSyncRechargeId()"><option value="">-- Đang tải từ OneBSS --</option></select></div>
+              <div style="margin-bottom:8px;color:var(--text2);font-size:12px;line-height:1.5">Luồng đã capture tiếp tục không chọn gói cước và không chọn hình thức nạp thẻ. Danh sách dưới đây chỉ dùng để đối chiếu dữ liệu OneBSS.</div>
+              <select id="sim-recharge-method" style="display:none"><option value=""></option></select>
               <input id="sim-recharge-id" type="hidden">
               <div id="sim-package-list" style="display:none;margin:8px 0"></div>
-              <button class="btn-primary" onclick="simContinueRecharge()">Tiếp tục</button>
+              <button class="btn-primary" onclick="simContinueRecharge()">Tiếp tục không chọn gói</button>
               <div id="sim-recharge-resp" class="resp-box"></div>
               <div id="sim-recharge-confirm" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px">
-                <div style="margin-bottom:8px">Xác nhận dùng hình thức nạp thẻ này?</div>
+                <div style="margin-bottom:8px">Xác nhận tiếp tục không chọn gói cước/hình thức nạp thẻ?</div>
                 <button class="btn-primary" onclick="simConfirmRecharge(true)">Có</button>
                 <button class="btn-sm" onclick="simConfirmRecharge(false)">Không</button>
               </div>
@@ -1559,8 +1569,8 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                 <label>Hình thức đăng ký TTTB</label>
                 <div class="sim-tttb-options" id="sim-tttb-methods">
                   <label class="sim-tttb-option">
-                    <input type="radio" name="sim-tttb-method" value="1" onchange="simChooseTttbMethod(this.value, 'Nhân viên hỗ trợ')">
-                    <span>Nhân viên hỗ trợ</span>
+                    <input type="radio" name="sim-tttb-method" value="1" disabled>
+                    <span>Nhân viên hỗ trợ (chưa sửa trong đợt này)</span>
                   </label>
                   <label class="sim-tttb-option">
                     <input type="radio" name="sim-tttb-method" value="2" checked onchange="simChooseTttbMethod(this.value, 'KH tự đăng ký TTTB')">
@@ -1572,6 +1582,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               <div class="inline-group">
                 <div class="form-group"><label>Họ tên</label><input id="sim-customer-name" placeholder="Nguyễn Văn A"></div>
                 <div class="form-group"><label>Số điện thoại</label><input id="sim-customer-phone" maxlength="11" inputmode="numeric" placeholder="09xxxxxxxx"></div>
+                <div class="form-group"><label>Số giấy tờ (p_so_gt)</label><input id="sim-customer-id" maxlength="20" inputmode="numeric" placeholder="CCCD/giấy tờ của khách hàng"></div>
               </div>
               <div id="sim-address-status" style="font-size:12px;color:var(--text3);margin:2px 0 10px">Bấm Tỉnh/Thành phố để tải toàn bộ danh sách địa bàn từ OneBSS.</div>
               <div class="inline-group">
@@ -1638,7 +1649,6 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
                 <div style="font-size:11px;color:var(--text3);margin-top:4px">Thứ tự: Số nhà → Khu → Ấp/Thôn → Đường/Phố → Đặc điểm → Phường/Xã → Quận/Huyện → Tỉnh/Thành phố.</div>
               </div>
               <input id="sim-customer-address-id" type="hidden">
-              <input id="sim-customer-id" type="hidden">
               <button class="btn-primary" onclick="simSubmitCustomer()">Tiếp tục</button>
               <div id="sim-customer-resp" class="resp-box"></div>
               <div id="sim-customer-confirm" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px">
@@ -1649,33 +1659,31 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
             </div>
 
             <div id="sim-step-5" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-              <div style="color:var(--accent);font-weight:600;margin-bottom:8px">Bước 4 – Thanh toán</div>
-              <div class="inline-group">
-                <div class="form-group"><label>Phương thức</label><select id="sim-payment-method"><option value="VietQR">Thanh toán QR</option><option value="204" selected>Ví VNPT Pay</option></select></div>
-                <div class="form-group"><label>Loại SIM</label><select id="sim-type-id" onchange="simUpdatePaymentSummary()"><option value="2" selected>SIM vật lý / SIM trắng</option><option value="1">Loại SIM 1</option></select></div>
-              </div>
-              <div id="sim-payment-summary" style="margin:4px 0 10px;padding:10px;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px">Thông tin tiền hàng và token thanh toán sẽ được lấy từ phản hồi OneBSS của các bước trước.</div>
-              <button id="sim-payment-continue-btn" class="btn-primary" onclick="simContinuePayment()">Tiếp tục</button>
+              <div style="color:var(--accent);font-weight:600;margin-bottom:8px">Bước 5 – Thanh toán và hoàn tất đơn</div>
+              <input id="sim-payment-method" type="hidden" value="204">
+              <input id="sim-type-id" type="hidden" value="2">
+              <div id="sim-payment-summary" style="margin:4px 0 10px;padding:10px;border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px">Sau khi khởi tạo SIM, hệ thống sẽ xác thực ví, kiểm tra số dư và yêu cầu xác nhận trước khi thanh toán.</div>
+              <button id="sim-payment-continue-btn" class="btn-primary" onclick="simCheckPaymentReadiness()">Thanh toán VNPT Pay</button>
               <div id="sim-payment-resp" class="resp-box"></div>
               <div id="sim-payment-confirm" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px">
                 <div id="sim-payment-confirm-text" style="margin-bottom:8px">Xác nhận thanh toán bằng VNPT Pay?</div>
-                <button class="btn-primary" onclick="simConfirmPayment(true)">Có</button>
+                <button class="btn-primary" onclick="simConfirmPayment(true)">Xác nhận thanh toán</button>
                 <button class="btn-sm" onclick="simConfirmPayment(false)">Không</button>
               </div>
             </div>
 
             <div id="sim-step-6" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-              <div style="color:var(--accent);font-weight:600;margin-bottom:8px">Bước 5 – Nhập SIM trắng, khởi tạo thuê bao và hoàn tất</div>
+              <div style="color:var(--accent);font-weight:600;margin-bottom:8px">Bước 4 – Nhập SIM trắng và khởi tạo thuê bao</div>
               <div id="sim-paid-session-result" style="display:none;margin:0 0 12px;padding:12px;border:1px solid rgba(34,197,94,.45);border-radius:10px;background:rgba(34,197,94,.07)"></div>
-              <div style="margin:0 0 10px;color:var(--text2);font-size:12px;line-height:1.5">Nhập serial SIM trắng. Hệ thống sẽ kiểm tra trạng thái SIM trước, sau đó gọi API khởi tạo thuê bao cho đúng đơn vừa thanh toán.</div>
+              <div style="margin:0 0 10px;color:var(--text2);font-size:12px;line-height:1.5">Nhập serial SIM trắng. Hệ thống sẽ kiểm tra quyền KHOITAOTB và trạng thái SIM, sau đó khởi tạo thuê bao. Thành công ở bước này chỉ chuyển đơn sang Thanh toán, chưa phải hoàn tất đơn.</div>
               <div class="form-group">
                 <label>Serial SIM trắng / MSIN</label>
                 <input id="sim-blank-serial" inputmode="numeric" placeholder="Ví dụ: 1184229391">
               </div>
-              <button id="sim-status-check-btn" class="btn-primary" onclick="simCheckSimStatus()">Kiểm tra SIM và khởi tạo thuê bao</button>
+              <button id="sim-status-check-btn" class="btn-primary" onclick="simCheckSimStatus()">Kiểm tra SIM và chuyển sang Thanh toán</button>
               <div id="sim-init-resp" class="resp-box"></div>
             </div>
-            <div id="sim-wizard-note" style="margin-top:12px;color:var(--text3);font-size:11px;line-height:1.5">Phải có phiên đăng nhập hợp lệ. Các bước tạo đơn/thanh toán chỉ chạy khi bấm nút xác nhận.</div>
+            <div id="sim-wizard-note" style="margin-top:12px;color:var(--text3);font-size:11px;line-height:1.5">Nhánh hiện tại chỉ hỗ trợ p_id_hinhthuc_dk_tttb=2. Đơn chỉ được báo hoàn tất sau khi OneBSS xác nhận đã thu tiền, hoàn tất đơn và khởi tạo thành công trong lịch sử.</div>
           </div>
         </div>
 
@@ -2515,15 +2523,34 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
 
       <!-- ══ BÁO CÁO ══ -->
       <div class="panel" id="panel-baocao">
-        <div class="section-header"><h2>📊 Báo cáo bán hàng</h2></div>
+        <div class="section-header">
+          <h2>📊 Báo cáo OneBSS · VNPT Employee</h2>
+          <p>Chia từng ngày và tự ghép Excel để không treo khi lấy dữ liệu dài ngày</p>
+        </div>
         <div class="card">
-          <div class="card-header"><h3><span class="method GET">GET</span> Báo cáo sản lượng đơn hàng</h3></div>
+          <div class="card-header"><h3><span class="method POST">POST</span> Báo cáo đơn hàng di động (Mô hình SX mới)</h3></div>
           <div class="card-body">
-            <div class="form-group" style="margin-bottom:10px"><label>Bộ lọc API (JSON)</label>
-              <textarea id="bc-filter" rows="4" placeholder='{"p_ds_tinhthanh":[]}'>{"p_ds_tinhthanh":[]}</textarea>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-bottom:14px">
+              <div class="stat-card" style="padding:10px 12px"><div><div class="s-lbl">Tỉnh/TP</div><div style="font-weight:700">TP Hồ Chí Minh</div></div></div>
+              <div class="stat-card" style="padding:10px 12px"><div><div class="s-lbl">Nguồn đơn</div><div style="font-weight:700">VNPT Employee</div></div></div>
+              <div class="stat-card" style="padding:10px 12px"><div><div class="s-lbl">Dịch vụ / Loại hình</div><div style="font-weight:700">Di động / Trả trước</div></div></div>
+              <div class="stat-card" style="padding:10px 12px"><div><div class="s-lbl">Thanh toán</div><div style="font-weight:700">Tất cả</div></div></div>
             </div>
-            <button class="btn-primary" onclick="getBaoCao()" style="width:100%;max-width:240px">📈 Tải báo cáo</button>
-            <div class="resp-box" id="bc-resp"></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+              <div class="form-group"><label>Từ ngày</label><input id="onebss-report-from" type="date" value="2026-04-01"></div>
+              <div class="form-group"><label>Đến ngày</label><input id="onebss-report-to" type="date"></div>
+              <div class="form-group"><label>Tài khoản chạy</label><select id="onebss-report-account"><option value="">Phiên onebss_session.json</option></select></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button id="onebss-report-start" class="btn-primary" onclick="startOneBssReport()">▶ Lấy dữ liệu từ tháng 4 đến nay</button>
+              <button id="onebss-report-stop" class="btn-sm" onclick="stopOneBssReport()" disabled>⏹ Dừng</button>
+              <a id="onebss-report-download" class="btn-sm" href="/api/onebss-report/download" style="display:none;text-decoration:none">⬇ Tải Excel tổng</a>
+            </div>
+            <div id="onebss-report-progress" style="margin-top:14px">
+              <div style="height:8px;border-radius:999px;background:var(--bg4);overflow:hidden"><div id="onebss-report-progress-fill" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),#4ade80);transition:width .25s"></div></div>
+              <div id="onebss-report-status" style="margin-top:8px;color:var(--text2);font-size:12px">Chưa chạy</div>
+              <div id="onebss-report-path" style="margin-top:5px;color:var(--text3);font-size:11px;word-break:break-all"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -3086,6 +3113,7 @@ async function loadMultiAccounts(showError=false) {
     loadMultiAccountPhones();
     if (typeof simBatchLoadAccounts === 'function') simBatchLoadAccounts(true, multiAccountState.accounts);
     if (typeof icocBatchLoadAccounts === 'function') icocBatchLoadAccounts(true, multiAccountState.accounts);
+    if (typeof renderOneBssReportAccounts === 'function') renderOneBssReportAccounts();
     return multiAccountState.accounts;
   } catch (error) {
     if (showError) multiAccountMessage(error.message, true);
@@ -3154,6 +3182,33 @@ async function confirmMultiAccountLogin() {
     multiAccountMessage(error.message, true);
   } finally {
     if (button) button.disabled = false;
+  }
+}
+
+async function addMultiAccountByToken() {
+  const input = document.getElementById('multi-account-token');
+  const button = document.getElementById('multi-account-token-btn');
+  const token = String(input?.value || '').trim();
+  if (!token) {
+    multiAccountMessage('Hãy dán access token trước.', true);
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Đang kiểm tra token...';
+  }
+  try {
+    const data = await multiAccountRequest('/api/accounts/token-login', {token});
+    multiAccountMessage(data.message || 'Đã thêm tài khoản bằng token.');
+    if (input) input.value = '';
+    await loadMultiAccounts(true);
+  } catch (error) {
+    multiAccountMessage(error.message, true);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = '🔑 Thêm tài khoản bằng token';
+    }
   }
 }
 
@@ -3229,8 +3284,8 @@ async function loginManagedAccountWithToken(accountId) {
       token,
     });
     multiAccountMessage(data.message || 'Đã đăng nhập bằng token.');
-    window.location.href = '/dashboard';
-    return;
+    if (input) input.value = '';
+    await loadMultiAccounts(true);
   } catch (error) {
     multiAccountMessage(error.message, true);
   } finally {
@@ -3464,6 +3519,11 @@ function setIOCBadge(el, loai, value) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const ICOC_MIN_DELAY_SECONDS = 2;
+// Captured from the Employee mobile flow for
+// p_id_hinhthuc_dk_tttb=2 (Khách hàng tự đăng ký TTTB).
+const SIM_SELF_REG_MENU_ID = 810641;
+const SIM_SELF_REG_PREFIX = '/app-banhang/kenhban-simkit';
+const SIM_SELF_REG_BATCH_ENABLED = true;
 const BUSINESS_MUTATION_ENDPOINTS = new Set([
   '/app-banhang/donhang_simkit/chonso_kit_v2',
   '/app-banhang/donhang_simkit/huy_donhang',
@@ -3471,6 +3531,12 @@ const BUSINESS_MUTATION_ENDPOINTS = new Set([
   '/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3',
   '/app-banhang/donhang_simkit/xacnhan_thanhtoan',
   '/app-banhang/donhang_simkit/khoitao_thuebao',
+  `${SIM_SELF_REG_PREFIX}/chonso_kit_v2`,
+  `${SIM_SELF_REG_PREFIX}/dangky_goicuoc`,
+  `${SIM_SELF_REG_PREFIX}/nhap_thongtin_khachhang_v3`,
+  `${SIM_SELF_REG_PREFIX}/khoitao_thuebao`,
+  `${SIM_SELF_REG_PREFIX}/xacnhan_thanhtoan`,
+  `${SIM_SELF_REG_PREFIX}/hoanthanh_donhang_tratruoc`,
   '/app-banhang/thuebaodidong/khoamo_ic_oc',
   '/ccbs/goicuoc/dangky',
 ]);
@@ -4507,6 +4573,42 @@ function simWizardMutationFailure(response, fallback) {
   return `CHƯA XÁC ĐỊNH — không gửi lại trước khi đối soát: ${message}`;
 }
 
+async function simReadSelfRegOrderStep(orderId) {
+  return callApi(`${SIM_SELF_REG_PREFIX}/step_donhang_simkit`, 'POST', {
+    p_id_donhang: apiNumericOrText(orderId),
+    menu_id: SIM_SELF_REG_MENU_ID
+  });
+}
+
+function simSelfRegOrderData(response) {
+  const body = apiBodyObject(response);
+  return body?.data && typeof body.data === 'object' && !Array.isArray(body.data)
+    ? body.data
+    : null;
+}
+
+function simSelfRegState(response) {
+  const data = simSelfRegOrderData(response);
+  return {
+    data,
+    orderId: String(simValue(data, ['id_donhang','ID_DONHANG']) || '').trim(),
+    statusId: String(simValue(data, ['id_trangthai','ID_TRANGTHAI']) || '').trim(),
+    statusName: String(simValue(data, ['ten_trangthai','TEN_TRANGTHAI']) || '').trim(),
+    registrationMethodId: String(simValue(data, ['id_hinhthuc_dk_tttb','ID_HINHTHUC_DK_TTTB']) || '').trim(),
+    paymentStatusId: String(simValue(data, ['id_trangthai_thanhtoan','ID_TRANGTHAI_THANHTOAN']) ?? '').trim(),
+    paymentStatusName: String(simValue(data, ['trangthai_thanhtoan','TRANGTHAI_THANHTOAN']) || '').trim(),
+    serial: String(simValue(data, ['so_sim','SO_SIM']) || '').replace(/\D/g, ''),
+    billNumber: String(simValue(data, ['ma_gd','MA_GD','billNumber','bill_number']) || '').trim()
+  };
+}
+
+function simCapturedStateMatches(response, orderId, expectedStatusId) {
+  if (!apiSucceeded(response)) return false;
+  const state = simSelfRegState(response);
+  return Boolean(state.data && state.orderId === String(orderId) &&
+    state.statusId === String(expectedStatusId));
+}
+
 const SIM_ADDRESS_LEVELS = {
   province: {selectId:'sim-customer-province-name', idId:'sim-customer-province-id', placeholder:'-- Chọn Tỉnh/Thành phố --'},
   district: {selectId:'sim-customer-district-name', idId:'sim-customer-district-id', placeholder:'-- Chọn Quận/Huyện --'},
@@ -4534,6 +4636,7 @@ const simBatchState = {
   rows: [],
   phoneColumn: 0,
   serialColumn: 1,
+  citizenIdColumn: 2,
   user: '',
   districtId: '',
   districtName: '',
@@ -4593,7 +4696,7 @@ function simValue(row, keys) {
 
 function simNumber(row) {
   return String(simValue(row, [
-    'MSISDN','msisdn','ISDN','isdn','SO_TB','so_tb','soTb','SO_SIM','so_sim',
+    'MSISDN','msisdn','ISDN','isdn','SO_THUE_BAO','so_thue_bao','SO_TB','so_tb','soTb','SO_SIM','so_sim',
     'phone','PHONE','number','NUMBER','value'
   ]) || '').replace(/\D/g, '');
 }
@@ -4709,11 +4812,11 @@ function simResetWizard() {
   const defaultTttbMethod = document.querySelector('input[name="sim-tttb-method"][value="2"]');
   if (defaultTttbMethod) defaultTttbMethod.checked = true;
   const recharge = document.getElementById('sim-recharge-method');
-  if (recharge) recharge.innerHTML = '<option value="">-- Đang tải từ OneBSS --</option>';
+  if (recharge) recharge.innerHTML = '<option value=""></option>';
   const packageList = document.getElementById('sim-package-list');
   if (packageList) { packageList.innerHTML = ''; packageList.style.display = 'none'; }
   const paymentSummary = document.getElementById('sim-payment-summary');
-  if (paymentSummary) paymentSummary.textContent = 'Thông tin tiền hàng và token thanh toán sẽ được lấy từ phản hồi OneBSS của các bước trước.';
+  if (paymentSummary) paymentSummary.textContent = 'Sau khi khởi tạo SIM, hệ thống sẽ xác thực ví, kiểm tra số dư và yêu cầu xác nhận trước khi thanh toán.';
   const statusInput = document.getElementById('sim-blank-serial');
   if (statusInput) statusInput.disabled = false;
   const paidSessionResult = document.getElementById('sim-paid-session-result');
@@ -4724,15 +4827,15 @@ function simResetWizard() {
   const statusButton = document.getElementById('sim-status-check-btn');
   if (statusButton) {
     statusButton.disabled = false;
-    statusButton.textContent = 'Kiểm tra SIM và khởi tạo thuê bao';
+    statusButton.textContent = 'Kiểm tra SIM và chuyển sang Thanh toán';
   }
   const paymentButton = document.getElementById('sim-payment-continue-btn');
   if (paymentButton) {
     paymentButton.disabled = false;
-    paymentButton.textContent = 'Tiếp tục';
+    paymentButton.textContent = 'Thanh toán VNPT Pay';
   }
   const wizardNote = document.getElementById('sim-wizard-note');
-  if (wizardNote) wizardNote.textContent = 'Phải có phiên đăng nhập hợp lệ. Các bước tạo đơn/thanh toán chỉ chạy khi bấm nút xác nhận.';
+  if (wizardNote) wizardNote.textContent = 'Nhánh hiện tại chỉ hỗ trợ p_id_hinhthuc_dk_tttb=2. Đơn chỉ được báo hoàn tất sau khi OneBSS xác nhận đã thu tiền, hoàn tất đơn và khởi tạo thành công trong lịch sử.';
   simRenderWalletBalance();
   ['sim-step-2','sim-step-3','sim-step-4','sim-step-5','sim-step-6','sim-number-confirm',
    'sim-recharge-confirm','sim-customer-confirm','sim-payment-confirm']
@@ -4777,7 +4880,9 @@ function simRenderPrefixes(values) {
 
 async function simLoadPrefixes() {
   // app_ds_dauso is POST in the production service; GET always returns 405.
-  const r = await callApi('/ccbs/chonSo/app_ds_dauso','POST', {});
+  const r = await callApi('/ccbs/chonSo/app_ds_dauso','POST', {
+    menu_id: SIM_SELF_REG_MENU_ID
+  });
   if (!apiSucceeded(r)) {
     window._simPrefixesLoaded = false;
     simRenderPrefixes([]);
@@ -4802,8 +4907,8 @@ function simRenderNumbers(rows) {
   }
   target.innerHTML = `<div style="overflow:auto;border:1px solid var(--border);border-radius:8px"><table class="result-table"><thead><tr><th>Chọn</th><th>Số</th><th>Kiểu số</th><th>Kho</th><th>Đặt cọc</th><th>Hình thức HM</th></tr></thead><tbody>${rows.map((row, i) => {
     const number = simNumber(row);
-    const type = simValue(row, ['TEN_KIEUSO','ten_kieuso','KIEUSO_ID','kieuso_id']);
-    const stock = simValue(row, ['stockid','stockId','STOCK_ID','kho_id','khoId']) || document.getElementById('sim-stock-id')?.value;
+    const type = simValue(row, ['TEN_KIEU_SO','ten_kieu_so','TEN_KIEUSO','ten_kieuso','KIEU_SO_ID','KIEUSO_ID','kieuso_id']);
+    const stock = simValue(row, ['stockid','stockId','STOCK_ID','KHO_ID','kho_id','khoId']) || document.getElementById('sim-stock-id')?.value;
     const deposit = simValue(row, ['DATCOC','datcoc','tien_datcoc']);
     const promo = simValue(row, ['HINHTHUC_HM','hinhthuc_hm']);
     return `<tr data-selectable="true" tabindex="0" role="radio" aria-checked="false" onclick="simSelectNumberRow(${i}, this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();simSelectNumberRow(${i},this)}"><td><input type="radio" name="sim-number" value="${i}" onclick="event.stopPropagation()" onchange="simSelectNumberRow(${i},this.closest('tr'))"></td><td><b>${simEsc(number || 'N/A')}</b></td><td>${simEsc(type)}</td><td>${simEsc(stock)}</td><td>${simEsc(deposit)}</td><td>${simEsc(promo)}</td></tr>`;
@@ -4831,16 +4936,33 @@ async function simSearchNumbers() {
   if (!/^\*\d{7}$/.test(suffix)) { showToast('Nhập đúng * và 7 số đuôi, ví dụ *1234567'); return; }
   if (!/^\d+$/.test(stock)) { showToast('Nhập stockId hợp lệ'); return; }
   const searchPrefix = `${prefix}${suffix}`;
+  Object.assign(simWizardState, {
+    orderId:'', orderDetailId:'', customerId:'', addressId:'', rechargeId:'',
+    billNumber:'', citizenId:'', orderResponse:null, paymentResponse:null,
+    paymentConfirmed:false, subscriptionCreated:false, completed:false,
+    mutationUncertain:false
+  });
+  simSetValue('sim-blank-serial', '');
+  const serialInput = document.getElementById('sim-blank-serial');
+  if (serialInput) serialInput.disabled = false;
+  const statusButton = document.getElementById('sim-status-check-btn');
+  if (statusButton) {
+    statusButton.disabled = false;
+    statusButton.textContent = 'Kiểm tra SIM và chuyển sang Thanh toán';
+  }
   simStepMessage('sim-search-resp', 'Đang tìm số trên OneBSS...');
-  const r = await callApi('/ccbs/chonSo/search_isdn','POST', {
-    stockid: stock,
-    kieuso_id: '-1',
-    so_tb: suffix,
-    prefix,
-    status,
-    page_num: '1',
-    page_rec: '200',
-    menu_id: 699161
+  const r = await callApi(`${SIM_SELF_REG_PREFIX}/search_isdn_shop_mid`,'POST', {
+    p_ProcessID: '1',
+    p_SystemID: '1',
+    p_prefix: prefix,
+    p_isdn: suffix.replace(/\D/g, ''),
+    p_stock_id: stock,
+    p_status: status,
+    p_commit: '0',
+    p_number_type: '-1',
+    p_page_num: '1',
+    p_page_rec: '20',
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   simWizardState.searchPrefix = searchPrefix;
   simWizardState.selected = null;
@@ -4862,9 +4984,9 @@ function simPickNumber(index) {
   simWizardState.selected = row;
   const number = simNumber(row);
   document.querySelector('#sim-selected-number .val')?.replaceChildren(document.createTextNode(number || 'N/A'));
-  const stock = simValue(row, ['stockid','stockId','STOCK_ID','kho_id','khoId']);
+  const stock = simValue(row, ['stockid','stockId','STOCK_ID','KHO_ID','kho_id','khoId']);
   const kit = simValue(row, ['KIT_TYPE','kit_type','SIM_BUNDLE','sim_bundle','loai_sim','id_loai_sim']);
-  const subscriberType = simValue(row, ['p_loaitb_id','loaitb_id','id_loai_sim','ID_LOAI_SIM']);
+  const subscriberType = simValue(row, ['p_loaitb_id','loaitb_id','LOAITB_ID','id_loai_sim','ID_LOAI_SIM']);
   if (stock) simSetValue('sim-stock-id', stock);
   if (kit) simSetValue('sim-kit-type', kit);
   if (subscriberType) simSetValue('sim-subscriber-type-id', subscriberType);
@@ -5062,7 +5184,7 @@ async function simLoadVnptBalance({announce=true}={}) {
   simWizardState.walletBalanceError = '';
   simRenderWalletBalance();
   const response = await callApi('/app-thuno/VnptPay/getBalance', 'POST', {
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   }, 'json', {
     walletToken: simWizardState.tokenPay
   });
@@ -5110,9 +5232,11 @@ function simPopulateOrderOptions(response) {
     ['idDhskKh','id_dhsk_kh','p_id_dhsk_kh','customerId']) || simWizardState.customerId).trim();
   simWizardState.addressId = String(findApiValue(body,
     ['addressId','diachi_id','p_diachi_id']) || simWizardState.addressId).trim();
+  const provinceId = findApiValue(body, ['tinh_id','p_tinh_id','phanvung_id']);
+  const provinceName = findApiValue(body, ['tentinh','ten_tinh','TEN_TINH']) ||
+    (String(provinceId) === '28' ? 'TP Hồ Chí Minh' : '');
   simSetAddressValue('sim-customer-province-name', 'sim-customer-province-id',
-    findApiValue(body, ['tentinh','ten_tinh','TEN_TINH']),
-    findApiValue(body, ['tinh_id','p_tinh_id','phanvung_id']));
+    provinceName, provinceId);
   simSetAddressValue('sim-customer-district-name', 'sim-customer-district-id',
     findApiValue(body, ['ten_quan','tenquanhuyen','TEN_QUAN']),
     findApiValue(body, ['quan_id','p_quan_id']));
@@ -5152,10 +5276,9 @@ function simPopulateOrderOptions(response) {
 }
 
 function simSyncRechargeId() {
-  const value = document.getElementById('sim-recharge-method')?.value || '';
-  if (value) simSetValue('sim-recharge-id', value);
+  simSetValue('sim-recharge-id', '');
   const packageList = document.getElementById('sim-package-list');
-  if (packageList) packageList.style.display = value === '1' && simWizardState.packages.length ? '' : 'none';
+  if (packageList) packageList.style.display = simWizardState.packages.length ? '' : 'none';
 }
 
 function simRenderPackages() {
@@ -5166,7 +5289,7 @@ function simRenderPackages() {
     target.style.display = 'none';
     return;
   }
-  target.innerHTML = `<div style="margin-bottom:6px;color:var(--text2)">Gói cước dùng khi chọn Topup qua DCRS</div>` +
+  target.innerHTML = `<div style="margin-bottom:6px;color:var(--text2)">Danh sách gói cước OneBSS (chỉ đối chiếu; capture hiện không chọn gói)</div>` +
     `<div style="overflow:auto;border:1px solid var(--border);border-radius:8px"><table class="result-table"><thead><tr><th>Gói</th><th>Giá</th><th>Mô tả</th></tr></thead><tbody>${simWizardState.packages.map(row => {
       const code = simValue(row, ['package_code','PACKAGE_CODE','service_code','SERVICE_CODE']);
       const price = Number(simValue(row, ['price','PRICE']) || 0);
@@ -5177,67 +5300,48 @@ function simRenderPackages() {
 }
 
 async function simLoadRechargeData(orderResponse) {
-  const body = apiBodyObject(orderResponse);
-  const packageType = String(findApiValue(body, ['id_loai_goicuoc','ID_LOAI_GOICUOC']) || '8');
-  const [methodsResponse, packagesResponse] = await Promise.all([
-    callApi('/app-com/danhmuc/get_danhmuc','POST', {
-      id_danhmucs: '10181',
-      nguon_dulieu: null,
-      param_customize: '1',
-      listIdDanhMuc: [10181],
-      menu_id: 699161
-    }),
-    callApi('/app-banhang/donhang_simkit/danhsach_goicuoc','POST', {
-      p_id_hinhthuc_napthe: 1,
-      p_id_loaigoi: packageType,
-      p_tengoi: '',
-      menu_id: 699161
-    })
-  ]);
-  const options = apiSucceeded(methodsResponse)
-    ? simExtractOptions(methodsResponse, ['ID','id'], ['NAME','name'])
-    : [];
-  const recharge = document.getElementById('sim-recharge-method');
-  if (recharge) {
-    recharge.innerHTML = options.length
-      ? options.map(o => `<option value="${simEsc(o.id)}">${simEsc(o.name || o.id)}</option>`).join('')
-      : '<option value="">-- Không tải được hình thức nạp thẻ --</option>';
-    const other = options.find(o => /nạp thẻ bằng hình thức khác/i.test(o.name)) || options.find(o => o.id === '2');
-    if (other) recharge.value = other.id;
-  }
+  const packagesResponse = await callApi(`${SIM_SELF_REG_PREFIX}/danhsach_goicuoc`,'POST', {
+    p_id_hinhthuc_napthe: null,
+    p_id_loaigoi: null,
+    p_tengoi: null,
+    p_id_donhang: apiNumericOrText(simWizardState.orderId),
+    p_type: 1,
+    menu_id: SIM_SELF_REG_MENU_ID
+  });
   simWizardState.packages = apiSucceeded(packagesResponse)
     ? simObjects(apiBodyObject(packagesResponse)).filter(row => simValue(row, ['service_code','SERVICE_CODE']))
     : [];
   simRenderPackages();
   simSyncRechargeId();
-  if (!options.length) {
-    simStepMessage('sim-recharge-resp', apiFailureMessage(methodsResponse, 'Không tải được danh mục hình thức nạp thẻ'), true);
+  if (!apiSucceeded(packagesResponse)) {
+    simStepMessage('sim-recharge-resp', apiFailureMessage(packagesResponse, 'Không tải được danh sách gói cước'), true);
     return false;
   }
-  simStepMessage('sim-recharge-resp', 'Đã tải hình thức nạp thẻ từ OneBSS.');
+  simStepMessage('sim-recharge-resp', `Đã tải ${simWizardState.packages.length} gói để đối chiếu; luồng capture tiếp tục với các trường gói cước để trống.`);
   return true;
 }
 
 function simRenderTttbMethods(options) {
   const target = document.getElementById('sim-tttb-methods');
   if (!target || !options.length) return;
-  const preferred = options.find(o => o.id === '2') || options[0];
-  target.innerHTML = options.map(o => `<label class="sim-tttb-option"><input type="radio" name="sim-tttb-method" value="${simEsc(o.id)}" ${o.id === preferred.id ? 'checked' : ''} onchange="simChooseTttbMethod(this.value, this.dataset.name)" data-name="${simEsc(o.name)}"><span>${simEsc(o.name || o.id)}</span></label>`).join('');
+  const preferred = options.find(o => o.id === '2');
+  if (!preferred) return;
+  target.innerHTML = options.map(o => `<label class="sim-tttb-option"><input type="radio" name="sim-tttb-method" value="${simEsc(o.id)}" ${o.id === '2' ? 'checked' : 'disabled'} onchange="simChooseTttbMethod(this.value, this.dataset.name)" data-name="${simEsc(o.name)}"><span>${simEsc(o.name || o.id)}${o.id === '2' ? '' : ' (chưa sửa trong đợt này)'}</span></label>`).join('');
   simChooseTttbMethod(preferred.id, preferred.name);
 }
 
 async function simLoadTttbMethods() {
   const r = await callApi('/app-com/danhmuc/get_danhmuc','POST', {
     id_danhmucs: '10178',
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   const options = apiSucceeded(r) ? simExtractOptions(r, ['ID','id'], ['NAME','name']) : [];
-  if (options.length) {
+  if (options.some(option => option.id === '2')) {
     simRenderTttbMethods(options);
-    simStepMessage('sim-tttb-status', 'Đã tải 2 hình thức đăng ký TTTB từ OneBSS.');
+    simStepMessage('sim-tttb-status', 'Đã chọn đúng “Khách hàng tự đăng ký TTTB” (ID 2).');
     return true;
   }
-  simStepMessage('sim-tttb-status', apiFailureMessage(r, 'Không tải được hình thức đăng ký TTTB'), true);
+  simStepMessage('sim-tttb-status', apiFailureMessage(r, 'OneBSS không trả hình thức đăng ký TTTB ID 2'), true);
   return false;
 }
 
@@ -5254,7 +5358,7 @@ async function simConfirmNumber(confirmed) {
   const msisdn = simSelectedNumber();
   if (!msisdn) { showToast('Thiếu số đã chọn'); return; }
   simStepMessage('sim-kit-resp', 'Đang tạo đơn SIM Kit từ số đã chọn...');
-  const chosen = await simWizardCallMutation('/app-banhang/donhang_simkit/chonso_kit_v2', {
+  const chosen = await simWizardCallMutation(`${SIM_SELF_REG_PREFIX}/chonso_kit_v2`, {
     p_id_donhang: null,
     p_id_loaidon: 1,
     p_so_dt: msisdn,
@@ -5269,7 +5373,8 @@ async function simConfirmNumber(confirmed) {
     p_trangthai_khoitao: null,
     p_maluong: null,
     p_ma_donhang: null,
-    menu_id: 699161
+    p_kho_id: null,
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   if (!apiSucceeded(chosen)) {
     simStepMessage('sim-kit-resp', simWizardMutationFailure(chosen, 'Không tạo được đơn từ số đã chọn'), true);
@@ -5285,44 +5390,53 @@ async function simConfirmNumber(confirmed) {
     simStepMessage('sim-kit-resp', 'API 200 nhưng không trả id_donhang; dừng luồng để tránh tạo dữ liệu mồ côi.', true);
     return;
   }
-  simWizardState.billNumber = simWizardState.orderId;
-  simPopulateOrderOptions(chosen);
-  simStepMessage('sim-kit-resp', `Đã tạo đơn ${simWizardState.orderId}; trạng thái Đăng ký gói cước.`);
-  await simLoadRechargeData(chosen);
+  const step = await simReadSelfRegOrderStep(simWizardState.orderId);
+  if (!simCapturedStateMatches(step, simWizardState.orderId, '2')) {
+    simStepMessage('sim-kit-resp', 'Đơn đã được tạo nhưng step_donhang_simkit chưa xác nhận trạng thái 2 (Đăng ký gói cước). Dừng để đối soát, không tạo lại đơn.', true);
+    return;
+  }
+  simWizardState.orderResponse = step;
+  simPopulateOrderOptions(step);
+  simStepMessage('sim-kit-resp', `Đã tạo và đối soát đơn ${simWizardState.orderId}; trạng thái 2 – Đăng ký gói cước.`);
+  await simLoadRechargeData(step);
   simShowStep('sim-number-confirm', false);
   simShowStep('sim-step-3', true);
 }
 
 function simContinueRecharge() {
-  const id = String(document.getElementById('sim-recharge-id')?.value || document.getElementById('sim-recharge-method')?.value || '').trim();
-  if (!id) { showToast('Chưa có ID hình thức nạp thẻ từ API'); return; }
-  simWizardState.rechargeId = id;
+  simWizardState.rechargeId = '';
   simShowStep('sim-recharge-confirm', true);
 }
 
 async function simConfirmRecharge(confirmed) {
   if (!confirmed) { simShowStep('sim-recharge-confirm', false); return; }
-  if (!simWizardState.orderId || !simWizardState.rechargeId) {
-    showToast('Thiếu mã đơn hàng hoặc hình thức nạp thẻ');
+  if (!simWizardState.orderId) {
+    showToast('Thiếu mã đơn hàng');
     return;
   }
-  simStepMessage('sim-recharge-resp', 'Đang đăng ký hình thức nạp thẻ...');
-  const r = await simWizardCallMutation('/app-banhang/donhang_simkit/dangky_goicuoc', {
+  simStepMessage('sim-recharge-resp', 'Đang chuyển bước không chọn gói cước...');
+  const r = await simWizardCallMutation(`${SIM_SELF_REG_PREFIX}/dangky_goicuoc`, {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
-    p_id_hinhthuc_napthe: apiNumericOrText(simWizardState.rechargeId),
+    p_id_hinhthuc_napthe: null,
     p_id_loai_goicuoc: null,
     p_id_goicuoc: null,
     p_ten_goicuoc: null,
-    p_tien_cuoc: null,
-    menu_id: 699161
+    p_tien_cuoc: 0,
+    p_type: 1,
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   if (!apiSucceeded(r)) {
     simStepMessage('sim-recharge-resp', simWizardMutationFailure(r, 'Đăng ký hình thức nạp thẻ thất bại'), true);
     return;
   }
-  simWizardState.orderResponse = r;
-  simPopulateOrderOptions(r);
-  simStepMessage('sim-recharge-resp', 'Đã chọn Nạp thẻ bằng hình thức khác; đơn chuyển sang Nhập thông tin KH.');
+  const step = await simReadSelfRegOrderStep(simWizardState.orderId);
+  if (!simCapturedStateMatches(step, simWizardState.orderId, '3')) {
+    simStepMessage('sim-recharge-resp', 'OneBSS đã nhận yêu cầu nhưng step_donhang_simkit chưa xác nhận trạng thái 3 (Nhập thông tin KH). Dừng để đối soát, không gửi lại.', true);
+    return;
+  }
+  simWizardState.orderResponse = step;
+  simPopulateOrderOptions(step);
+  simStepMessage('sim-recharge-resp', 'Đã đối soát trạng thái 3 – Nhập thông tin KH.');
   await Promise.all([simLoadTttbMethods(), simLoadAddressLevel('province')]);
   if (document.getElementById('sim-customer-province-name')?.value) {
     await simLoadProvinceChildren();
@@ -5392,7 +5506,7 @@ async function simLoadAddressCategory(level, {force=false}={}) {
     nguon_dulieu: null,
     param_customize: `${provinceId};${wardId}`,
     listIdDanhMuc: [config.categoryId],
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   const options = apiSucceeded(response)
     ? simAddressOptions(response, ['ID','id'], ['NAME','name','EXT_INFO','ext_info'])
@@ -5411,15 +5525,17 @@ async function simLoadAddressLevel(level, {force=false}={}) {
   if (config.categoryId) return simLoadAddressCategory(level, {force});
 
   const provinceId = String(document.getElementById('sim-customer-province-id')?.value || '').trim();
-  const districtId = String(document.getElementById('sim-customer-district-id')?.value || '').trim();
   const select = document.getElementById(config.selectId);
+  const currentProvinceName = level === 'province'
+    ? simAddressPart('sim-customer-province-name')
+    : '';
   if (level !== 'province' && !provinceId) {
     simResetAddressLevel(level, {disabled:true});
     simAddressStatus('Chọn Tỉnh/Thành phố trước.', true);
     return false;
   }
 
-  const cacheKey = level === 'province' ? 'province' : `${level}:${provinceId}:${districtId}`;
+  const cacheKey = level === 'province' ? `province:${provinceId}` : `${level}:${provinceId}`;
   if (!force && simAddressCache.has(cacheKey)) {
     simRenderAddressOptions(level, simAddressCache.get(cacheKey));
     return true;
@@ -5433,37 +5549,21 @@ async function simLoadAddressLevel(level, {force=false}={}) {
   let response;
   let options = [];
   if (level === 'province') {
-    const legacyLocationProbe = await callApi('/app-com/danhmuc/get_danhmuc', 'POST', {
-      id_danhmucs:'10001', nguon_dulieu:null, param_customize:null,
-      listIdDanhMuc:[10001], menu_id:699161
-    });
-    response = legacyLocationProbe;
-    if (apiSucceeded(response)) {
-      options = simAddressOptions(response,
-        ['ID','id'], ['NAME','name']);
+    response = await callApi('/web-quantri/danhmuc-chung/lay_tt_ts_diadanh_moi', 'GET', {});
+    const currentName = currentProvinceName ||
+      (provinceId === '28' ? 'TP Hồ Chí Minh' : '');
+    if (apiSucceeded(response) && provinceId && currentName) {
+      options = [{id:provinceId, name:currentName}];
     }
   } else if (level === 'district') {
-    response = await callApi('/app-com/danhmuc/get_danhmuc', 'POST', {
-      id_danhmucs:'10002', nguon_dulieu:null, param_customize:provinceId,
-      listIdDanhMuc:[10002], menu_id:699161
-    });
-    if (apiSucceeded(response)) {
-      options = simAddressOptions(response,
-        ['ID','id'], ['NAME','name']);
-    }
+    simResetAddressLevel('district', {disabled:true});
+    simAddressStatus('Luồng địa danh mới dùng mô hình 2 cấp; không chọn Quận/Huyện.', false);
+    return true;
   } else if (level === 'ward') {
-    if (districtId) {
-      response = await callApi('/app-com/danhmuc/get_danhmuc', 'POST', {
-        id_danhmucs:'10003', nguon_dulieu:null,
-        param_customize:`${provinceId};${districtId}`,
-        listIdDanhMuc:[10003], menu_id:699161
-      });
-    } else {
-      response = await callApi('/app-com/danhmuc/get_danhmuc', 'POST', {
-        id_danhmucs:'10003', nguon_dulieu:null, param_customize:provinceId,
-        listIdDanhMuc:[10003], menu_id:699161
-      });
-    }
+    response = await callApi('/app-com/danhmuc/get_danhmuc', 'POST', {
+      id_danhmucs:'10197', nguon_dulieu:null, param_customize:provinceId,
+      listIdDanhMuc:[10197], menu_id:SIM_SELF_REG_MENU_ID
+    });
     if (apiSucceeded(response)) {
       options = simAddressOptions(response,
         ['ID','id'], ['NAME','name']);
@@ -5491,10 +5591,8 @@ async function simLoadAddressLevel(level, {force=false}={}) {
 async function simLoadProvinceChildren() {
   const provinceId = String(document.getElementById('sim-customer-province-id')?.value || '').trim();
   if (!provinceId) return;
-  await Promise.all([
-    simLoadAddressLevel('district', {force:true}),
-    simLoadAddressLevel('ward', {force:true})
-  ]);
+  simResetAddressLevel('district', {disabled:true});
+  await simLoadAddressLevel('ward', {force:true});
 }
 
 async function simAddressSelectionChanged(level) {
@@ -5511,18 +5609,14 @@ async function simAddressSelectionChanged(level) {
     return;
   }
   if (level === 'district') {
-    ['ward','street','zone','hamlet','landmark'].forEach(child => simResetAddressLevel(child, {disabled:true}));
-    simComposeCustomerAddress();
-    if (document.getElementById('sim-customer-province-id')?.value) {
-      await simLoadAddressLevel('ward', {force:true});
-    }
+    simResetAddressLevel('district', {disabled:true});
     return;
   }
   if (level === 'ward') {
     ['street','zone','hamlet','landmark'].forEach(child => simResetAddressLevel(child, {disabled:true}));
     simComposeCustomerAddress();
     if (select.value) {
-      await Promise.all(['street','zone','hamlet','landmark'].map(child => simLoadAddressLevel(child, {force:true})));
+      await Promise.all(['street','zone','hamlet'].map(child => simLoadAddressLevel(child, {force:true})));
       simAddressStatus('Đã tải các danh sách địa chỉ con; chọn lần lượt và nhập Số nhà.');
     }
     return;
@@ -5597,9 +5691,11 @@ function simNullableId(id) {
 function simSubmitCustomer() {
   const name = String(document.getElementById('sim-customer-name')?.value || '').trim();
   const phone = String(document.getElementById('sim-customer-phone')?.value || '').replace(/\D/g, '');
+  const citizenId = String(document.getElementById('sim-customer-id')?.value || '').replace(/\D/g, '');
   const address = simComposeCustomerAddress();
   if (!name || !/^[\p{L}\s.'-]+$/u.test(name)) { showToast('Họ tên không hợp lệ'); return; }
   if (!/^\d{9,11}$/.test(phone) || !address) { showToast('Nhập đủ số điện thoại và địa chỉ'); return; }
+  if (!/^\d{8,20}$/.test(citizenId)) { showToast('Số giấy tờ phải có từ 8 đến 20 chữ số'); return; }
   if (!simWizardState.orderId) { showToast('Chưa có mã đơn hàng từ bước chọn số'); return; }
   if (!simNullableId('sim-customer-province-id') || !simNullableId('sim-customer-ward-id')) {
     showToast('Chọn Tỉnh/Thành phố và Phường/Xã có ID hợp lệ');
@@ -5609,7 +5705,7 @@ function simSubmitCustomer() {
     showToast('Chọn tên Tỉnh/Thành phố và Phường/Xã để tự ghép địa chỉ');
     return;
   }
-  if (!simWizardState.tttbMethodId) { showToast('Chọn hình thức đăng ký TTTB'); return; }
+  if (String(simWizardState.tttbMethodId) !== '2') { showToast('Đợt sửa này chỉ chạy hình thức Khách hàng tự đăng ký TTTB (ID 2)'); return; }
   simShowStep('sim-customer-confirm', true);
 }
 
@@ -5617,11 +5713,25 @@ async function simConfirmCustomer(confirmed) {
   if (!confirmed) { simShowStep('sim-customer-confirm', false); return; }
   const name = String(document.getElementById('sim-customer-name')?.value || '').trim();
   const phone = String(document.getElementById('sim-customer-phone')?.value || '').replace(/\D/g, '');
+  const citizenId = String(document.getElementById('sim-customer-id')?.value || '').replace(/\D/g, '');
   const address = simComposeCustomerAddress();
+  if (String(simWizardState.tttbMethodId) !== '2') {
+    simStepMessage('sim-customer-resp', 'Chỉ cho phép p_id_hinhthuc_dk_tttb=2 trong luồng đang sửa.', true);
+    return;
+  }
+  simStepMessage('sim-customer-resp', 'Đang kiểm tra số lượng thuê bao theo giấy tờ...');
+  const quantityCheck = await callApi(`${SIM_SELF_REG_PREFIX}/kiemtra_soluong_tb`, 'POST', {
+    pidnumber: citizenId,
+    menu_id: SIM_SELF_REG_MENU_ID
+  });
+  if (!apiSucceeded(quantityCheck)) {
+    simStepMessage('sim-customer-resp', apiFailureMessage(quantityCheck, 'Không kiểm tra được số lượng thuê bao theo giấy tờ'), true);
+    return;
+  }
   simStepMessage('sim-customer-resp', 'Đang ghi thông tin khách hàng vào đơn...');
-  const r = await simWizardCallMutation('/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3', {
+  const r = await simWizardCallMutation(`${SIM_SELF_REG_PREFIX}/nhap_thongtin_khachhang_v3`, {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
-    p_id_hinhthuc_dk_tttb: apiNumericOrText(simWizardState.tttbMethodId),
+    p_id_hinhthuc_dk_tttb: 2,
     p_ten_kh: name,
     p_so_dt_lh: phone,
     p_quan_id: simNullableId('sim-customer-district-id'),
@@ -5632,29 +5742,39 @@ async function simConfirmCustomer(confirmed) {
     p_sonha: String(document.getElementById('sim-customer-house')?.value || '').trim(),
     p_dacdiem_id: simNullableId('sim-customer-landmark-id'),
     p_diachi: address,
+    p_loai_giayto: null,
+    p_so_gt: citizenId,
     p_id_dhsk_kh: simWizardState.customerId ? apiNumericOrText(simWizardState.customerId) : null,
     p_diachi_id: simWizardState.addressId ? apiNumericOrText(simWizardState.addressId) : null,
     p_tinh_id: simNullableId('sim-customer-province-id'),
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   if (!apiSucceeded(r)) {
     simStepMessage('sim-customer-resp', simWizardMutationFailure(r, 'Nhập thông tin khách hàng thất bại'), true);
     return;
   }
-  simWizardState.customerId = String(findApiValue(apiBodyObject(r),
-    ['idDhskKh','id_dhsk_kh','p_id_dhsk_kh','customerId']) || simWizardState.customerId).trim();
-  simWizardState.orderId = extractOrderId(r) || simWizardState.orderId;
+  const customerState = simSelfRegState(r);
   simWizardState.addressId = String(findApiValue(apiBodyObject(r),
     ['addressId','diachi_id','p_diachi_id']) || simWizardState.addressId).trim();
-  if (!simWizardState.customerId || !simWizardState.addressId) {
-    simStepMessage('sim-customer-resp', 'API 200 nhưng không trả đủ id_dhsk_kh/diachi_id; dừng trước bước thanh toán.', true);
+  if (customerState.orderId !== String(simWizardState.orderId) ||
+      customerState.statusId !== '4' || customerState.registrationMethodId !== '2' ||
+      !simWizardState.addressId) {
+    simStepMessage('sim-customer-resp', 'API 200 nhưng chưa xác nhận đúng đơn, hình thức ID 2, trạng thái 4 và diachi_id; dừng để đối soát.', true);
     return;
   }
-  simWizardState.orderResponse = r;
-  simPopulateOrderOptions(r);
-  simStepMessage('sim-customer-resp', `Đã lưu khách hàng; đơn ${simWizardState.orderId} chuyển sang Thanh toán.`);
+  const step = await simReadSelfRegOrderStep(simWizardState.orderId);
+  if (!simCapturedStateMatches(step, simWizardState.orderId, '4') ||
+      simSelfRegState(step).registrationMethodId !== '2') {
+    simStepMessage('sim-customer-resp', 'Đã ghi khách hàng nhưng step_donhang_simkit chưa xác nhận trạng thái 4 – Khởi tạo. Dừng để đối soát, không gửi lại.', true);
+    return;
+  }
+  simWizardState.citizenId = citizenId;
+  simWizardState.orderResponse = step;
+  simPopulateOrderOptions(step);
+  simStepMessage('sim-customer-resp', `Đã lưu khách hàng và đối soát đơn ${simWizardState.orderId} ở trạng thái 4 – Khởi tạo.`);
   simShowStep('sim-customer-confirm', false);
-  simShowStep('sim-step-5', true);
+  simShowStep('sim-step-6', true);
+  document.getElementById('sim-step-6')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 async function simPrepareVnptWallet() {
@@ -5663,7 +5783,7 @@ async function simPrepareVnptWallet() {
   simRenderWalletBalance();
   simStepMessage('sim-payment-resp', 'Đang xác thực Ví VNPT Pay và kiểm tra số dư...');
   const r = await callApi('/app-thuno/VnptPay/kiemTraViVnptPay','POST', {
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   if (!apiSucceeded(r)) {
     simWizardState.walletBalanceLoading = false;
@@ -5695,9 +5815,32 @@ async function simPrepareVnptWallet() {
   return true;
 }
 
+async function simRefreshVnptWalletCredentials() {
+  const response = await callApi('/app-thuno/VnptPay/kiemTraViVnptPay', 'POST', {
+    menu_id: SIM_SELF_REG_MENU_ID
+  });
+  if (!apiSucceeded(response)) {
+    simStepMessage('sim-payment-resp', apiFailureMessage(response, 'Không làm mới được phiên Ví VNPT Pay trước thanh toán'), true);
+    return false;
+  }
+  const body = apiBodyObject(response);
+  const walletId = findApiValue(body, ['walletId','wallet_id']);
+  const walletAccountId = findApiValue(body, ['walletAccountId','wallet_account_id']);
+  const token = findApiValue(body, ['token','walletToken','wallet_token']);
+  if (!walletId || !walletAccountId || !token) {
+    simStepMessage('sim-payment-resp', 'API làm mới Ví VNPT Pay trả 200 nhưng thiếu walletId, walletAccountId hoặc token.', true);
+    return false;
+  }
+  simWizardState.walletId = walletId;
+  simWizardState.walletAccountId = walletAccountId;
+  simWizardState.tokenPay = token;
+  return true;
+}
+
 async function simContinuePayment() {
   if (simWizardState.paymentConfirmed) {
-    showToast('Đơn đã thanh toán; hãy nhập serial SIM trắng để kiểm tra trạng thái cuối');
+    showToast('Đơn đã thanh toán; hệ thống sẽ chỉ hoàn tất và đối soát, không trừ tiền lại');
+    await simCompletePaidOrder(simWizardState.paymentResponse);
     return;
   }
   if (!simWizardState.orderId) { showToast('Chưa có mã đơn hàng từ bước chọn số'); return; }
@@ -5740,14 +5883,13 @@ async function simConfirmPayment(confirmed) {
   if (!confirmed) { simShowStep('sim-payment-confirm', false); return; }
   if (simWizardState.paymentConfirmed) {
     simShowStep('sim-payment-confirm', false);
-    showToast('Đơn này đã thanh toán, không gửi lại giao dịch');
+    showToast('Đơn này đã thanh toán; đang tiếp tục hoàn tất/đối soát, không gửi lại giao dịch');
+    await simCompletePaidOrder(simWizardState.paymentResponse);
     return;
   }
+  simShowStep('sim-payment-confirm', false);
   if (!simWizardState.tokenPay || !simWizardState.walletId || !simWizardState.walletAccountId) {
     if (!await simPrepareVnptWallet()) return;
-  } else if (!await simLoadVnptBalance({announce:false})) {
-    simStepMessage('sim-payment-resp', simWizardState.walletBalanceError || 'Không kiểm tra lại được số dư VNPT Pay.', true);
-    return;
   }
   const requiredAmount = simPaymentTotal();
   if (!Number.isFinite(simWizardState.walletBalance) || simWizardState.walletBalance < requiredAmount) {
@@ -5759,8 +5901,12 @@ async function simConfirmPayment(confirmed) {
     simRenderWalletBalance();
     return;
   }
+  // Capture thật gọi kiemTraViVnptPay lần hai ngay trước khi trừ tiền và dùng
+  // walletToken mới trả về cho xacnhan_thanhtoan.
+  simStepMessage('sim-payment-resp', 'Đang làm mới phiên Ví VNPT Pay trước khi thanh toán...');
+  if (!await simRefreshVnptWalletCredentials()) return;
   simStepMessage('sim-payment-resp', 'Đang thanh toán qua Ví VNPT Pay...');
-  const r = await simWizardCallMutation('/app-banhang/donhang_simkit/xacnhan_thanhtoan', {
+  const r = await simWizardCallMutation(`${SIM_SELF_REG_PREFIX}/xacnhan_thanhtoan`, {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
     p_id_loai_sim: apiNumericOrText(document.getElementById('sim-type-id')?.value || '2'),
     p_id_hinhthuc_thanhtoan: 204,
@@ -5768,7 +5914,7 @@ async function simConfirmPayment(confirmed) {
     p_sendWalletId: apiNumericOrText(simWizardState.walletId),
     p_sendWalletAccountId: apiNumericOrText(simWizardState.walletAccountId),
     p_khoan_muc: simPaymentItems(),
-    menu_id: 699161
+    p_thongtin_hoadon: null
   }, 'json', {
     walletToken: simWizardState.tokenPay
   });
@@ -5776,27 +5922,99 @@ async function simConfirmPayment(confirmed) {
     simStepMessage('sim-payment-resp', simWizardMutationFailure(r, 'Xác nhận VNPT Pay thất bại'), true);
     return;
   }
+  const paidState = simSelfRegState(r);
+  if (paidState.orderId !== String(simWizardState.orderId) ||
+      paidState.statusId !== '7' || paidState.registrationMethodId !== '2' ||
+      paidState.paymentStatusId !== '1') {
+    simStepMessage('sim-payment-resp', 'API thanh toán trả 200 nhưng chưa xác nhận đúng đơn ở trạng thái 7, hình thức ID 2 và Đã thu tiền. Không gửi lại trước khi đối soát.', true);
+    simWizardState.mutationUncertain = true;
+    return;
+  }
   simWizardState.orderResponse = r;
   simWizardState.paymentResponse = r;
   simPopulateOrderOptions(r);
   simWizardState.paymentConfirmed = true;
-  simWizardState.subscriptionCreated = false;
   simWizardState.completed = false;
-  const paymentButton = document.getElementById('sim-payment-continue-btn');
-  if (paymentButton) {
-    paymentButton.disabled = true;
-    paymentButton.textContent = '✓ Đã thanh toán';
+  simRenderPaidSession(r, {badge:'ĐÃ THU TIỀN · ĐANG HOÀN TẤT'});
+  await simCompletePaidOrder(r);
+}
+
+function simTodayApiDate() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone:'Asia/Ho_Chi_Minh', year:'numeric', month:'2-digit', day:'2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.day}/${values.month}/${values.year}`;
+}
+
+async function simFindSelfRegOrderInHistory(orderId, accountId='') {
+  const today = simTodayApiDate();
+  const response = await callApi(`${SIM_SELF_REG_PREFIX}/listdsdonhang_v2`, 'POST', {
+    p_nguondon:'-1',
+    p_loaidon:'-1',
+    p_thoigian:`${today}|${today}`,
+    p_id_trangthai:'-1',
+    p_long:null,
+    p_lat:null,
+    p_id_hinhthuc_dk:-1,
+    p_id_thoigian_conlai:1,
+    p_loai_thuebao_id:21,
+    menu_id:SIM_SELF_REG_MENU_ID
+  }, 'json', {}, accountId);
+  if (!apiSucceeded(response)) return {response, row:null};
+  const body = apiBodyObject(response);
+  const rows = Array.isArray(body?.data) ? body.data : [];
+  const row = rows.find(item => String(simValue(item, ['id_donhang','ID_DONHANG']) || '') === String(orderId)) || null;
+  return {response, row};
+}
+
+function simSelfRegHistoryIsComplete(row, orderId, serial='') {
+  if (!row || String(simValue(row, ['id_donhang','ID_DONHANG']) || '') !== String(orderId)) return false;
+  const statusId = String(simValue(row, ['id_trangthai','ID_TRANGTHAI']) || '');
+  const paymentStatusId = String(simValue(row, ['id_trangthai_thanhtoan','ID_TRANGTHAI_THANHTOAN']) ?? '');
+  const initialized = String(simValue(row, ['trang_thai_khoitao','TRANG_THAI_KHOITAO','trangthai_khoitao']) ?? '');
+  const returnedSerial = String(simValue(row, ['so_sim','SO_SIM']) || '').replace(/\D/g, '');
+  return statusId === '7' && paymentStatusId === '1' && initialized === '1' &&
+    (!serial || returnedSerial === String(serial));
+}
+
+async function simCompletePaidOrder(paymentResponse=null) {
+  if (!simWizardState.paymentConfirmed) return false;
+  if (simWizardState.completed) return true;
+  simStepMessage('sim-payment-resp', 'Đã thu tiền. Đang hoàn tất đơn trả trước...');
+  const completion = await simWizardCallMutation(`${SIM_SELF_REG_PREFIX}/hoanthanh_donhang_tratruoc`, {
+    p_id_donhang:apiNumericOrText(simWizardState.orderId),
+    p_ma_donhang:'',
+    menu_id:SIM_SELF_REG_MENU_ID
+  });
+  if (!apiSucceeded(completion)) {
+    simStepMessage('sim-payment-resp', simWizardMutationFailure(completion, 'Thanh toán đã thành công nhưng API hoàn tất đơn thất bại'), true);
+    return false;
   }
-  await simLoadVnptBalance({announce:false});
-  const paidSerial = simRenderPaidSession(r);
-  simStepMessage('sim-payment-resp', 'Thanh toán Ví VNPT Pay thành công. Kết quả phiên vừa thanh toán đã được hiển thị tại Bước 5.');
-  simShowStep('sim-payment-confirm', false);
-  simShowStep('sim-step-6', true);
+  const completionCode = String(findApiValue(apiBodyObject(completion), ['res_code','RES_CODE']) ?? '');
+  if (completionCode !== '1') {
+    simStepMessage('sim-payment-resp', 'Thanh toán đã thành công nhưng OneBSS chưa trả res_code=1 cho bước hoàn tất. Không gửi lại thanh toán.', true);
+    return false;
+  }
+  simStepMessage('sim-payment-resp', 'Đã hoàn tất đơn. Đang đối soát trạng thái cuối trong lịch sử OneBSS...');
+  const history = await simFindSelfRegOrderInHistory(simWizardState.orderId);
+  const serial = String(document.getElementById('sim-blank-serial')?.value || '').replace(/\D/g, '');
+  if (!apiSucceeded(history.response) || !simSelfRegHistoryIsComplete(history.row, simWizardState.orderId, serial)) {
+    simStepMessage('sim-payment-resp', 'Đã thanh toán và gọi hoàn tất nhưng lịch sử chưa xác nhận đủ trạng thái 7 / Đã thu tiền / Đã khởi tạo. Không gửi lại giao dịch; bấm đối soát lại sau.', true);
+    const button = document.getElementById('sim-payment-continue-btn');
+    if (button) { button.disabled = false; button.textContent = 'Đối soát lại đơn đã thanh toán'; }
+    return false;
+  }
+  simWizardState.completed = true;
+  simWizardState.orderResponse = {status:200, body:{data:history.row, message:'Hoàn tất đơn hàng'}};
+  simRenderPaidSession(paymentResponse || simWizardState.orderResponse, {badge:'HOÀN TẤT · ĐÃ ĐỐI SOÁT'});
+  const paymentButton = document.getElementById('sim-payment-continue-btn');
+  if (paymentButton) { paymentButton.disabled = true; paymentButton.textContent = '✓ Đơn đã hoàn tất'; }
   const wizardNote = document.getElementById('sim-wizard-note');
-  if (wizardNote) wizardNote.textContent = paidSerial
-    ? 'OneBSS đã trả serial SIM trắng và hệ thống đã tự điền. Bấm “Kiểm tra SIM và khởi tạo thuê bao” để hoàn tất.'
-    : 'Phiên vừa thanh toán đã hiển thị ở Bước 5. OneBSS chưa trả serial SIM trắng, hãy nhập MSIN để kiểm tra trạng thái cuối.';
-  document.getElementById('sim-step-6')?.scrollIntoView({behavior:'smooth', block:'start'});
+  if (wizardNote) wizardNote.textContent = 'OneBSS đã xác nhận đơn hoàn tất, đã thu tiền và SIM đã khởi tạo.';
+  simStepMessage('sim-payment-resp', `Hoàn tất đơn ${simWizardState.orderId}: VNPT Pay đã thu tiền và lịch sử OneBSS đã xác nhận SIM khởi tạo thành công.`);
+  window._simHistoryLoaded = false;
+  return true;
 }
 
 function simRenderPaidSession(response, options={}) {
@@ -5852,83 +6070,149 @@ function simRenderPaidSession(response, options={}) {
   return serial;
 }
 
+function simRenderPaymentPending(response) {
+  const target = document.getElementById('sim-paid-session-result');
+  if (!target) return;
+  const state = simSelfRegState(response);
+  const amountValue = Number(simValue(state.data, ['thanh_tien','THANH_TIEN']) || 0);
+  const amount = Number.isFinite(amountValue) ? `${amountValue.toLocaleString('vi-VN')} đ` : '--';
+  const rows = [
+    ['ID đơn hàng', state.orderId || simWizardState.orderId || '--'],
+    ['Mã giao dịch / billNumber', state.billNumber || simWizardState.billNumber || '--'],
+    ['Trạng thái đơn', `${state.statusId || '--'} – ${state.statusName || '--'}`],
+    ['Hình thức ĐKTTB', '2 – Khách hàng tự đăng ký TTTB'],
+    ['Serial SIM', state.serial || '--'],
+    ['Số tiền', amount],
+    ['Trạng thái thanh toán', `${state.paymentStatusId || '0'} – ${state.paymentStatusName || 'Chưa thu tiền'}`],
+    ['Bước tiếp theo', 'Xác thực ví và thanh toán VNPT Pay']
+  ];
+  target.innerHTML = `
+    <div style="font-weight:700;color:#fde68a;margin-bottom:10px">ĐÃ CHUYỂN SANG THANH TOÁN – CHƯA THU TIỀN</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px">
+      ${rows.map(([label, item]) => `<div style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg3)"><div style="color:var(--text3);font-size:10px;text-transform:uppercase;margin-bottom:3px">${simEsc(label)}</div><div style="color:var(--text1);font-weight:600;overflow-wrap:anywhere">${simEsc(item)}</div></div>`).join('')}
+    </div>`;
+  target.style.display = '';
+  target.style.borderColor = 'rgba(248,166,49,.45)';
+  target.style.background = 'rgba(248,166,49,.07)';
+  const summary = document.getElementById('sim-payment-summary');
+  if (summary) summary.textContent = `Đơn ${state.orderId || simWizardState.orderId} · ${state.paymentStatusName || 'Chưa thu tiền'} · sẵn sàng kiểm tra ví và thanh toán VNPT Pay.`;
+}
+
+async function simCheckPaymentReadiness() {
+  if (!simWizardState.orderId || !simWizardState.subscriptionCreated) {
+    showToast('Đơn chưa hoàn tất bước khởi tạo SIM');
+    return false;
+  }
+  if (simWizardState.completed) {
+    showToast('Đơn đã hoàn tất và đối soát thành công');
+    return true;
+  }
+  if (simWizardState.paymentConfirmed) {
+    return simCompletePaidOrder(simWizardState.paymentResponse);
+  }
+  simStepMessage('sim-payment-resp', 'Đang đối soát đơn trước thanh toán...');
+  const beforeCheck = await simReadSelfRegOrderStep(simWizardState.orderId);
+  if (!apiSucceeded(beforeCheck)) {
+    simStepMessage('sim-payment-resp', apiFailureMessage(beforeCheck, 'Không đọc được bước hiện tại của đơn'), true);
+    return false;
+  }
+  const beforeState = simSelfRegState(beforeCheck);
+  if (beforeState.orderId !== String(simWizardState.orderId) || beforeState.registrationMethodId !== '2') {
+    simStepMessage('sim-payment-resp', 'Đơn không khớp ID hoặc không còn là hình thức Khách hàng tự đăng ký TTTB (ID 2).', true);
+    return false;
+  }
+  if (beforeState.statusId === '7' && beforeState.paymentStatusId === '1') {
+    simWizardState.paymentConfirmed = true;
+    simWizardState.paymentResponse = beforeCheck;
+    simRenderPaidSession(beforeCheck, {badge:'ĐÃ THU TIỀN · ĐANG ĐỐI SOÁT'});
+    return simCompletePaidOrder(beforeCheck);
+  }
+  if (beforeState.statusId !== '6' || beforeState.paymentStatusId !== '0') {
+    simStepMessage('sim-payment-resp', `Đơn đang ở trạng thái ${beforeState.statusId || '--'} / thanh toán ${beforeState.paymentStatusId || '--'}, không khớp bước 6 – Chưa thu tiền.`, true);
+    return false;
+  }
+  simWizardState.orderResponse = beforeCheck;
+  simWizardState.billNumber = beforeState.billNumber || simWizardState.billNumber;
+  simRenderPaymentPending(beforeCheck);
+  await simContinuePayment();
+  return true;
+}
+
 async function simCheckSimStatus() {
-  if (!simWizardState.paymentConfirmed) { showToast('Chưa xác nhận thanh toán VNPT Pay'); return; }
-  if (simWizardState.completed) { showToast('Luồng đơn hàng này đã hoàn tất'); return; }
+  if (simWizardState.subscriptionCreated) { showToast('SIM đã được khởi tạo; chuyển sang kiểm tra trạng thái thanh toán'); return; }
   const serial = String(document.getElementById('sim-blank-serial')?.value || '').replace(/\D/g, '');
   if (!/^\d{8,22}$/.test(serial)) { showToast('Serial SIM trắng không hợp lệ'); return; }
-  if (!String(simWizardState.orderId || '').trim()) { showToast('Không có ID đơn hàng vừa thanh toán'); return; }
+  if (!String(simWizardState.orderId || '').trim()) { showToast('Không có ID đơn hàng ở bước Khởi tạo'); return; }
   const button = document.getElementById('sim-status-check-btn');
   if (button) {
     button.disabled = true;
     button.textContent = 'Đang kiểm tra...';
   }
-  simStepMessage('sim-init-resp', 'Đang kiểm tra trạng thái SIM trắng trên OneBSS...');
-  const r = await callApi('/ccbs/chonSo/checkSimStatus','GET', {so_msin: serial});
-  if (!apiSucceeded(r)) {
-    simStepMessage('sim-init-resp', apiFailureMessage(r, 'Kiểm tra trạng thái SIM trắng thất bại'), true);
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Kiểm tra lại trạng thái';
-    }
+  simStepMessage('sim-init-resp', 'Đang kiểm tra quyền KHOITAOTB...');
+  const permission = await callApi('/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', 'POST', {
+    ma_quyen: 'KHOITAOTB',
+    menu_id: SIM_SELF_REG_MENU_ID
+  });
+  const permissionStatus = String(findApiValue(apiBodyObject(permission), ['status']) || '').trim();
+  if (!apiSucceeded(permission) || permissionStatus !== '1') {
+    simStepMessage('sim-init-resp', apiFailureMessage(permission, 'Tài khoản không có quyền KHOITAOTB'), true);
+    if (button) { button.disabled = false; button.textContent = 'Kiểm tra lại quyền và SIM'; }
     return;
   }
-  const statusValue = String(findApiValue(apiBodyObject(r), ['data']) || '').trim();
+  simStepMessage('sim-init-resp', 'Đã có quyền KHOITAOTB. Đang kiểm tra trạng thái SIM trắng...');
+  const checked = await callApi('/ccbs/chonSo/checkSimStatus','GET', {so_msin: serial});
+  if (!apiSucceeded(checked)) {
+    simStepMessage('sim-init-resp', apiFailureMessage(checked, 'Kiểm tra trạng thái SIM trắng thất bại'), true);
+    if (button) { button.disabled = false; button.textContent = 'Kiểm tra lại trạng thái'; }
+    return;
+  }
+  const statusValue = String(findApiValue(apiBodyObject(checked), ['data']) || '').trim();
   if (statusValue !== '1') {
     simStepMessage('sim-init-resp', `SIM trắng chưa đủ điều kiện khởi tạo thuê bao (data=${statusValue || 'rỗng'}).`, true);
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Kiểm tra lại SIM';
-    }
+    if (button) { button.disabled = false; button.textContent = 'Kiểm tra lại SIM'; }
     return;
   }
   simStepMessage('sim-init-resp', `SIM ${serial} hợp lệ. Đang khởi tạo thuê bao cho đơn ${simWizardState.orderId}...`);
-  const initialized = await simWizardCallMutation('/app-banhang/donhang_simkit/khoitao_thuebao', {
+  const initialized = await simWizardCallMutation(`${SIM_SELF_REG_PREFIX}/khoitao_thuebao`, {
     p_id_donhang: apiNumericOrText(simWizardState.orderId),
-    p_loai_sim: apiNumericOrText(document.getElementById('sim-type-id')?.value || '2'),
+    p_loai_sim: 2,
     p_so_sim: serial,
     p_ma_xacthuc: '',
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   if (!apiSucceeded(initialized)) {
     simStepMessage('sim-init-resp', simWizardMutationFailure(initialized, 'Khởi tạo thuê bao thất bại'), true);
     if (button) {
       button.disabled = simWizardState.mutationUncertain;
-      button.textContent = simWizardState.mutationUncertain
-        ? 'Cần đối soát trước khi thao tác tiếp'
-        : 'Thử lại khởi tạo thuê bao';
+      button.textContent = simWizardState.mutationUncertain ? 'Cần đối soát trước khi thao tác tiếp' : 'Thử lại khởi tạo thuê bao';
     }
     return;
   }
-  const initializedBody = apiBodyObject(initialized);
-  const initializedData = initializedBody?.data && typeof initializedBody.data === 'object'
-    ? initializedBody.data
-    : null;
-  const returnedOrderId = String(simValue(initializedData, ['id_donhang','ID_DONHANG']) || '').trim();
-  const returnedSerial = String(simValue(initializedData, ['so_sim','SO_SIM','so_msin','SO_MSIN']) || '').replace(/\D/g, '');
-  if (!initializedData || returnedOrderId !== String(simWizardState.orderId) || returnedSerial !== serial) {
-    simStepMessage('sim-init-resp', 'OneBSS đã phản hồi nhưng chưa xác nhận đúng ID đơn hàng và serial SIM; luồng chưa được đánh dấu hoàn tất.', true);
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Kiểm tra lại kết quả khởi tạo';
-    }
+  const initializedState = simSelfRegState(initialized);
+  if (initializedState.orderId !== String(simWizardState.orderId) ||
+      initializedState.serial !== serial || initializedState.statusId !== '6' ||
+      initializedState.registrationMethodId !== '2') {
+    simStepMessage('sim-init-resp', 'OneBSS chưa xác nhận đúng đơn, serial, hình thức ID 2 và trạng thái 6 – Thanh toán; dừng để đối soát.', true);
+    if (button) { button.disabled = false; button.textContent = 'Kiểm tra lại kết quả khởi tạo'; }
     return;
   }
   simWizardState.orderResponse = initialized;
+  simWizardState.billNumber = initializedState.billNumber;
   simWizardState.subscriptionCreated = true;
-  simWizardState.completed = true;
+  simWizardState.paymentConfirmed = false;
+  simWizardState.completed = false;
   simPopulateOrderOptions(initialized);
-  simRenderPaidSession(initialized, {
-    message: 'Khởi tạo thuê bao thành công',
-    badge: 'ĐÃ KHỞI TẠO THUÊ BAO'
-  });
   const serialInput = document.getElementById('sim-blank-serial');
   if (serialInput) serialInput.disabled = true;
-  if (button) button.textContent = '✓ Đã hoàn tất';
-  simStepMessage('sim-init-resp', `Hoàn tất đơn ${simWizardState.orderId}: thanh toán thành công, SIM ${serial} hợp lệ và thuê bao đã được khởi tạo.`);
+  if (button) button.textContent = '✓ Đã chuyển sang Thanh toán';
+  simStepMessage('sim-init-resp', `Đã khởi tạo SIM ${serial}; đơn ${simWizardState.orderId} chuyển sang trạng thái 6 – Thanh toán, hiện chưa thu tiền.`);
+  simShowStep('sim-step-5', true);
   const wizardNote = document.getElementById('sim-wizard-note');
-  if (wizardNote) wizardNote.textContent = 'Luồng đã hoàn tất: thanh toán thành công và API khởi tạo thuê bao đã xác nhận đúng serial SIM.';
-  await simLoadOrderHistory({force:true});
+  if (wizardNote) wizardNote.textContent = 'Đã khởi tạo SIM. Kiểm tra số dư và xác nhận để thanh toán VNPT Pay, sau đó hệ thống sẽ hoàn tất và đối soát đơn.';
+  const paymentButton = document.getElementById('sim-payment-continue-btn');
+  if (paymentButton) { paymentButton.disabled = false; paymentButton.textContent = 'Thanh toán VNPT Pay'; }
+  simRenderPaymentPending(initialized);
+  document.getElementById('sim-step-5')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 // ── Khởi tạo SIM hàng loạt từ Excel ──────────────────────────────────────
@@ -6142,16 +6426,36 @@ function simBatchNormalizeMsisdn(value) {
   return '';
 }
 
+function simBatchSearchParts(value) {
+  const normalized = simBatchNormalizeMsisdn(value);
+  const nationalNumber = normalized.replace(/^84/, '0');
+  // search_isdn_shop_mid nhận đầu số theo dạng mã nước. Request thật:
+  // 84835393226 -> p_prefix=8483, p_isdn=5393226.
+  const prefix = normalized.slice(0, -7);
+  const suffix = normalized.slice(-7);
+  if (!/^84\d{2}$/.test(prefix) || !/^\d{7}$/.test(suffix)) {
+    const error = new Error(`Không tách được đầu số hợp lệ từ SĐT ${nationalNumber || value}`);
+    error.lookupFailure = true;
+    throw error;
+  }
+  return {normalized, nationalNumber, prefix, suffix};
+}
+
 function simBatchNormalizeSerial(value) {
   const digits = String(value ?? '').replace(/\D/g, '');
   return /^\d{8,22}$/.test(digits) ? digits : '';
+}
+
+function simBatchNormalizeCitizenId(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return /^\d{8,20}$/.test(digits) ? digits : '';
 }
 
 function simBatchRenderDistricts(options) {
   const select = document.getElementById('sim-batch-district');
   if (!select) return;
   const oldValue = String(select.value || simBatchState.districtId || '');
-  select.innerHTML = '<option value="">-- Chọn Quận/Huyện cố định --</option>' +
+  select.innerHTML = '<option value="">-- Chọn Phường/Xã cố định --</option>' +
     options.map(option => `<option value="${simEsc(option.id)}" data-name="${simEsc(option.name)}">${simEsc(option.name)}</option>`).join('');
   if (oldValue && options.some(option => option.id === oldValue)) select.value = oldValue;
   select.disabled = simBatchState.running || !options.length;
@@ -6167,14 +6471,14 @@ async function simBatchLoadDistricts({force=false}={}) {
   if (!select) return false;
   simBatchState.districtLoading = true;
   select.disabled = true;
-  select.innerHTML = '<option value="">-- Đang tải Quận/Huyện từ OneBSS... --</option>';
+  select.innerHTML = '<option value="">-- Đang tải Phường/Xã từ OneBSS... --</option>';
   try {
     const response = await callApi('/app-com/danhmuc/get_danhmuc', 'POST', {
-      id_danhmucs: '10002',
+      id_danhmucs: '10197',
       nguon_dulieu: null,
       param_customize: '28',
-      listIdDanhMuc: [10002],
-      menu_id: 699161
+      listIdDanhMuc: [10197],
+      menu_id: SIM_SELF_REG_MENU_ID
     });
     const options = apiSucceeded(response)
       ? simAddressOptions(response, ['ID','id'], ['NAME','name','EXT_INFO','ext_info'])
@@ -6182,7 +6486,7 @@ async function simBatchLoadDistricts({force=false}={}) {
     simBatchState.districtOptions = options;
     simBatchRenderDistricts(options);
     if (!options.length) {
-      select.innerHTML = '<option value="">-- OneBSS không trả danh sách Quận/Huyện --</option>';
+      select.innerHTML = '<option value="">-- OneBSS không trả danh sách Phường/Xã --</option>';
     }
     return options.length > 0;
   } finally {
@@ -6192,14 +6496,16 @@ async function simBatchLoadDistricts({force=false}={}) {
 }
 
 function simBatchChooseFile() {
+  if (!SIM_SELF_REG_BATCH_ENABLED) { showToast('Batch ID 2 đang tạm khóa cho tới khi có capture thanh toán hoàn tất'); return; }
   if (simBatchState.running) { showToast('Đang xử lý một file Excel'); return; }
   if (!simBatchSelectedAccounts().length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
   const district = document.getElementById('sim-batch-district');
-  if (!district?.value) { showToast('Chọn Quận/Huyện cố định trước khi import'); return; }
+  if (!district?.value) { showToast('Chọn Phường/Xã cố định trước khi import'); return; }
   document.getElementById('sim-batch-file')?.click();
 }
 
 function simBatchChooseTxtFile(kind) {
+  if (!SIM_SELF_REG_BATCH_ENABLED) { showToast('Batch ID 2 đang tạm khóa cho tới khi có capture thanh toán hoàn tất'); return; }
   if (simBatchState.running) { showToast('Đang xử lý danh sách SIM'); return; }
   const id = kind === 'serial' ? 'sim-batch-serial-file' : 'sim-batch-sdt-file';
   document.getElementById(id)?.click();
@@ -6227,6 +6533,7 @@ function simBatchTxtLines(text) {
 }
 
 async function simBatchStartTxtFiles() {
+  if (!SIM_SELF_REG_BATCH_ENABLED) { showToast('Batch ID 2 đang tạm khóa cho tới khi có capture thanh toán hoàn tất'); return; }
   if (!simBatchState.sdtFile || !simBatchState.serialFile) {
     showToast('Chọn đủ TXT SĐT và TXT serial trước khi chạy');
     return;
@@ -6248,7 +6555,7 @@ async function simBatchStartTxtFiles() {
 async function simBatchPrepareTxtRun(sdtLines, serialLines, sdtName, serialName) {
   if (simBatchState.running) throw new Error('Đang có batch Đơn hàng SIM chạy');
   const districtSelect = document.getElementById('sim-batch-district');
-  if (!districtSelect?.value) throw new Error('Chọn Quận/Huyện cố định trước khi chạy');
+  if (!districtSelect?.value) throw new Error('Chọn Phường/Xã cố định trước khi chạy');
   const tttbSelect = document.getElementById('sim-batch-tttb-method');
   if (!tttbSelect?.value) throw new Error('Chọn hình thức đăng ký ĐKTTTB trước khi chạy');
   const selectedAccounts = simBatchSelectedAccounts();
@@ -6304,6 +6611,7 @@ async function simBatchPrepareTxtRun(sdtLines, serialLines, sdtName, serialName)
   simBatchState.serialItems = serialItems;
   simBatchState.phoneColumn = 0;
   simBatchState.serialColumn = 1;
+  simBatchState.citizenIdColumn = 2;
   simBatchState.user = selectedAccounts.map(account => account.username).join(', ');
   simBatchState.selectedAccounts = selectedAccounts.map(account => ({...account}));
   simBatchState.districtId = districtSelect.value;
@@ -6318,11 +6626,11 @@ async function simBatchPrepareTxtRun(sdtLines, serialLines, sdtName, serialName)
   const confirmed = window.confirm(
     `Tra kho ${validCount} SĐT trước, sau đó gán tối đa ${serialItems.length} serial từ trên xuống?\n` +
     `SĐT không tìm thấy sẽ không tiêu thụ serial.\n\n` +
-    `TP Hồ Chí Minh → ${simBatchState.districtName}\n` +
+    `TP Hồ Chí Minh → Phường/Xã ${simBatchState.districtName}\n` +
     `Hình thức ĐKTTTB: ${simBatchState.tttbMethodName}\n` +
     `Tài khoản: ${selectedAccounts.map(account => account.username).join(', ')}\n` +
     `TXT SĐT: ${sdtName}\nTXT serial: ${serialName}\n\n` +
-    `Các số tìm thấy sẽ tạo đơn thật, thanh toán VNPT Pay và khởi tạo thuê bao.`
+      `Các số tìm thấy sẽ tạo đơn thật, khởi tạo thuê bao, thanh toán VNPT Pay và đối soát hoàn tất.`
   );
   if (!confirmed) {
     simBatchSetStatus(`Đã đọc ${rows.length} SĐT và ${serialItems.length} serial; chưa chạy vì chưa xác nhận.`);
@@ -6367,10 +6675,11 @@ async function simBatchOpenFile(type) {
 }
 
 async function simBatchRunDefaultInput() {
+  if (!SIM_SELF_REG_BATCH_ENABLED) { showToast('Batch ID 2 đang tạm khóa cho tới khi có capture thanh toán hoàn tất'); return; }
   if (simBatchState.running) { showToast('Đang xử lý một file Excel'); return; }
   if (!simBatchSelectedAccounts().length) { showToast('Chọn ít nhất một tài khoản chạy'); return; }
   const district = document.getElementById('sim-batch-district');
-  if (!district?.value) { showToast('Chọn Quận/Huyện cố định trước khi chạy'); return; }
+  if (!district?.value) { showToast('Chọn Phường/Xã cố định trước khi chạy'); return; }
   if (typeof XLSX === 'undefined') { showToast('SheetJS chưa tải xong, hãy thử lại'); return; }
   try {
     const response = await fetch('/api/sim-batch/read-input');
@@ -6421,10 +6730,12 @@ function simBatchSetRunning(running) {
   const walletRefreshButton = document.getElementById('sim-batch-wallet-refresh');
   if (district) district.disabled = running || !simBatchState.districtOptions.length;
   if (importButton) {
-    importButton.disabled = running;
-    importButton.textContent = running ? 'Đang chạy Excel...' : 'Chọn Excel và chạy tự động';
+    importButton.disabled = running || !SIM_SELF_REG_BATCH_ENABLED;
+    importButton.textContent = running
+      ? 'Đang chạy Excel...'
+      : (SIM_SELF_REG_BATCH_ENABLED ? 'Chọn Excel và chạy tự động' : 'Chờ capture thanh toán hoàn tất');
   }
-  if (defaultButton) defaultButton.disabled = running;
+  if (defaultButton) defaultButton.disabled = running || !SIM_SELF_REG_BATCH_ENABLED;
   if (openInputButton) openInputButton.disabled = running;
   if (openOutputButton) openOutputButton.disabled = running;
   if (openRunButton) openRunButton.disabled = running || !simBatchState.runOutputPath;
@@ -6490,6 +6801,7 @@ function simBatchResetRunSession() {
 }
 
 function simBatchContinueRun() {
+  if (!SIM_SELF_REG_BATCH_ENABLED) { showToast('Batch ID 2 đang tạm khóa cho tới khi có capture thanh toán hoàn tất'); return; }
   if (simBatchState.running) return;
   const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt);
   if (!simBatchState.paused || !simBatchState.runOutputPath || !remaining.length) {
@@ -6524,23 +6836,40 @@ function simBatchDetectColumns(rawRows) {
   const keys = first.map(simBatchHeaderKey);
   const phoneNames = ['sdt','so dt','so dien thoai','so thue bao','msisdn','so tb'];
   const serialNames = ['serial','serial sim','so sim','sim serial','msin','so msin'];
+  const citizenIdNames = ['cccd','cmnd','cccd cmnd','so cccd','so cmnd','can cuoc','can cuoc cong dan','so can cuoc','so giay to','p so gt','pidnumber'];
   let phoneColumn = keys.findIndex(key => phoneNames.includes(key));
   let serialColumn = keys.findIndex(key => serialNames.includes(key));
-  const firstLooksLikeData = Boolean(simBatchNormalizeMsisdn(first[0]) && simBatchNormalizeSerial(first[1]));
-  const hasHeader = phoneColumn >= 0 || serialColumn >= 0 || !firstLooksLikeData;
+  let citizenIdColumn = keys.findIndex(key => citizenIdNames.includes(key));
+  const detected = {
+    phone: phoneColumn >= 0,
+    serial: serialColumn >= 0,
+    citizenId: citizenIdColumn >= 0,
+  };
+  const firstLooksLikeData = Boolean(
+    simBatchNormalizeMsisdn(first[0]) &&
+    simBatchNormalizeSerial(first[1]) &&
+    simBatchNormalizeCitizenId(first[2])
+  );
+  const hasHeader = detected.phone || detected.serial || detected.citizenId || !firstLooksLikeData;
   if (phoneColumn < 0) phoneColumn = 0;
   if (serialColumn < 0) serialColumn = 1;
-  return {phoneColumn, serialColumn, hasHeader};
+  if (citizenIdColumn < 0) citizenIdColumn = 2;
+  return {phoneColumn, serialColumn, citizenIdColumn, hasHeader, detected};
 }
 
 async function simBatchImportFile(input) {
+  if (!SIM_SELF_REG_BATCH_ENABLED) {
+    if (input) input.value = '';
+    showToast('Batch ID 2 đang tạm khóa cho tới khi có capture thanh toán hoàn tất');
+    return;
+  }
   const file = input.files?.[0];
   if (!file) return;
   input.value = '';
   if (simBatchState.running) { showToast('Đang có batch Đơn hàng SIM chạy'); return; }
   if (typeof XLSX === 'undefined') { showToast('SheetJS chưa tải xong, hãy thử lại'); return; }
   const districtSelect = document.getElementById('sim-batch-district');
-  if (!districtSelect?.value) { showToast('Chọn Quận/Huyện cố định trước khi import'); return; }
+  if (!districtSelect?.value) { showToast('Chọn Phường/Xã cố định trước khi import'); return; }
   const tttbSelect = document.getElementById('sim-batch-tttb-method');
   if (!tttbSelect?.value) { showToast('Chọn hình thức đăng ký ĐKTTTB trước khi import'); return; }
   const delayInput = document.getElementById('sim-batch-delay');
@@ -6560,11 +6889,18 @@ async function simBatchImportFile(input) {
       .filter(row => row.some(value => String(value ?? '').trim()));
     if (!rawRows.length) throw new Error('File Excel không có dữ liệu');
     const columns = simBatchDetectColumns(rawRows);
+    if (columns.hasHeader) {
+      const missing = [];
+      if (!columns.detected.phone) missing.push('SĐT');
+      if (!columns.detected.serial) missing.push('Serial SIM');
+      if (!columns.detected.citizenId) missing.push('CCCD');
+      if (missing.length) throw new Error(`Thiếu cột bắt buộc: ${missing.join(', ')}`);
+    }
     const dataRows = rawRows.slice(columns.hasHeader ? 1 : 0);
-    const width = Math.max(2, ...rawRows.map(row => row.length));
+    const width = Math.max(3, ...rawRows.map(row => row.length));
     const headers = columns.hasHeader
       ? Array.from({length:width}, (_, index) => String(rawRows[0]?.[index] || `Cột ${index + 1}`))
-      : Array.from({length:width}, (_, index) => index === 0 ? 'SĐT' : (index === 1 ? 'Serial SIM' : `Cột ${index + 1}`));
+      : Array.from({length:width}, (_, index) => index === 0 ? 'SĐT' : (index === 1 ? 'Serial SIM' : (index === 2 ? 'CCCD' : `Cột ${index + 1}`)));
     const user = selectedAccounts.map(account => account.username).join(', ');
     const seenSerials = new Set();
     const serialItems = dataRows
@@ -6584,17 +6920,22 @@ async function simBatchImportFile(input) {
       const rawSdt = String(original[columns.phoneColumn] ?? '').trim();
       if (!rawSdt) return null;
       const msisdn = simBatchNormalizeMsisdn(rawSdt);
-      const valid = Boolean(msisdn);
+      const rawCitizenId = String(original[columns.citizenIdColumn] ?? '').trim();
+      const citizenId = simBatchNormalizeCitizenId(rawCitizenId);
+      const validationErrors = [];
+      if (!msisdn) validationErrors.push('SĐT không hợp lệ');
+      if (!citizenId) validationErrors.push(rawCitizenId ? 'CCCD phải có 8–20 chữ số' : 'Thiếu CCCD');
+      const valid = validationErrors.length === 0;
       // Serial ở cùng dòng chỉ thuộc hàng đợi serial độc lập. Xóa khỏi bản
       // ghi SĐT để output chỉ hiện serial thực tế được ghép sau khi tra kho.
       original[columns.serialColumn] = '';
       return {
         excelRow: index + (columns.hasHeader ? 2 : 1),
-        original, msisdn, serial:'', valid,
+        original, msisdn, serial:'', citizenId, valid,
         status: valid ? 'pending' : 'error',
-        stage: valid ? 'Chờ tra kho' : 'Dữ liệu SĐT không hợp lệ',
+        stage: valid ? 'Chờ tra kho' : validationErrors.join(' · '),
         bucket: valid ? '' : 'not_found',
-        result: valid ? '' : 'SĐT KHÔNG TÌM THẤY | SĐT không hợp lệ',
+        result: valid ? '' : `DỮ LIỆU KHÔNG HỢP LỆ | ${validationErrors.join('; ')}`,
         finishedAt: valid ? '' : new Date().toLocaleString('vi-VN', {hour12:false}),
         user: valid ? selectedAccounts[index % selectedAccounts.length].username : '--',
         found:false, selectedNumber:null
@@ -6622,6 +6963,7 @@ async function simBatchImportFile(input) {
     simBatchState.serialItems = serialItems;
     simBatchState.phoneColumn = columns.phoneColumn;
     simBatchState.serialColumn = columns.serialColumn;
+    simBatchState.citizenIdColumn = columns.citizenIdColumn;
     simBatchState.user = user;
     simBatchState.selectedAccounts = selectedAccounts.map(account => ({...account}));
     simBatchState.districtId = districtSelect.value;
@@ -6634,11 +6976,11 @@ async function simBatchImportFile(input) {
     const validCount = rows.filter(row => row.valid).length;
     const confirmed = window.confirm(
       `Chạy thật ${validCount} dòng bằng Ví VNPT Pay?\n` +
-      `TP Hồ Chí Minh → ${simBatchState.districtName}\n` +
+      `TP Hồ Chí Minh → Phường/Xã ${simBatchState.districtName}\n` +
       `Hình thức ĐKTTTB: ${simBatchState.tttbMethodName}\n` +
       `Tài khoản: ${selectedAccounts.map(account => `${account.username} (1 luồng)`).join(', ')}\n` +
       `Dữ liệu được chia đều cho ${selectedAccounts.length} tài khoản = ${selectedAccounts.length} luồng độc lập; mỗi tài khoản vẫn xử lý tuần tự.\n` +
-      `Chờ ${delaySeconds} giây giữa hai số liên tiếp của cùng một tài khoản.\n\nMỗi dòng sẽ tự tạo đơn, thanh toán và khởi tạo thuê bao.`
+      `Chờ ${delaySeconds} giây giữa hai số liên tiếp của cùng một tài khoản.\n\nMỗi dòng sẽ tự tạo đơn, khởi tạo SIM, thanh toán, hoàn tất và đối soát lịch sử.`
     );
     if (!confirmed) {
       simBatchSetStatus(`Đã đọc ${rows.length} dòng; chưa chạy vì người dùng chưa xác nhận.`);
@@ -6662,12 +7004,12 @@ function simBatchRenderTable() {
   target.style.display = '';
   const rowsHtml = simBatchState.rows.map((row, index) => {
     const color = row.status === 'success' ? '#86efac' : (row.status === 'unused' ? '#f0b429' : (row.status === 'error' ? '#fca5a5' : (row.status === 'running' ? 'var(--accent)' : 'var(--text2)')));
-    return `<tr data-batch-index="${index}" data-batch-running="${row.status === 'running' ? '1' : '0'}"><td>${row.excelRow}</td><td><b>${simEsc(row.msisdn || row.original[simBatchState.phoneColumn])}</b></td><td class="mono">${simEsc(row.serial || row.original[simBatchState.serialColumn])}</td><td style="color:${color};min-width:300px">${simEsc(row.result || row.stage)}</td><td>${simEsc(row.finishedAt || '--')}</td><td>${simEsc(row.user)}</td></tr>`;
+    return `<tr data-batch-index="${index}" data-batch-running="${row.status === 'running' ? '1' : '0'}"><td>${row.excelRow}</td><td><b>${simEsc(row.msisdn || row.original[simBatchState.phoneColumn])}</b></td><td class="mono">${simEsc(row.serial || row.original[simBatchState.serialColumn])}</td><td class="mono">${simEsc(row.citizenId || row.original[simBatchState.citizenIdColumn])}</td><td style="color:${color};min-width:300px">${simEsc(row.result || row.stage)}</td><td>${simEsc(row.finishedAt || '--')}</td><td>${simEsc(row.user)}</td></tr>`;
   }).join('');
   let scroller = target.querySelector('[data-sim-batch-scroll]');
   let body = scroller?.querySelector('tbody');
   if (!scroller || !body) {
-    target.innerHTML = `<div data-sim-batch-scroll style="max-height:330px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table class="result-table"><thead><tr><th>Dòng</th><th>SĐT</th><th>Serial SIM</th><th>Kết quả / tiến trình</th><th>Thời gian</th><th>User chạy</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    target.innerHTML = `<div data-sim-batch-scroll style="max-height:330px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table class="result-table"><thead><tr><th>Dòng</th><th>SĐT</th><th>Serial SIM</th><th>CCCD</th><th>Kết quả / tiến trình</th><th>Thời gian</th><th>User chạy</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
     scroller = target.querySelector('[data-sim-batch-scroll]');
   } else {
     // Chỉ thay tbody để không dựng lại khung cuộn và nhảy về dòng đầu.
@@ -6795,7 +7137,7 @@ function simBatchAppendUnusedSerialRows(startIndex, reason='Đã hết SĐT đ�
     const serialPosition = firstUnused + offset + 1;
     if (existingPositions.has(serialPosition)) return;
     const serial = String(serialItem?.serial || serialItem?.raw || '').trim();
-    const original = Array.from({length:Math.max(simBatchState.phoneColumn, simBatchState.serialColumn) + 1}, () => '');
+    const original = Array.from({length:Math.max(simBatchState.phoneColumn, simBatchState.serialColumn, simBatchState.citizenIdColumn) + 1}, () => '');
     original[simBatchState.serialColumn] = serial;
     const invalidNote = serialItem?.valid === false && serialItem?.error
       ? ` | Serial không hợp lệ: ${serialItem.error}`
@@ -7029,7 +7371,7 @@ async function simBatchRunLegacyExcel() {
           row.stage = error.batchStage || 'Lỗi';
           const prefix = error.mutationUncertain
             ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại'
-            : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo' : 'Lỗi');
+            : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa xác nhận hoàn tất' : 'Lỗi');
           const order = error.batchOrderId ? ` | Đơn ${error.batchOrderId}` : '';
           row.result = `${prefix}${order} | ${row.stage}: ${error.message}`;
           if (Number(error.status || 0) === 401) account.expiresAt = 0;
@@ -7293,7 +7635,7 @@ async function simBatchRunTwoPhase() {
               simBatchApplyErrorDetails(row, error);
               const paid = error.mutationUncertain
                 ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại | '
-                : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo | ' : '');
+                : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa xác nhận hoàn tất | ' : '');
               const order = error.batchOrderId ? `Đơn ${error.batchOrderId} | ` : '';
               failAssignment(
                 row,
@@ -7367,6 +7709,7 @@ async function simBatchRunTwoPhase() {
 }
 
 async function simBatchRun() {
+  if (!SIM_SELF_REG_BATCH_ENABLED) { showToast('Batch ID 2 đang tạm khóa cho tới khi có capture thanh toán hoàn tất'); return; }
   if (simBatchState.running) return;
   const accounts = simBatchState.selectedAccounts.length
     ? simBatchState.selectedAccounts.map(account => ({...account}))
@@ -7511,7 +7854,7 @@ async function simBatchRun() {
           if (row.found) {
             const prefix = error.mutationUncertain
               ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại'
-              : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa khởi tạo' : 'Lỗi');
+              : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa xác nhận hoàn tất' : 'Lỗi');
             row.status = 'error';
             row.stage = error.batchStage || 'Lỗi';
             row.bucket = 'assignment_error';
@@ -7717,7 +8060,7 @@ async function simBatchCategory(categoryId, paramCustomize, {required=false, lab
     nguon_dulieu: null,
     param_customize: paramCustomize ?? null,
     listIdDanhMuc: [Number(categoryId)],
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   });
   const apiOptions = apiSucceeded(response)
     ? simAddressOptions(response, ['ID','id'], ['NAME','name','EXT_INFO','ext_info'])
@@ -7732,7 +8075,7 @@ async function simBatchCategory(categoryId, paramCustomize, {required=false, lab
 
 async function simBatchPrepareWallet(account) {
   const accountId = account?.id || '';
-  const response = await simBatchCallApi(accountId, '/app-thuno/VnptPay/kiemTraViVnptPay', 'POST', {menu_id:699161});
+  const response = await simBatchCallApi(accountId, '/app-thuno/VnptPay/kiemTraViVnptPay', 'POST', {menu_id:SIM_SELF_REG_MENU_ID});
   const body = simBatchRequireApi(response, 'Không xác thực được Ví VNPT Pay');
   const wallet = {
     id: findApiValue(body, ['walletId','wallet_id']),
@@ -7759,7 +8102,7 @@ async function simBatchPrepareWallet(account) {
 async function simBatchRefreshWalletBalance(wallet, account=null) {
   const accountId = account?.id || wallet?.accountIdOwner || '';
   const response = await simBatchCallApi(accountId, '/app-thuno/VnptPay/getBalance', 'POST', {
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   }, 'json', {
     walletToken: wallet.token
   });
@@ -7780,6 +8123,25 @@ async function simBatchRefreshWalletBalance(wallet, account=null) {
   }
   if (accountId) simBatchSetAccountStatus(accountId, `Ví ${simWalletMoneyLabel(balance)} · ${wallet.name || wallet.phone || 'VNPT Pay'}`);
   return balance;
+}
+
+async function simBatchRefreshWalletCredentials(wallet, account=null) {
+  const accountId = account?.id || wallet?.accountIdOwner || '';
+  const response = await simBatchCallApi(accountId, '/app-thuno/VnptPay/kiemTraViVnptPay', 'POST', {
+    menu_id:SIM_SELF_REG_MENU_ID
+  });
+  const body = simBatchRequireApi(response, 'Không làm mới được phiên Ví VNPT Pay trước thanh toán');
+  const walletId = findApiValue(body, ['walletId','wallet_id']);
+  const walletAccountId = findApiValue(body, ['walletAccountId','wallet_account_id']);
+  const token = findApiValue(body, ['token','walletToken','wallet_token']);
+  if (!walletId || !walletAccountId || !token) {
+    throw new Error('API làm mới Ví VNPT Pay trả 200 nhưng thiếu walletId, walletAccountId hoặc token');
+  }
+  wallet.id = walletId;
+  wallet.accountId = walletAccountId;
+  wallet.token = token;
+  simBatchSyncWalletState(wallet);
+  return wallet;
 }
 
 async function simBatchEnsureSharedWallet(shared) {
@@ -7813,48 +8175,25 @@ async function simBatchEnsureSharedWallet(shared) {
 
 async function simBatchPrepareSharedContext(account) {
   const accountId = account?.id || '';
-  const districtId = String(simBatchState.districtId || '').trim();
-  const districtName = String(simBatchState.districtName || '').trim();
-  if (!districtId || !districtName) throw new Error('Chưa chọn Quận/Huyện cố định');
-  // These requests deliberately remain sequential through simBatchCallApi;
-  // sending them together can freeze/timeout the mobile OneBSS route.
-  const rechargeResponse = await simBatchCallApi(accountId, '/app-com/danhmuc/get_danhmuc', 'POST', {
-      id_danhmucs:'10181', nguon_dulieu:null, param_customize:'1',
-      listIdDanhMuc:[10181], menu_id:699161
-    });
+  const wardId = String(simBatchState.districtId || '').trim();
+  const wardName = String(simBatchState.districtName || '').trim();
+  if (!wardId || !wardName) throw new Error('Chưa chọn Phường/Xã cố định');
+  // Customer-self-registration capture uses the new two-level address model:
+  // province 28 + ward, with p_quan_id left null.
   const tttbResponse = await simBatchCallApi(accountId, '/app-com/danhmuc/get_danhmuc', 'POST', {
-      id_danhmucs:'10178', menu_id:699161
+      id_danhmucs:'10178', menu_id:SIM_SELF_REG_MENU_ID
     });
-  const wardScopeParam = `28;${districtId}`;
-  const rawWards = await simBatchCategory(
-    10003, wardScopeParam,
-    {
-      required:true,
-      label:'Phường/Xã của Quận/Huyện đã chọn',
-      expectedParentId:districtId
-    }, accountId
-  );
-  const wards = simBatchRequireVerifiedDistrictWards(rawWards, {
-    id: districtId,
-    name: districtName
-  }, wardScopeParam);
-  const rechargeOptions = simBatchRequireApi(rechargeResponse, 'Không tải được hình thức nạp thẻ');
-  const recharge = simExtractOptions({status:200, body:rechargeOptions}, ['ID','id'], ['NAME','name'])
-    .find(option => option.id === '2' || /nạp thẻ bằng hình thức khác/i.test(option.name));
-  if (!recharge) throw new Error('Danh mục không có “Nạp thẻ bằng hình thức khác”');
   const tttbOptionsBody = simBatchRequireApi(tttbResponse, 'Không tải được hình thức đăng ký TTTB');
   const desiredTttbId = String(simBatchState.tttbMethodId || '2');
   const tttb = simExtractOptions({status:200, body:tttbOptionsBody}, ['ID','id'], ['NAME','name'])
     .find(option => option.id === desiredTttbId);
   if (!tttb) throw new Error(`Danh mục không có hình thức ĐKTTTB đã chọn (ID ${desiredTttbId})`);
-  simBatchState.rechargeId = recharge.id;
   simBatchState.tttbMethodId = tttb.id;
   return {
     account,
     province: {id:'28', name:'TP Hồ Chí Minh'},
-    district: {id:districtId, name:districtName},
-    wards,
-    rechargeId: recharge.id,
+    district: null,
+    wards:[{id:wardId, name:wardName}],
     tttbMethodId: tttb.id,
     tttbMethodName: tttb.name,
     // Dùng đúng ví đã hiển thị của user này nếu UI đã tải trước; nếu chưa có
@@ -7880,7 +8219,7 @@ async function simBatchRandomProfile(shared) {
   const landmark = simBatchRandomItem(landmarks);
   const house = String(1 + Math.floor(Math.random() * 300));
   const parts = [house, zone?.name, hamlet?.name, street?.name, landmark?.name,
-    ward.name, shared.district.name, shared.province.name];
+    ward.name, shared.province.name];
   const seen = new Set();
   const address = parts.filter(Boolean).filter(part => {
     const key = String(part).trim().toLocaleLowerCase('vi-VN');
@@ -7929,7 +8268,7 @@ function simBatchConfirmCustomerLocation(response, shared, profile) {
   };
   const checks = [
     ['province', shared.province.name, returned.province],
-    ['district', shared.district.name, returned.district],
+    ['district', shared.district?.name, returned.district],
     ['ward', profile.ward.name, returned.ward],
     ['street', profile.street?.name, returned.street],
     ['zone', profile.zone?.name, returned.zone],
@@ -7947,7 +8286,7 @@ function simBatchConfirmCustomerLocation(response, shared, profile) {
     returned.street || (hierarchyChanged ? '' : profile.street?.name),
     returned.landmark || (hierarchyChanged ? '' : profile.landmark?.name),
     returned.ward || profile.ward.name,
-    returned.district || shared.district.name,
+    returned.district || shared.district?.name,
     returned.province || shared.province.name,
   ];
   const seen = new Set();
@@ -8003,8 +8342,7 @@ async function simBatchWithPaymentLock(shared, task) {
 
 async function simBatchSearchNumber(row, shared) {
   const accountId = shared.account?.id || '';
-  const prefix = row.msisdn.slice(0, 4);
-  const suffix = `*${row.msisdn.slice(-7)}`;
+  const {prefix, suffix} = simBatchSearchParts(row.msisdn);
   let retryCount = 0;
   const maxRetries = 3;
   const throwLookupFailure = (response, fallback) => {
@@ -8017,9 +8355,10 @@ async function simBatchSearchNumber(row, shared) {
     }
   };
   while (!simBatchState.stopRequested) {
-    const searched = await simBatchCallApi(accountId, '/ccbs/chonSo/search_isdn', 'POST', {
-      stockid:'146', kieuso_id:'-1', so_tb:suffix, prefix, status:'1',
-      page_num:'1', page_rec:'200', menu_id:699161
+    const searched = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/search_isdn_shop_mid`, 'POST', {
+      p_ProcessID:'1', p_SystemID:'1', p_prefix:prefix, p_isdn:suffix,
+      p_stock_id:'146', p_status:'1', p_commit:'0', p_number_type:'-1',
+      p_page_num:'1', p_page_rec:'20', menu_id:SIM_SELF_REG_MENU_ID
     });
     if (apiSucceeded(searched)) {
       return simRows(apiBodyObject(searched)).find(item =>
@@ -8066,6 +8405,24 @@ async function simBatchSearchNumber(row, shared) {
   throw new Error('Đã dừng tra kho');
 }
 
+async function simBatchReadSelfRegOrderStep(accountId, orderId) {
+  return simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/step_donhang_simkit`, 'POST', {
+    p_id_donhang:apiNumericOrText(orderId), menu_id:SIM_SELF_REG_MENU_ID
+  });
+}
+
+async function simBatchFindSelfRegOrderInHistory(accountId, orderId) {
+  const today = simTodayApiDate();
+  const response = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/listdsdonhang_v2`, 'POST', {
+    p_nguondon:'-1', p_loaidon:'-1', p_thoigian:`${today}|${today}`,
+    p_id_trangthai:'-1', p_long:null, p_lat:null, p_id_hinhthuc_dk:-1,
+    p_id_thoigian_conlai:1, p_loai_thuebao_id:21, menu_id:SIM_SELF_REG_MENU_ID
+  });
+  const body = simBatchRequireApi(response, 'Không đối soát được lịch sử đơn hàng');
+  const rows = Array.isArray(body?.data) ? body.data : [];
+  return rows.find(item => String(simValue(item, ['id_donhang','ID_DONHANG']) || '') === String(orderId)) || null;
+}
+
 async function simBatchProcessRow(row, shared, selectedNumber=null) {
   const accountId = shared.account?.id || '';
   row.user = shared.account?.username || row.user || '--';
@@ -8081,102 +8438,86 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
     simBatchRenderTable();
     simBatchSetStatus(`${row.user} · Dòng ${row.excelRow} · ${row.msisdn} · ${value}`);
   };
+  const requireStep = async expectedStatus => {
+    const step = await simBatchReadSelfRegOrderStep(accountId, orderId);
+    if (!simCapturedStateMatches(step, orderId, expectedStatus)) {
+      throw new Error(`step_donhang_simkit chưa xác nhận đơn ${orderId} ở trạng thái ${expectedStatus}`);
+    }
+    const state = simSelfRegState(step);
+    if (expectedStatus >= 4 && state.registrationMethodId !== '2') {
+      throw new Error('Đơn không được OneBSS xác nhận là hình thức Khách hàng tự đăng ký TTTB (ID 2)');
+    }
+    return step;
+  };
   try {
     const selected = selectedNumber || row.selectedNumber;
     if (!selected) throw new Error('OneBSS không trả đúng số thuê bao trong file');
+    const selectedMsisdn = simNumber(selected);
+    if (!selectedMsisdn || simBatchNormalizeMsisdn(selectedMsisdn) !== row.msisdn) {
+      throw new Error('Số OneBSS trả về không khớp SĐT trong dòng Excel');
+    }
+    if (!simBatchNormalizeCitizenId(row.citizenId)) throw new Error('CCCD phải có từ 8 đến 20 chữ số');
 
-    setStage('Tạo đơn SIM Kit');
-    const chosen = await simBatchCallApi(accountId, '/app-banhang/donhang_simkit/chonso_kit_v2', 'POST', {
-      p_id_donhang:null, p_id_loaidon:1, p_so_dt:row.msisdn,
+    setStage('Tạo đơn SIM Kit · module khách hàng tự đăng ký');
+    const chosen = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/chonso_kit_v2`, 'POST', {
+      p_id_donhang:null, p_id_loaidon:1, p_so_dt:selectedMsisdn,
       p_tien_camket:0, p_thoihan_camket:0, p_so_sim:null, p_status:'1',
       p_ma_kit:null, p_kit_type:null, p_trang_thai:1, p_loaitb_id:21,
       p_trangthai_khoitao:null, p_maluong:null, p_ma_donhang:null,
-      menu_id:699161
+      p_kho_id:null, menu_id:SIM_SELF_REG_MENU_ID
     });
     simBatchRequireApi(chosen, 'Không tạo được đơn SIM Kit');
     orderId = extractOrderId(chosen);
     if (!orderId) throw new Error('API tạo đơn không trả id_donhang');
+    await requireStep('2');
 
-    setStage('Chọn hình thức nạp thẻ');
-    const recharge = await simBatchCallApi(accountId, '/app-banhang/donhang_simkit/dangky_goicuoc', 'POST', {
-      p_id_donhang:apiNumericOrText(orderId),
-      p_id_hinhthuc_napthe:apiNumericOrText(shared.rechargeId),
+    setStage('Tiếp tục không chọn gói cước');
+    const recharge = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/dangky_goicuoc`, 'POST', {
+      p_id_donhang:apiNumericOrText(orderId), p_id_hinhthuc_napthe:null,
       p_id_loai_goicuoc:null, p_id_goicuoc:null, p_ten_goicuoc:null,
-      p_tien_cuoc:null, menu_id:699161
+      p_tien_cuoc:0, p_type:1, menu_id:SIM_SELF_REG_MENU_ID
     });
-    simBatchRequireApi(recharge, 'Không đăng ký được hình thức nạp thẻ');
+    simBatchRequireApi(recharge, 'Không chuyển được bước gói cước');
+    await requireStep('3');
 
-    setStage('Tạo ngẫu nhiên thông tin khách hàng và địa chỉ');
+    setStage('Tạo thông tin khách hàng và địa chỉ');
     profile = await simBatchRandomProfile(shared);
-    const customer = await simBatchCallApi(accountId, '/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3', 'POST', {
-      p_id_donhang:apiNumericOrText(orderId),
-      p_id_hinhthuc_dk_tttb:apiNumericOrText(shared.tttbMethodId),
-      p_ten_kh:profile.customerName,
-      p_so_dt_lh:row.msisdn,
-      p_quan_id:apiNumericOrText(shared.district.id),
-      p_phuong_id:apiNumericOrText(profile.ward.id),
+    setStage('Kiểm tra số lượng thuê bao theo CCCD');
+    const quantityCheck = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/kiemtra_soluong_tb`, 'POST', {
+      pidnumber:row.citizenId, menu_id:SIM_SELF_REG_MENU_ID
+    });
+    simBatchRequireApi(quantityCheck, 'Không kiểm tra được số lượng thuê bao theo CCCD');
+    const customer = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/nhap_thongtin_khachhang_v3`, 'POST', {
+      p_id_donhang:apiNumericOrText(orderId), p_id_hinhthuc_dk_tttb:2,
+      p_ten_kh:profile.customerName, p_so_dt_lh:selectedMsisdn,
+      p_quan_id:null, p_phuong_id:apiNumericOrText(profile.ward.id),
       p_pho_id:profile.street ? apiNumericOrText(profile.street.id) : null,
       p_ap_id:profile.hamlet ? apiNumericOrText(profile.hamlet.id) : null,
       p_khu_id:profile.zone ? apiNumericOrText(profile.zone.id) : null,
       p_sonha:profile.house,
       p_dacdiem_id:profile.landmark ? apiNumericOrText(profile.landmark.id) : null,
-      p_diachi:profile.address,
-      p_id_dhsk_kh:null, p_diachi_id:null,
-      p_tinh_id:28, menu_id:699161
+      p_diachi:profile.address, p_loai_giayto:null, p_so_gt:row.citizenId,
+      p_id_dhsk_kh:null, p_diachi_id:null, p_tinh_id:28,
+      menu_id:SIM_SELF_REG_MENU_ID
     });
     simBatchRequireApi(customer, 'Không ghi được thông tin khách hàng');
-    const customerOrderId = extractOrderId(customer);
-    const customerId = findApiValue(apiBodyObject(customer), ['id_dhsk_kh','idDhskKh']);
+    const customerState = simSelfRegState(customer);
     const addressId = findApiValue(apiBodyObject(customer), ['diachi_id','addressId']);
-    if (String(customerOrderId) !== String(orderId) || !customerId || !addressId) {
-      throw new Error('API khách hàng không xác nhận đủ ID đơn, khách hàng và địa chỉ');
+    if (customerState.orderId !== String(orderId) || customerState.statusId !== '4' ||
+        customerState.registrationMethodId !== '2' || !addressId) {
+      throw new Error('API khách hàng chưa xác nhận đúng đơn, trạng thái 4, hình thức ID 2 và diachi_id');
     }
-    // ID/addressId xác nhận thao tác ghi. Tên địa bàn phản hồi là dữ liệu chuẩn
-    // để xử lý trường hợp OneBSS tự chuẩn hóa hoặc đổi ánh xạ phường/xã.
     confirmedAddress = simBatchConfirmCustomerLocation(customer, shared, profile);
-    const paymentItems = simBatchPaymentItems(customer);
-    if (!paymentItems.length) throw new Error('API khách hàng không trả đủ khoản mục thanh toán và tiền SIM vật lý');
-    amount = simBatchItemsTotal(paymentItems);
+    const customerStep = await requireStep('4');
 
-    await simBatchWithPaymentLock(shared, async () => {
-      setStage('Thanh toán · kiểm tra Ví VNPT Pay');
-      const walletWasReady = Boolean(
-        shared.wallet?.id && shared.wallet?.accountId && shared.wallet?.token
-      );
-      const wallet = await simBatchEnsureSharedWallet(shared);
-      let balance = Number(wallet.balance);
-      if (walletWasReady || !Number.isFinite(balance)) {
-        try {
-          balance = await simBatchRefreshWalletBalance(wallet, shared.account);
-        } catch (error) {
-          // Buộc dòng kế tiếp xin lại token ví thay vì tái sử dụng token lỗi.
-          shared.wallet = null;
-          throw error;
-        }
-      }
-      if (balance < amount) {
-        throw new Error(`Ví VNPT Pay không đủ số dư; thiếu ${simWalletMoneyLabel(amount - balance)}`);
-      }
-
-      setStage('Thanh toán VNPT Pay');
-      const payment = await simBatchCallApi(accountId, '/app-banhang/donhang_simkit/xacnhan_thanhtoan', 'POST', {
-        p_id_donhang:apiNumericOrText(orderId), p_id_loai_sim:2,
-        p_id_hinhthuc_thanhtoan:204, p_id_trangthai_thanhtoan:0,
-        p_sendWalletId:apiNumericOrText(wallet.id),
-        p_sendWalletAccountId:apiNumericOrText(wallet.accountId),
-        p_khoan_muc:paymentItems, menu_id:699161
-      }, 'json', {walletToken:wallet.token});
-      simBatchRequireApi(payment, 'Thanh toán VNPT Pay thất bại');
-      const paymentData = apiBodyObject(payment)?.data;
-      const paidOrderId = String(simValue(paymentData, ['id_donhang','ID_DONHANG']) || '');
-      const paymentStatus = String(simValue(paymentData, ['id_trangthai_thanhtoan','ID_TRANGTHAI_THANHTOAN']) || '');
-      if (paidOrderId !== String(orderId) || paymentStatus !== '1') {
-        throw new Error('API thanh toán chưa xác nhận đúng đơn ở trạng thái Đã thu tiền');
-      }
-      paid = true;
-      wallet.balance = Math.max(0, balance - amount);
-      simBatchSyncWalletState(wallet);
+    setStage('Kiểm tra quyền KHOITAOTB');
+    const permission = await simBatchCallApi(accountId, '/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen', 'POST', {
+      ma_quyen:'KHOITAOTB', menu_id:SIM_SELF_REG_MENU_ID
     });
+    simBatchRequireApi(permission, 'Không kiểm tra được quyền KHOITAOTB');
+    if (String(findApiValue(apiBodyObject(permission), ['status']) || '') !== '1') {
+      throw new Error('Tài khoản không có quyền KHOITAOTB');
+    }
 
     setStage('Kiểm tra serial SIM trắng');
     const checked = await simBatchCallApi(accountId, '/ccbs/chonSo/checkSimStatus', 'GET', {so_msin:row.serial});
@@ -8185,24 +8526,72 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
     if (simStatus !== '1') throw new Error(`Serial SIM chưa đủ điều kiện khởi tạo (data=${simStatus || 'rỗng'})`);
 
     setStage('Khởi tạo thuê bao');
-    const initialized = await simBatchCallApi(accountId, '/app-banhang/donhang_simkit/khoitao_thuebao', 'POST', {
+    const initialized = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/khoitao_thuebao`, 'POST', {
       p_id_donhang:apiNumericOrText(orderId), p_loai_sim:2,
-      p_so_sim:row.serial, p_ma_xacthuc:'', menu_id:699161
+      p_so_sim:row.serial, p_ma_xacthuc:'', menu_id:SIM_SELF_REG_MENU_ID
     });
     simBatchRequireApi(initialized, 'Khởi tạo thuê bao thất bại');
-    const initializedData = apiBodyObject(initialized)?.data;
-    const initializedOrderId = String(simValue(initializedData, ['id_donhang','ID_DONHANG']) || '');
-    const initializedSerial = String(simValue(initializedData, ['so_sim','SO_SIM']) || '').replace(/\D/g, '');
-    if (initializedOrderId !== String(orderId) || initializedSerial !== row.serial) {
-      throw new Error('API khởi tạo chưa xác nhận đúng ID đơn và serial SIM');
+    const initializedState = simSelfRegState(initialized);
+    if (initializedState.orderId !== String(orderId) || initializedState.serial !== row.serial ||
+        initializedState.statusId !== '6' || initializedState.registrationMethodId !== '2') {
+      throw new Error('API khởi tạo chưa xác nhận đúng đơn, serial, trạng thái 6 và hình thức ID 2');
     }
+    const paymentStep = await requireStep('6');
+    const paymentState = simSelfRegState(paymentStep);
+    if (paymentState.paymentStatusId !== '0') throw new Error('Đơn không ở trạng thái Chưa thu tiền trước thanh toán');
+    const paymentItems = simBatchPaymentItems(initialized).length
+      ? simBatchPaymentItems(initialized)
+      : (simBatchPaymentItems(paymentStep).length ? simBatchPaymentItems(paymentStep) : simBatchPaymentItems(customerStep));
+    if (!paymentItems.length) throw new Error('OneBSS không trả đủ khoản mục thanh toán và tiền SIM vật lý');
+    amount = simBatchItemsTotal(paymentItems);
+
+    await simBatchWithPaymentLock(shared, async () => {
+      setStage('Thanh toán · xác thực ví và kiểm tra số dư');
+      const wallet = await simBatchPrepareWallet(shared.account);
+      shared.wallet = wallet;
+      const balance = Number(wallet.balance);
+      if (!Number.isFinite(balance)) throw new Error('Ví VNPT Pay không trả số dư hợp lệ');
+      if (balance < amount) throw new Error(`Ví VNPT Pay không đủ số dư; thiếu ${simWalletMoneyLabel(amount - balance)}`);
+
+      setStage('Thanh toán · làm mới walletToken');
+      await simBatchRefreshWalletCredentials(wallet, shared.account);
+      setStage('Thanh toán VNPT Pay');
+      const payment = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/xacnhan_thanhtoan`, 'POST', {
+        p_id_donhang:apiNumericOrText(orderId), p_id_loai_sim:2,
+        p_id_hinhthuc_thanhtoan:204, p_id_trangthai_thanhtoan:0,
+        p_sendWalletId:apiNumericOrText(wallet.id),
+        p_sendWalletAccountId:apiNumericOrText(wallet.accountId),
+        p_khoan_muc:paymentItems, p_thongtin_hoadon:null
+      }, 'json', {walletToken:wallet.token});
+      simBatchRequireApi(payment, 'Thanh toán VNPT Pay thất bại');
+      const paidState = simSelfRegState(payment);
+      if (paidState.orderId !== String(orderId) || paidState.statusId !== '7' ||
+          paidState.registrationMethodId !== '2' || paidState.paymentStatusId !== '1') {
+        throw new Error('API thanh toán chưa xác nhận đúng đơn ở trạng thái 7 / ID 2 / Đã thu tiền');
+      }
+      paid = true;
+
+      setStage('Hoàn tất đơn trả trước');
+      const completion = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/hoanthanh_donhang_tratruoc`, 'POST', {
+        p_id_donhang:apiNumericOrText(orderId), p_ma_donhang:'', menu_id:SIM_SELF_REG_MENU_ID
+      });
+      const completionBody = simBatchRequireApi(completion, 'Đã thu tiền nhưng không hoàn tất được đơn');
+      if (String(findApiValue(completionBody, ['res_code','RES_CODE']) ?? '') !== '1') {
+        throw new Error('Đã thu tiền nhưng API hoàn tất đơn không trả res_code=1');
+      }
+
+      setStage('Đối soát lịch sử OneBSS');
+      const historyRow = await simBatchFindSelfRegOrderInHistory(accountId, orderId);
+      if (!simSelfRegHistoryIsComplete(historyRow, orderId, row.serial)) {
+        throw new Error('Đã thu tiền và gọi hoàn tất nhưng lịch sử chưa xác nhận trạng thái 7 / Đã thu tiền / Đã khởi tạo');
+      }
+      wallet.balance = Math.max(0, balance - amount);
+      simBatchSyncWalletState(wallet);
+    });
+
     return {
-      orderId,
-      customerName:profile.customerName,
-      address:confirmedAddress,
-      amount,
-      tttbMethodId:shared.tttbMethodId,
-      tttbMethodName:shared.tttbMethodName
+      orderId, customerName:profile.customerName, address:confirmedAddress, amount,
+      tttbMethodId:shared.tttbMethodId, tttbMethodName:shared.tttbMethodName
     };
   } catch (error) {
     error.batchStage = stage || 'Xử lý';
@@ -8525,7 +8914,7 @@ async function simLoadOrderHistory({force=false}={}) {
   window._simHistoryLoading = true;
   if (refreshButton) { refreshButton.disabled = true; refreshButton.textContent = 'Đang tải...'; }
   if (statusText) { statusText.textContent = `Đang tải lịch sử ${fromDate} đến ${toDate}...`; statusText.style.color = 'var(--text3)'; }
-  const response = await callApi('/app-banhang/donhang_simkit/listdsdonhang_v2', 'POST', {
+  const response = await callApi(`${SIM_SELF_REG_PREFIX}/listdsdonhang_v2`, 'POST', {
     p_nguondon: '-1',
     p_loaidon: '-1',
     p_thoigian: `${fromDate}|${toDate}`,
@@ -8535,7 +8924,7 @@ async function simLoadOrderHistory({force=false}={}) {
     p_id_hinhthuc_dk: -1,
     p_id_thoigian_conlai: 1,
     p_loai_thuebao_id: 21,
-    menu_id: 699161
+    menu_id: SIM_SELF_REG_MENU_ID
   }, 'json', {}, simHistorySelectedAccountId());
   window._simHistoryLoading = false;
   if (refreshButton) { refreshButton.disabled = false; refreshButton.textContent = 'Làm mới lịch sử'; }
@@ -8731,13 +9120,128 @@ async function getDSB2C() {
   showResp('b2c-list-resp', await callApi('/app-banhang/b2c/ds_tuvan_dichvu_mytv_fiber','GET',{nhom_dichvu_id:nhom}));
 }
 
-// ── Báo cáo ──
-async function getBaoCao() {
-  let body = {};
-  try { body = JSON.parse(document.getElementById('bc-filter').value || '{}'); }
-  catch (_) { showToast('⚠️ Bộ lọc báo cáo phải là JSON hợp lệ'); return; }
-  showResp('bc-resp', await callApi('/app-banhang/baocao_banhang/baocao_sanluong_donhang','GET',body));
+// ── Báo cáo OneBSS: chia theo ngày, checkpoint và ghép Excel ──
+let oneBssReportPollTimer = null;
+
+function oneBssLocalToday() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
+
+function renderOneBssReportAccounts() {
+  const select = document.getElementById('onebss-report-account');
+  if (!select) return;
+  const selected = select.value;
+  const accounts = (multiAccountState?.accounts || []).filter(account =>
+    account?.authenticated && managedAccountSeconds(account) > 0);
+  select.innerHTML = '<option value="">Phiên onebss_session.json</option>' + accounts.map(account =>
+    `<option value="${simEsc(String(account.id || ''))}">${account.primary ? '⭐ ' : ''}${simEsc(account.username || account.id)} · còn ${managedAccountTimeText(managedAccountSeconds(account))}</option>`
+  ).join('');
+  if ([...select.options].some(option => option.value === selected)) select.value = selected;
+  else if (accounts.length) select.value = String(accounts[0].id || '');
+}
+
+async function oneBssReportJson(url, options={}) {
+  const response = await fetch(url, {
+    credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json', ...(options.headers || {})},
+    ...options,
+  });
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('Phiên Employ đã hết hạn; hãy đăng nhập lại.');
+  }
+  const payload = await response.json();
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+function renderOneBssReport(state) {
+  const total = Number(state.total_days || 0);
+  const done = Number(state.completed_days || 0);
+  const percent = total ? Math.min(100, Math.round(done * 100 / total)) : 0;
+  const fill = document.getElementById('onebss-report-progress-fill');
+  const status = document.getElementById('onebss-report-status');
+  const path = document.getElementById('onebss-report-path');
+  const startButton = document.getElementById('onebss-report-start');
+  const stopButton = document.getElementById('onebss-report-stop');
+  const download = document.getElementById('onebss-report-download');
+  const from = document.getElementById('onebss-report-from');
+  const to = document.getElementById('onebss-report-to');
+  const account = document.getElementById('onebss-report-account');
+
+  if (fill) fill.style.width = `${percent}%`;
+  if (status) {
+    const runningDay = state.current_day ? ` · ngày ${state.current_day}` : '';
+    const runner = state.account_username ? ` · TK ${state.account_username}` : '';
+    status.textContent = `${state.message || 'Chưa chạy'}${runningDay}${runner}`;
+    status.style.color = state.status === 'error' ? 'var(--red)' : 'var(--text2)';
+  }
+  if (path) path.textContent = state.output_path ? `File tổng: ${state.output_path}` : '';
+  if (startButton) startButton.disabled = Boolean(state.running);
+  if (stopButton) stopButton.disabled = !state.running;
+  if (from) from.disabled = Boolean(state.running);
+  if (to) to.disabled = Boolean(state.running);
+  if (account) account.disabled = Boolean(state.running);
+  if (download) download.style.display = state.download_ready ? 'inline-flex' : 'none';
+
+  if (state.running && !oneBssReportPollTimer) {
+    oneBssReportPollTimer = setInterval(refreshOneBssReportStatus, 2000);
+  } else if (!state.running && oneBssReportPollTimer) {
+    clearInterval(oneBssReportPollTimer);
+    oneBssReportPollTimer = null;
+  }
+}
+
+async function refreshOneBssReportStatus() {
+  try {
+    renderOneBssReport(await oneBssReportJson('/api/onebss-report/status'));
+  } catch (error) {
+    if (oneBssReportPollTimer) clearInterval(oneBssReportPollTimer);
+    oneBssReportPollTimer = null;
+    const status = document.getElementById('onebss-report-status');
+    if (status) {
+      status.textContent = error.message || String(error);
+      status.style.color = 'var(--red)';
+    }
+  }
+}
+
+async function startOneBssReport() {
+  const startDate = document.getElementById('onebss-report-from')?.value || '2026-04-01';
+  const endDate = document.getElementById('onebss-report-to')?.value || oneBssLocalToday();
+  const accountId = document.getElementById('onebss-report-account')?.value || '';
+  try {
+    const state = await oneBssReportJson('/api/onebss-report/start', {
+      method: 'POST',
+      body: JSON.stringify({start_date: startDate, end_date: endDate, account_id: accountId}),
+    });
+    renderOneBssReport(state);
+    showToast('✅ Đã bắt đầu tải từng ngày; có thể theo dõi ngay trên màn hình.');
+  } catch (error) {
+    showToast(`⚠️ ${error.message || error}`);
+  }
+}
+
+async function stopOneBssReport() {
+  try {
+    renderOneBssReport(await oneBssReportJson('/api/onebss-report/stop', {
+      method: 'POST',
+      body: '{}',
+    }));
+  } catch (error) {
+    showToast(`⚠️ ${error.message || error}`);
+  }
+}
+
+const oneBssReportTo = document.getElementById('onebss-report-to');
+if (oneBssReportTo && !oneBssReportTo.value) oneBssReportTo.value = oneBssLocalToday();
+refreshOneBssReportStatus();
 
 // ── Cước & Dịch vụ di động ──
 function _isdn(id) { return (document.getElementById(id)?.value||'').trim(); }

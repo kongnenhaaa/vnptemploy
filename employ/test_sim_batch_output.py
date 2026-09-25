@@ -73,6 +73,44 @@ class SimBatchOutputTests(unittest.TestCase):
         self.assertEqual(workbook[app_module.SIM_BATCH_OUTPUT_META_SHEET].sheet_state, 'hidden')
         workbook.close()
 
+    def test_input_template_requires_cccd_and_formats_identifiers_as_text(self):
+        app_module._ensure_sim_batch_files()
+
+        workbook = load_workbook(self.input_file, data_only=True)
+        sheet = workbook['SIM_Input']
+        self.assertEqual(
+            [sheet.cell(row=1, column=index).value for index in range(1, 4)],
+            ['SĐT', 'Serial SIM', 'CCCD'],
+        )
+        self.assertEqual(sheet.freeze_panes, 'A2')
+        self.assertEqual(sheet.column_dimensions['A'].number_format, '@')
+        self.assertEqual(sheet.column_dimensions['B'].number_format, '@')
+        self.assertEqual(sheet.column_dimensions['C'].number_format, '@')
+        guide_values = [row[0].value for row in workbook['Huong_dan'].iter_rows()]
+        self.assertTrue(any('CCCD' in str(value) and '8 đến 20' in str(value)
+                            for value in guide_values))
+        workbook.close()
+
+    def test_existing_two_column_input_is_migrated_without_losing_rows(self):
+        os.makedirs(self.batch_dir, exist_ok=True)
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'SIM_Input'
+        sheet.append(['SĐT', 'Serial SIM'])
+        sheet.append(['0849531207', '1184229391'])
+        workbook.save(self.input_file)
+        workbook.close()
+
+        app_module._ensure_sim_batch_files()
+
+        migrated = load_workbook(self.input_file, data_only=True)
+        sheet = migrated['SIM_Input']
+        self.assertEqual(sheet['A2'].value, '0849531207')
+        self.assertEqual(sheet['B2'].value, '1184229391')
+        self.assertEqual(sheet['C1'].value, 'CCCD')
+        self.assertIsNone(sheet['C2'].value)
+        migrated.close()
+
     def test_legacy_output_is_migrated_without_losing_result(self):
         os.makedirs(self.batch_dir, exist_ok=True)
         workbook = Workbook()

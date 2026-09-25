@@ -9,11 +9,12 @@ import sys
 from contextlib import contextmanager, nullcontext
 from functools import wraps
 from flask import (Flask, render_template, request, session,
-                   redirect, url_for, jsonify, flash, Response)
+                   redirect, url_for, jsonify, flash, Response, send_file)
 import requests
 import urllib3
 from urllib.parse import urlparse, parse_qsl, unquote
 from flask_session import Session
+from onebss_report_batch import OneBssReportBatchManager, OneBssReportError
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Windows can start the source build with a legacy cp1252 console.  Logging a
@@ -129,6 +130,23 @@ PACKAGE_REGISTRATION_HEADERS = (
 )
 PACKAGE_REGISTRATION_META_SHEET = '_Luu_tu_dong'
 _package_registration_file_lock = threading.Lock()
+
+# OneBSS report 378 shown in the Employ dashboard.  The login is maintained by
+# employ_web and refreshed there; the worker deliberately re-reads this file
+# before every day so a renewed session is picked up without restarting Employ.
+ONEBSS_REPORT_SESSION_FILE = os.environ.get(
+    'VNPT_EMPLOY_ONEBSS_SESSION_FILE',
+    os.path.join(
+        os.environ.get('USERPROFILE') or os.path.expanduser('~'),
+        'Pictures', 'employ_web', 'onebss_session.json',
+    ),
+)
+ONEBSS_REPORT_OUTPUT_DIR = os.path.join(
+    _documents_root, 'VNPTEmploy', 'Bao_Cao_OneBSS')
+_onebss_report_manager = OneBssReportBatchManager(
+    ONEBSS_REPORT_SESSION_FILE,
+    ONEBSS_REPORT_OUTPUT_DIR,
+)
 
 
 def _batch_header_key(value):
@@ -497,29 +515,51 @@ def _ensure_sim_batch_files():
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = 'SIM_Input'
-        sheet.append(['SĐT', 'Serial SIM'])
+        sheet.append(['SĐT', 'Serial SIM', 'CCCD'])
         sheet.freeze_panes = 'A2'
         sheet.column_dimensions['A'].width = 20
         sheet.column_dimensions['B'].width = 20
+        sheet.column_dimensions['C'].width = 22
+        for column in ('A', 'B', 'C'):
+            sheet.column_dimensions[column].number_format = '@'
         guide = workbook.create_sheet('Huong_dan')
         guide.append(['Hướng dẫn'])
-        guide.append(['Mỗi dòng trong sheet SIM_Input gồm SĐT thuê bao và Serial SIM trắng.'])
+        guide.append(['Mỗi dòng trong sheet SIM_Input gồm SĐT thuê bao, Serial SIM trắng và CCCD của khách hàng.'])
         guide.append(['SĐT nhận dạng đầu 84, đầu 0 hoặc 9 chữ số không có tiền tố.'])
+        guide.append(['CCCD/số giấy tờ là bắt buộc, gồm 8 đến 20 chữ số và nên lưu ở định dạng Text.'])
         guide.append(['Ví dụ tương đương: 84849531207 / 0849531207 / 849531207'])
-        guide.append(['Ví dụ một dòng: 0849531207 | 1184229391'])
+        guide.append(['Ví dụ một dòng: 0849531207 | 1184229391 | 079123456789'])
         workbook.save(SIM_BATCH_INPUT_FILE)
     else:
         try:
             workbook = load_workbook(SIM_BATCH_INPUT_FILE)
+            sheet = workbook['SIM_Input'] if 'SIM_Input' in workbook.sheetnames else workbook.active
             guide = workbook['Huong_dan'] if 'Huong_dan' in workbook.sheetnames else workbook.create_sheet('Huong_dan')
             instructions = [
                 'Hướng dẫn',
-                'Mỗi dòng trong sheet SIM_Input gồm SĐT thuê bao và Serial SIM trắng.',
+                'Mỗi dòng trong sheet SIM_Input gồm SĐT thuê bao, Serial SIM trắng và CCCD của khách hàng.',
                 'SĐT nhận dạng đầu 84, đầu 0 hoặc 9 chữ số không có tiền tố.',
+                'CCCD/số giấy tờ là bắt buộc, gồm 8 đến 20 chữ số và nên lưu ở định dạng Text.',
                 'Ví dụ tương đương: 84849531207 / 0849531207 / 849531207',
-                'Ví dụ một dòng: 0849531207 | 1184229391',
+                'Ví dụ một dòng: 0849531207 | 1184229391 | 079123456789',
             ]
             changed = False
+            input_headers = ('SĐT', 'Serial SIM', 'CCCD')
+            for column_index, value in enumerate(input_headers, start=1):
+                if sheet.cell(row=1, column=column_index).value != value:
+                    sheet.cell(row=1, column=column_index, value=value)
+                    changed = True
+            for column, width in (('A', 20), ('B', 20), ('C', 22)):
+                dimension = sheet.column_dimensions[column]
+                if dimension.width != width:
+                    dimension.width = width
+                    changed = True
+                if dimension.number_format != '@':
+                    dimension.number_format = '@'
+                    changed = True
+            if sheet.freeze_panes != 'A2':
+                sheet.freeze_panes = 'A2'
+                changed = True
             for row_index, value in enumerate(instructions, start=1):
                 if guide.cell(row=row_index, column=1).value != value:
                     guide.cell(row=row_index, column=1, value=value)
@@ -1854,6 +1894,15 @@ ENDPOINT_MENU_ROUTES = (
     ('/ccbs/goicuoc/', '11077'),
     ('/ccbs/pttb/get_sotb_by_msin', '699060'),
     ('/ccbs/tracuu/ts_tracuu_stb_serial', '699060'),
+    # Customer self-registration (p_id_hinhthuc_dk_tttb=2) is exposed by the
+    # newer kenhban-simkit module.  The mobile capture uses menu 810641 for
+    # these shared chonSo calls, while legacy SIM-order screens still use
+    # menu 699161 for the broader /ccbs/chonSo namespace.
+    ('/ccbs/chonSo/app_ds_dauso', '810641'),
+    ('/ccbs/chonSo/checkSimStatus', '810641'),
+    ('/app-banhang/kenhban-simkit/', '810641'),
+    ('/web-quantri/danhmuc-chung/lay_tt_ts_diadanh_moi', '810641'),
+    ('/app-ccdv/vietqr/check_donhang', '810641'),
     ('/ccbs/chonSo/', '699161'),
     ('/app-banhang/donhang_simkit/', '699161'),
     ('/app-com/danhmuc/get_danhmuc', '699161'),
@@ -1932,6 +1981,21 @@ def endpoint_menu_id(endpoint_path, fallback=None, body=None):
             return '11213'
         if permission_code == 'BANGOICUOCDIDONG':
             return '11077'
+        if permission_code == 'KHOITAOTB':
+            return '810641'
+    # get_danhmuc is shared by many modules.  Preserve the captured SIM Kit
+    # menu only for this known flow instead of forcing the legacy 699161 menu.
+    if (endpoint_path == '/app-com/danhmuc/get_danhmuc' and
+            isinstance(body, dict) and
+            str(body.get('menu_id') or '').strip() == '810641'):
+        return '810641'
+    # VNPT Pay is also shared by legacy and customer-self-registration SIM
+    # flows.  The completed mobile capture keeps menu 810641 for wallet auth,
+    # balance and token refresh in this branch.
+    if (endpoint_path.startswith('/app-thuno/VnptPay/') and
+            isinstance(body, dict) and
+            str(body.get('menu_id') or '').strip() == '810641'):
+        return '810641'
     for prefix, menu_id in ENDPOINT_MENU_ROUTES:
         if endpoint_path.startswith(prefix):
             return menu_id
@@ -2056,8 +2120,8 @@ def _render_login():
         app_version=APP_CFG['APP_VERSION'])
 
 
-def _activate_primary_token_session(token, expected_username='', device_id='', app_secret=''):
-    """Validate a pasted token and replace the current primary login session."""
+def _validated_pasted_token_context(token, expected_username='', device_id='', app_secret='', primary=False):
+    """Validate a pasted token and build an account context without mutating session."""
     token = _normalise_pasted_token(token)
     expected_username = str(expected_username or '').strip()
     if not token:
@@ -2082,7 +2146,7 @@ def _activate_primary_token_session(token, expected_username='', device_id='', a
         'token_time': time.time(),
         'device_id': device_id,
         'app_secret': app_secret,
-        'primary': True,
+        'primary': bool(primary),
     }
     response, profile = _request_account_profile(context)
     profile_succeeded = bool(
@@ -2110,14 +2174,35 @@ def _activate_primary_token_session(token, expected_username='', device_id='', a
         return None, 'Token hợp lệ nhưng OneBSS không trả tên user.', 400
 
     phone = _extract_account_phone(profile) or _extract_account_phone_from_token(token)
+    context['id'] = _account_id(username)
+    context['username'] = username
+    if phone:
+        context['phone'] = phone
+    return context, '', 200
+
+
+def _activate_primary_token_session(token, expected_username='', device_id='', app_secret=''):
+    """Validate a pasted token and replace the current primary login session."""
+    context, error, status = _validated_pasted_token_context(
+        token,
+        expected_username=expected_username,
+        device_id=device_id,
+        app_secret=app_secret,
+        primary=True,
+    )
+    if not context:
+        return None, error, status
+    token = context['access_token']
+    username = context['username']
+    phone = context.get('phone', '')
     session.clear()
     session['username'] = username
     session['access_token'] = token
     session['refresh_token'] = ''
-    session['expires_in'] = remaining
+    session['expires_in'] = context.get('expires_in', 3600)
     session['token_time'] = context['token_time']
-    session['device_id'] = device_id
-    session['app_secret'] = app_secret
+    session['device_id'] = context.get('device_id', '')
+    session['app_secret'] = context.get('app_secret', '')
     session['menus'] = []
     session['active_menu_id'] = str(APP_CFG['MENU_ID'])
     session['multi_accounts'] = {}
@@ -2365,7 +2450,7 @@ def api_accounts_profile():
 @app.post('/api/accounts/token-login')
 @login_required
 def api_accounts_token_login():
-    """Activate a pasted access token for the selected account row."""
+    """Add or update one independent account from a pasted access token."""
     payload = request.get_json(silent=True) or {}
     account_id = str(payload.get('account_id') or '').strip()
     token = _normalise_pasted_token(
@@ -2380,31 +2465,53 @@ def api_accounts_token_login():
     saved = get_saved_employee_account(account_id) if account_id else None
     username = str(payload.get('username') or
                    (existing or {}).get('username') or
-                   (saved or {}).get('username') or '').strip()
-    if account_id and account_id != primary_id and not username:
-        return jsonify({'ok': False, 'error': 'Không xác định được user của token'}), 400
-    if not account_id:
-        if not username:
-            return jsonify({'ok': False, 'error': 'Thiếu user hoặc account_id'}), 400
-        account_id = _account_id(username)
-    if not username:
-        username = primary.get('username', '')
-    if _account_id(username) != account_id:
-        return jsonify({'ok': False, 'error': 'Token không khớp user được chọn'}), 400
+                   (saved or {}).get('username') or
+                   (primary.get('username') if account_id == primary_id else '') or '').strip()
 
     base_context = dict(existing or {})
     if account_id == primary_id:
         base_context = primary
-    context, error, status = _activate_primary_token_session(
+    context, error, status = _validated_pasted_token_context(
         token,
         expected_username=username,
         device_id=base_context.get('device_id') or session.get('device_id', ''),
         app_secret=base_context.get('app_secret') or session.get('app_secret', ''),
+        primary=False,
     )
     if not context:
         return jsonify({'ok': False, 'error': error}), status
+    detected_id = str(context.get('id') or _account_id(context.get('username', '')))
+    if account_id and account_id != detected_id:
+        return jsonify({'ok': False, 'error': 'Token không khớp user được chọn'}), 400
+
+    if detected_id == primary_id:
+        for key in ('username', 'access_token', 'refresh_token', 'expires_in',
+                    'token_time', 'device_id', 'app_secret'):
+            if key in context:
+                session[key] = context[key]
+        if context.get('phone'):
+            session['account_phone'] = context['phone']
+        context['primary'] = True
+    else:
+        with _multi_account_lock:
+            extras = session.get('multi_accounts') or {}
+            extras = dict(extras) if isinstance(extras, dict) else {}
+            if len(extras) >= 10 and detected_id not in extras:
+                return jsonify({
+                    'ok': False,
+                    'error': 'Chỉ cho phép tối đa 10 tài khoản trong một phiên',
+                }), 400
+            stored = dict(context)
+            stored.pop('primary', None)
+            extras[detected_id] = stored
+            session['multi_accounts'] = extras
+        context['primary'] = False
+    if context.get('phone'):
+        _remember_account_phone(detected_id, context['phone'])
+    else:
+        _save_persistent_session()
     return jsonify({'ok': True, 'account': _public_account_summary(context),
-                    'message': f"Đã đăng nhập {context.get('username', username)} bằng token"})
+                    'message': f"Đã thêm {context.get('username', username)} bằng token"})
 
 
 @app.post('/api/accounts/begin')
@@ -2703,6 +2810,81 @@ def dashboard():
         CLIENT_ID=APP_CFG['CLIENT_ID'])
 
 
+@app.route('/api/onebss-report/status')
+@login_required
+def api_onebss_report_status():
+    """Return progress without exposing the saved OneBSS access token."""
+    return jsonify({'ok': True, **_onebss_report_manager.status()})
+
+
+@app.route('/api/onebss-report/start', methods=['POST'])
+@login_required
+def api_onebss_report_start():
+    """Start/resume the daily OneBSS export from April 2026 to today."""
+    from datetime import date, datetime
+
+    payload = request.get_json(silent=True) or {}
+    start_text = str(payload.get('start_date') or '2026-04-01').strip()
+    end_text = str(payload.get('end_date') or date.today().isoformat()).strip()
+    account_id = str(payload.get('account_id') or '').strip()
+    try:
+        start_day = datetime.strptime(start_text, '%Y-%m-%d').date()
+        end_day = datetime.strptime(end_text, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({
+            'ok': False,
+            'error': 'Ngày phải đúng định dạng YYYY-MM-DD.',
+        }), 400
+    if end_day > date.today():
+        return jsonify({
+            'ok': False,
+            'error': 'Đến ngày không được lớn hơn ngày hiện tại.',
+        }), 400
+    try:
+        access_token = ''
+        account_username = ''
+        if account_id:
+            context = _get_account_context(account_id)
+            access_token = str(context.get('access_token') or '')
+            account_username = str(context.get('username') or '')
+        state = _onebss_report_manager.start(
+            start_day,
+            end_day,
+            access_token=access_token,
+            account_username=account_username,
+        )
+        return jsonify({'ok': True, **state})
+    except (OneBssReportError, ValueError) as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 409
+
+
+@app.route('/api/onebss-report/stop', methods=['POST'])
+@login_required
+def api_onebss_report_stop():
+    return jsonify({'ok': True, **_onebss_report_manager.stop()})
+
+
+@app.route('/api/onebss-report/download')
+@login_required
+def api_onebss_report_download():
+    state = _onebss_report_manager.status()
+    output_path = os.path.abspath(str(state.get('output_path') or ''))
+    try:
+        owned = os.path.commonpath([
+            output_path,
+            os.path.abspath(ONEBSS_REPORT_OUTPUT_DIR),
+        ]) == os.path.abspath(ONEBSS_REPORT_OUTPUT_DIR)
+    except ValueError:
+        owned = False
+    if not owned or not os.path.isfile(output_path):
+        return jsonify({'ok': False, 'error': 'Chưa có file Excel để tải.'}), 404
+    return send_file(
+        output_path,
+        as_attachment=True,
+        download_name=os.path.basename(output_path),
+    )
+
+
 # ─────────────────────────────────────────────────────────────
 #  OneBSS business guard – lookup, SIM Kit and IC/OC
 # ─────────────────────────────────────────────────────────────
@@ -2731,6 +2913,12 @@ _SIM_MUTATION_ENDPOINTS = frozenset({
     '/app-banhang/donhang_simkit/nhap_thongtin_khachhang_v3',
     '/app-banhang/donhang_simkit/xacnhan_thanhtoan',
     '/app-banhang/donhang_simkit/khoitao_thuebao',
+    '/app-banhang/kenhban-simkit/chonso_kit_v2',
+    '/app-banhang/kenhban-simkit/dangky_goicuoc',
+    '/app-banhang/kenhban-simkit/nhap_thongtin_khachhang_v3',
+    '/app-banhang/kenhban-simkit/khoitao_thuebao',
+    '/app-banhang/kenhban-simkit/xacnhan_thanhtoan',
+    '/app-banhang/kenhban-simkit/hoanthanh_donhang_tratruoc',
 })
 _ICOC_MUTATION_ENDPOINTS = frozenset({
     '/app-banhang/thuebaodidong/khoamo_ic_oc',
@@ -2765,8 +2953,15 @@ def _business_endpoint_policy(endpoint_path, body):
     is_sim = (
         path.startswith('/ccbs/chonso/') or
         path.startswith('/app-banhang/donhang_simkit/') or
+        path.startswith('/app-banhang/kenhban-simkit/') or
         path.startswith('/app-thuno/vnptpay/') or
-        (path == '/app-com/danhmuc/get_danhmuc' and menu_id == '699161')
+        (path == '/app-com/danhmuc/get_danhmuc' and
+         menu_id in ('699161', '810641')) or
+        path == '/web-quantri/danhmuc-chung/lay_tt_ts_diadanh_moi' or
+        (path == '/app-ccdv/vietqr/check_donhang' and
+         menu_id == '810641') or
+        (path == '/app-banhang/luong_didong_moi/mhddm_kiemtra_maquyen' and
+         str(payload.get('ma_quyen') or '').strip().upper() == 'KHOITAOTB')
     )
     if is_sim:
         return {
@@ -2913,6 +3108,8 @@ def _business_operation_key(account_key, endpoint_path, body):
     elif path.endswith('/nhap_thongtin_khachhang_v3'):
         identity['order'] = payload.get('p_id_donhang')
     elif path.endswith('/xacnhan_thanhtoan'):
+        identity['order'] = payload.get('p_id_donhang')
+    elif path.endswith('/hoanthanh_donhang_tratruoc'):
         identity['order'] = payload.get('p_id_donhang')
     elif path.endswith('/khoitao_thuebao'):
         identity['order'] = payload.get('p_id_donhang')
@@ -3072,9 +3269,8 @@ def proxy():
         endpoint_path, body, endpoint, account_context.get('username'))
     requested_mid = extra_hdr.get('SelectedMenuId') or extra_hdr.get('selectedmenuid')
     active_mid = endpoint_menu_id(endpoint_path, requested_mid, body)
-    # app_ds_dauso is the only chonSo call captured with an empty DTO. The
-    # mobile search_isdn DTO explicitly contains menu_id=699161, so preserve
-    # and inject it like the other SIM-kit requests.
+    # A few read-only endpoints are captured without a JSON DTO. Keep their
+    # query/body exact; SelectedMenuId is still routed independently above.
     strict_body_endpoints = {
         '/ccbs/chonSo/app_ds_dauso',
         # Mobile sends only ?so_msin=... for this final read-only status check.
@@ -3083,6 +3279,11 @@ def proxy():
         '/ccbs/pttb/get_sotb_by_msin',
         # The Employee serial lookup DTO contains only so_sim.
         '/ccbs/tracuu/ts_tracuu_stb_serial',
+        # Captured as a body-less GET; menu 810641 is carried in headers.
+        '/web-quantri/danhmuc-chung/lay_tt_ts_diadanh_moi',
+        # The captured payment DTO does not contain menu_id.  Its menu is
+        # carried only by SelectedMenuId, like the Employee mobile request.
+        '/app-banhang/kenhban-simkit/xacnhan_thanhtoan',
     }
     inject_menu_id = endpoint_path not in strict_body_endpoints
     if inject_menu_id and isinstance(body, dict) and 'menu_id' not in body:

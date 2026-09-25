@@ -72,7 +72,7 @@ class AccountManagementTests(unittest.TestCase):
         with self.client.session_transaction() as active_session:
             self.assertNotIn(extra_id, active_session.get('multi_accounts', {}))
 
-    def test_pasted_token_replaces_primary_session_without_otp(self):
+    def test_pasted_token_adds_independent_extra_session_without_otp(self):
         self._login_primary()
         app_module.save_employee_account('token.user', 'encrypted-password-source')
         account_id = app_module._account_id('token.user')
@@ -99,9 +99,44 @@ class AccountManagementTests(unittest.TestCase):
         self.assertEqual(payload['account']['username'], 'token.user')
         self.assertEqual(payload['account']['phone'], '0901234567')
         with self.client.session_transaction() as active_session:
-            self.assertEqual(active_session['username'], 'token.user')
-            self.assertEqual(active_session['access_token'], 'pasted-access-token')
-            self.assertEqual(active_session.get('multi_accounts'), {})
+            self.assertEqual(active_session['username'], 'primary.user')
+            self.assertEqual(active_session['access_token'], 'live-access-token')
+            extra = active_session.get('multi_accounts', {}).get(account_id)
+            self.assertIsNotNone(extra)
+            self.assertEqual(extra['username'], 'token.user')
+            self.assertEqual(extra['access_token'], 'pasted-access-token')
+
+    def test_token_without_precreated_account_is_detected_and_added(self):
+        self._login_primary()
+
+        def encoded(value):
+            raw = app_module.json.dumps(value, separators=(',', ':')).encode('utf-8')
+            return app_module.base64.urlsafe_b64encode(raw).decode('ascii').rstrip('=')
+
+        token = '.'.join((
+            encoded({'alg': 'RS256', 'typ': 'JWT'}),
+            encoded({'user_name': 'second.user', 'exp': int(time.time()) + 3600}),
+            'signed_part',
+        ))
+
+        class ProfileResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {'error_code': 'BSS-00000000', 'data': {}}
+
+        with patch.object(app_module.requests, 'post', return_value=ProfileResponse()):
+            response = self.client.post('/api/accounts/token-login', json={'token': token})
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload['account']['username'], 'second.user')
+        account_id = app_module._account_id('second.user')
+        with self.client.session_transaction() as active_session:
+            self.assertEqual(active_session['username'], 'primary.user')
+            self.assertEqual(
+                active_session['multi_accounts'][account_id]['access_token'], token)
 
     def test_login_page_has_paste_token_form(self):
         response = self.client.get('/login')

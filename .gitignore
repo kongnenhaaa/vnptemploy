@@ -17,6 +17,9 @@ jadx/
 jadx.zip
 blutter/
 blutter_out/
+# Generated output from one-off JADX/Blutter analysis runs
+VNPT_Employee_Prod_jadx_run/
+blutter_out_run/
 VNPT_Employee_Prod_src/
 video_frames/
 dist/
