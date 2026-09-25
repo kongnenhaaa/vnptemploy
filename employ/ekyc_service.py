@@ -38,7 +38,7 @@ MYVNPT_BASE    = "https://api-myvnpt.vnpt.vn"
 IDG_BASE       = "https://api.idg.vnpt.vn"
 ONEBSS_BASE    = "https://api-onebss.vnpt.vn"
 IV_ZEROS       = bytes(16)
-APP_VERSION    = "1.5.41.086"
+APP_VERSION    = "1.5.41.130"
 
 
 def set_app_version(version: str) -> None:

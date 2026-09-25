@@ -1394,7 +1394,7 @@ def delete_saved_employee_account(account_id):
 
 # ─── CONFIG (Dynamic) ───────────────────────
 BASE_URL = 'https://api-onebss.vnpt.vn'
-DEFAULT_APP_VERSION = '1.5.41.090'
+DEFAULT_APP_VERSION = '1.5.41.130'
 APP_SETTINGS_FILE = os.path.join(_credential_root, 'app_settings.json')
 _app_settings_lock = threading.RLock()
 
@@ -1403,7 +1403,7 @@ def _normalize_app_version(value):
     """Accept the four-part OneBSS app version shown on the download page."""
     version = str(value or '').strip()
     if not re.fullmatch(r'\d{1,4}(?:\.\d{1,4}){3}', version):
-        raise ValueError('APP_VERSION không hợp lệ. Ví dụ: 1.5.41.086')
+        raise ValueError('APP_VERSION không hợp lệ. Ví dụ: 1.5.41.130')
     return version
 
 
@@ -1413,7 +1413,7 @@ def _load_saved_app_version():
             with open(APP_SETTINGS_FILE, 'r', encoding='utf-8') as settings_file:
                 settings = json.load(settings_file)
         saved = _normalize_app_version(settings.get('app_version'))
-        # OneBSS mobile capture for menu 11077 uses 1.5.41.090.  An older
+        # OneBSS currently requires at least 1.5.41.130. An older
         # persisted version produces an app-secret that the current gateway
         # rejects with 401, so upgrade old settings while preserving any newer
         # version the operator configured later.
