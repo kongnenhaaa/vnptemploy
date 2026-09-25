@@ -93,6 +93,8 @@ class SimKitRoutingTests(unittest.TestCase):
         '/app-banhang/kenhban-simkit/chonso_kit_v2',
         '/app-banhang/kenhban-simkit/dangky_goicuoc',
         '/app-banhang/kenhban-simkit/nhap_thongtin_khachhang_v3',
+        '/app-banhang/kenhban-simkit/xac_thuc_khuonmat',
+        '/app-banhang/kenhban-simkit/add_update_khachhang',
         '/app-banhang/kenhban-simkit/khoitao_thuebao',
         '/app-banhang/kenhban-simkit/xacnhan_thanhtoan',
         '/app-banhang/kenhban-simkit/hoanthanh_donhang_tratruoc',
@@ -150,6 +152,148 @@ class SimKitRoutingTests(unittest.TestCase):
         )
 
 
+class SimAssistedPortraitTests(unittest.TestCase):
+    def test_portrait_is_resolved_by_exact_citizen_id(self):
+        with tempfile.TemporaryDirectory(prefix='vnpt_portrait_') as temp_dir:
+            expected = os.path.join(temp_dir, '066204001088.jpg')
+            with open(expected, 'wb') as portrait:
+                portrait.write(b'\xff\xd8\xff' + b'x' * 4096)
+            with patch.object(
+                    app_module, '_device_auth_get_portrait_cache_dirs',
+                    return_value=[temp_dir]):
+                image_bytes, path = app_module._sim_assisted_find_portrait(
+                    '066204001088')
+        self.assertEqual(path, expected)
+        self.assertTrue(image_bytes.startswith(b'\xff\xd8\xff'))
+
+    def test_captured_portrait_sequence_uses_menu_810641(self):
+        post_calls = []
+
+        def onebss_post(path, body, account_id='', menu_id=None):
+            post_calls.append((path, body, str(menu_id)))
+            if path.endswith('/init_log_uuid'):
+                return {'request_id': 'real-request-id'}
+            return {'error': 200, 'error_code': 'BSS-00000000'}
+
+        with (
+            patch.object(
+                app_module, '_sim_assisted_find_portrait',
+                return_value=(b'\xff\xd8\xff' + b'x' * 4096,
+                              r'C:\portrait\066204001088.jpg')),
+            patch.object(
+                app_module, '_sim_assisted_onebss_get',
+                return_value={'error': 200}),
+            patch.object(
+                app_module, '_device_auth_onebss_post',
+                side_effect=onebss_post),
+            patch.object(
+                app_module, '_device_auth_upload_to_onebss',
+                return_value={'data': {'id_taptin': 12345}}),
+        ):
+            result = app_module._sim_assisted_prepare_portrait(
+                '066204001088', 'account-a')
+
+        self.assertEqual(result['portrait_file_id'], 12345)
+        self.assertEqual(result['portrait_file_name'], '066204001088.jpg')
+        self.assertEqual(
+            [call[0] for call in post_calls],
+            [
+                '/app-com/Config/token_ekyc',
+                '/quantri/user/get_ekyc_config',
+                '/app-banhang/Ekyc/init_log_uuid',
+                '/app-banhang/Ekyc/log_ekyc',
+            ],
+        )
+        self.assertTrue(all(call[2] == '810641' for call in post_calls))
+        log_body = post_calls[-1][1]
+        self.assertEqual(log_body['p_step'], 'OTHER_-1')
+        self.assertEqual(log_body['requestId'], 'real-request-id')
+
+    def test_assisted_completion_uses_face_then_add_update_payloads(self):
+        calls = []
+        identity = {
+            'data': {
+                'uuid_customer': 'customer-uuid',
+                'customer_cards': [{
+                    'id': '066204001088',
+                    'name': 'OLD NAME',
+                    'birth_day': '19/11/2004',
+                    'gender': 'male',
+                    'nationality': 'Việt Nam',
+                    'extra_info': json.dumps({
+                        'loai_gt': '45',
+                        'loai_gt_name': 'CĂN CƯỚC CÔNG DÂN',
+                        'nationalityid': '232',
+                    }),
+                }],
+                'customer_faces': [{
+                    'channel': '36',
+                    'verify_status': 1,
+                    'image_url': 'stored-face',
+                }],
+            }
+        }
+
+        def onebss_post(path, body, account_id='', menu_id=None):
+            calls.append((path, body, str(menu_id)))
+            if path.endswith('/xac_thuc_khuonmat'):
+                return {'data': None, 'error': None,
+                        'error_code': 'BSS-00000000'}
+            return {
+                'data': {
+                    'id_donhang': 19436,
+                    'id_kbsk_kh': 20066,
+                    'id_trangthai': 4,
+                    'id_hinhthuc_dk_tttb': 1,
+                },
+                'error': None,
+                'error_code': 'BSS-00000000',
+            }
+
+        with (
+            patch.object(
+                app_module, '_sim_assisted_onebss_get',
+                return_value=identity),
+            patch.object(
+                app_module, '_sim_assisted_prepare_portrait',
+                return_value={
+                    'portrait_file_id': 14720153,
+                    'portrait_file_name': '066204001088.jpg',
+                    'request_id': 'client-session',
+                }),
+            patch.object(
+                app_module, '_device_auth_onebss_post',
+                side_effect=onebss_post),
+        ):
+            result = app_module._sim_assisted_complete_customer({
+                'citizen_id': '066204001088',
+                'order_id': 19436,
+                'customer_id': 20066,
+                'customer_name': 'Dương Đức Châu',
+                'phone': '84941021019',
+                'subscriber_type': 21,
+            }, 'account-a')
+
+        self.assertEqual(result['portrait_file_id'], 14720153)
+        self.assertEqual(
+            [call[0] for call in calls],
+            [
+                '/app-banhang/kenhban-simkit/xac_thuc_khuonmat',
+                '/app-banhang/kenhban-simkit/add_update_khachhang',
+            ],
+        )
+        self.assertTrue(all(call[2] == '810641' for call in calls))
+        face_body = calls[0][1]
+        self.assertEqual(face_body['id_anh_chandung'], 14720153)
+        self.assertEqual(face_body['id_donhang'], 19436)
+        self.assertEqual(face_body['id_kbsk_kh'], 20066)
+        add_body = calls[1][1]
+        self.assertEqual(add_body['full_name'], 'Dương Đức Châu')
+        self.assertEqual(add_body['customer_card']['full_name'],
+                         'Dương Đức Châu')
+        self.assertEqual(add_body['so_tb'], '84941021019')
+
+
 class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -173,12 +317,21 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
         self.assertIn('step_donhang_simkit', self.source)
         self.assertIn('kiemtra_soluong_tb', self.source)
 
-    def test_customer_payload_is_locked_to_self_registration(self):
+    def test_customer_payload_supports_both_registration_methods(self):
         customer = self._function_source(
             'simConfirmCustomer', 'simPrepareVnptWallet')
-        self.assertIn('p_id_hinhthuc_dk_tttb: 2', customer)
-        self.assertIn('p_loai_giayto: null', customer)
-        self.assertIn('p_so_gt: citizenId', customer)
+        self.assertIn("const methodId = String(simWizardState.tttbMethodId", customer)
+        self.assertIn("if (methodId === '1')", customer)
+        self.assertIn('simCompleteAssistedCustomer({', customer)
+        self.assertIn('customerName:name', customer)
+        self.assertIn('r = {status:200, body:completion.order_response}', customer)
+        payload = self.source[
+            self.source.index('function simCustomerPayload'):
+            self.source.index('async function simConfirmCustomer')
+        ]
+        self.assertIn('p_id_hinhthuc_dk_tttb: Number(methodId)', payload)
+        self.assertIn("p_loai_giayto: methodId === '1' ? 2 : null", payload)
+        self.assertIn('p_so_gt: citizenId', payload)
         self.assertIn("expectedStatusId", self.source)
         self.assertIn("simCapturedStateMatches(step, simWizardState.orderId, '4')", customer)
 
@@ -231,7 +384,7 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
             completion.index('simWizardState.completed = true'),
         )
 
-    def test_batch_input_requires_cccd_and_maps_it_to_self_registration(self):
+    def test_batch_input_requires_cccd_and_maps_it_to_selected_method(self):
         self.assertIn('citizenIdColumn: 2', self.source)
         self.assertIn('function simBatchNormalizeCitizenId(value)', self.source)
         self.assertIn("'so giay to','p so gt','pidnumber'", self.source)
@@ -242,9 +395,12 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
             self.source.index('function simHistoryTodayIso')
         ]
         self.assertIn('pidnumber:row.citizenId', batch_process)
-        self.assertIn('p_id_hinhthuc_dk_tttb:2', batch_process)
-        self.assertIn('p_loai_giayto:null', batch_process)
+        self.assertIn('p_id_hinhthuc_dk_tttb:Number(methodId)', batch_process)
+        self.assertIn("p_loai_giayto:methodId === '1' ? 2 : null", batch_process)
         self.assertIn('p_so_gt:row.citizenId', batch_process)
+        self.assertIn('simCompleteAssistedCustomer({', batch_process)
+        self.assertIn('customerName:profile.customerName', batch_process)
+        self.assertIn('customer = {status:200, body:completion.order_response}', batch_process)
 
     def test_excel_batch_uses_self_registration_flow_in_captured_order(self):
         batch_process = self.source[
@@ -257,6 +413,7 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
             '`${SIM_SELF_REG_PREFIX}/dangky_goicuoc`',
             "await requireStep('3')",
             '`${SIM_SELF_REG_PREFIX}/nhap_thongtin_khachhang_v3`',
+            'simCompleteAssistedCustomer({',
             "await requireStep('4')",
             "ma_quyen:'KHOITAOTB'",
             "'/ccbs/chonSo/checkSimStatus'",

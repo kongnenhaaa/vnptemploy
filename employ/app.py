@@ -2916,6 +2916,8 @@ _SIM_MUTATION_ENDPOINTS = frozenset({
     '/app-banhang/kenhban-simkit/chonso_kit_v2',
     '/app-banhang/kenhban-simkit/dangky_goicuoc',
     '/app-banhang/kenhban-simkit/nhap_thongtin_khachhang_v3',
+    '/app-banhang/kenhban-simkit/xac_thuc_khuonmat',
+    '/app-banhang/kenhban-simkit/add_update_khachhang',
     '/app-banhang/kenhban-simkit/khoitao_thuebao',
     '/app-banhang/kenhban-simkit/xacnhan_thanhtoan',
     '/app-banhang/kenhban-simkit/hoanthanh_donhang_tratruoc',
@@ -3107,6 +3109,12 @@ def _business_operation_key(account_key, endpoint_path, body):
         identity['recharge'] = payload.get('p_id_hinhthuc_napthe')
     elif path.endswith('/nhap_thongtin_khachhang_v3'):
         identity['order'] = payload.get('p_id_donhang')
+        # ID 1 intentionally calls this endpoint twice: first to create the
+        # customer row, then to attach the uploaded portrait to that row.
+        # Include both values so the mutation guard does not replay the first
+        # response instead of sending the portrait update.
+        identity['customer'] = payload.get('p_id_dhsk_kh')
+        identity['portrait'] = payload.get('p_id_anh_chandung')
     elif path.endswith('/xacnhan_thanhtoan'):
         identity['order'] = payload.get('p_id_donhang')
     elif path.endswith('/hoanthanh_donhang_tratruoc'):
@@ -3405,6 +3413,7 @@ def proxy():
 #  Device-change identity verification (OneBSS / IDG eKYC)
 # ─────────────────────────────────────────────────────────────
 DEVICE_AUTH_MENU_ID = '810241'
+SIM_ASSISTED_MENU_ID = '810641'
 DEVICE_AUTH_HANDLE_TTL_SECONDS = 5 * 60
 DEVICE_AUTH_IDG_BASE = 'https://api.idg.vnpt.vn'
 DEVICE_AUTH_CHALLENGE_FALLBACK = 'JGI7TCLnPYhjehlzNp34vSpfANyKRAL4'
@@ -3481,8 +3490,9 @@ def _device_auth_upstream_message(payload, fallback):
     return fallback
 
 
-def _device_auth_onebss_post(path, body, account_id=''):
-    headers = get_headers(DEVICE_AUTH_MENU_ID, account_id)
+def _device_auth_onebss_post(path, body, account_id='', menu_id=DEVICE_AUTH_MENU_ID):
+    menu_id = str(menu_id or DEVICE_AUTH_MENU_ID)
+    headers = get_headers(menu_id, account_id)
     try:
         response = requests.post(
             f"{BASE_URL.rstrip('/')}/{path.lstrip('/')}",
@@ -3677,14 +3687,16 @@ def _device_auth_idg_headers(transaction):
     return headers
 
 
-def _device_auth_upload_to_onebss(frame_bytes, account_id):
+def _device_auth_upload_to_onebss(frame_bytes, account_id,
+                                  menu_id=DEVICE_AUTH_MENU_ID):
+    menu_id = str(menu_id or DEVICE_AUTH_MENU_ID)
     try:
         upload_link = _device_auth_onebss_post(
             '/app-banhang/quanlyfile/get_upload_link', {
                 'p_module': 'CCBS',
                 'p_file_name': 'PORTRAIT_IMAGE.jpg',
-                'menu_id': int(DEVICE_AUTH_MENU_ID),
-            }, account_id)
+                'menu_id': int(menu_id),
+            }, account_id, menu_id=menu_id)
     except DeviceAuthError as exc:
         raise DeviceAuthError(
             str(exc), exc.status, liveness_passed=True,
@@ -3726,8 +3738,8 @@ def _device_auth_upload_to_onebss(frame_bytes, account_id):
         updated = _device_auth_onebss_post(
             '/app-banhang/quanlyfile/update_file', {
                 'p_object_name': object_name,
-                'menu_id': int(DEVICE_AUTH_MENU_ID),
-            }, account_id)
+                'menu_id': int(menu_id),
+            }, account_id, menu_id=menu_id)
     except DeviceAuthError as exc:
         raise DeviceAuthError(
             str(exc), exc.status, liveness_passed=True,
@@ -3810,11 +3822,18 @@ def _device_auth_clean_and_crop_portrait(image_bytes):
 
 def _device_auth_get_portrait_cache_dirs():
     """Danh sách các thư mục folder 'anh' được ưu tiên tìm kiếm và lưu trữ."""
-    dirs = [
+    dirs = []
+    if getattr(sys, 'frozen', False):
+        # Ảnh khách hàng là dữ liệu đầu vào, không đóng gói vào EXE. Bản gửi
+        # khách chỉ cần đặt folder "anh" cạnh GanSo_Employ.exe.
+        dirs.append(os.path.join(os.path.dirname(sys.executable), 'anh'))
+    dirs.extend([
+        os.path.join(_documents_root, 'VNPTEmploy', 'anh'),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), 'anh'),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'anh'),
-    ]
-    return dirs
+    ])
+    # Giữ đúng thứ tự ưu tiên nhưng loại đường dẫn trùng nhau.
+    return list(dict.fromkeys(os.path.abspath(path) for path in dirs))
 
 
 def _device_auth_get_cached_portrait(phone_fmt, phone_84):
@@ -4367,6 +4386,395 @@ def _device_auth_error_body(exc):
         'phone': exc.phone,
         'server_responses': exc.server_responses,
     }
+
+
+def _sim_assisted_find_portrait(citizen_id):
+    """Load the assisted-registration portrait named exactly after the CCCD."""
+    citizen_id = re.sub(r'\D', '', str(citizen_id or ''))
+    if not re.fullmatch(r'\d{8,20}', citizen_id):
+        raise DeviceAuthError('CCCD phải có từ 8 đến 20 chữ số', 422)
+
+    for directory in _device_auth_get_portrait_cache_dirs():
+        for extension in ('.jpg', '.jpeg', '.png'):
+            path = os.path.join(directory, citizen_id + extension)
+            if not os.path.isfile(path):
+                continue
+            size = os.path.getsize(path)
+            if size < 2048:
+                raise DeviceAuthError(
+                    f'Ảnh {citizen_id + extension} quá nhỏ hoặc bị lỗi', 422)
+            if size > 15 * 1024 * 1024:
+                raise DeviceAuthError(
+                    f'Ảnh {citizen_id + extension} vượt quá 15 MB', 422)
+            with open(path, 'rb') as portrait_file:
+                image_bytes = portrait_file.read()
+
+            # get_upload_link is requested for image/jpeg. Preserve a real
+            # JPEG byte-for-byte; convert PNG only when the extension requires
+            # it so the multipart MIME and payload agree.
+            if image_bytes.startswith(b'\xff\xd8\xff'):
+                return image_bytes, path
+            try:
+                from PIL import Image, ImageOps
+                import io
+                source = Image.open(io.BytesIO(image_bytes))
+                source = ImageOps.exif_transpose(source).convert('RGB')
+                output = io.BytesIO()
+                source.save(output, format='JPEG', quality=95)
+                converted = output.getvalue()
+            except Exception as exc:
+                raise DeviceAuthError(
+                    f'Không đọc được ảnh chân dung {citizen_id + extension}',
+                    422) from exc
+            if len(converted) < 2048:
+                raise DeviceAuthError('Ảnh chân dung sau chuyển đổi không hợp lệ', 422)
+            return converted, path
+
+    searched = _device_auth_get_portrait_cache_dirs()
+    expected = os.path.join(searched[0], citizen_id + '.jpg')
+    raise DeviceAuthError(
+        f'Không tìm thấy ảnh chân dung theo CCCD. Cần file: {expected}', 404)
+
+
+def _sim_assisted_onebss_get(path, params, account_id=''):
+    headers = get_headers(SIM_ASSISTED_MENU_ID, account_id)
+    try:
+        response = requests.get(
+            f"{BASE_URL.rstrip('/')}/{path.lstrip('/')}",
+            headers=headers, params=params, verify=False, timeout=25)
+    except requests.exceptions.Timeout as exc:
+        raise DeviceAuthError(f'API OneBSS timeout tại {path}', 504) from exc
+    except requests.exceptions.RequestException as exc:
+        raise DeviceAuthError(f'Không kết nối được OneBSS tại {path}', 502) from exc
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise DeviceAuthError(
+            f'OneBSS trả dữ liệu không hợp lệ tại {path}', 502) from exc
+    if not _onebss_payload_succeeded(response.status_code, payload):
+        raise DeviceAuthError(
+            _device_auth_upstream_message(
+                payload, f'OneBSS từ chối tại {path} (HTTP {response.status_code})'),
+            response.status_code if response.status_code >= 400 else 400,
+            upstream=payload)
+    return payload
+
+
+def _sim_assisted_find_value(value, keys, depth=0):
+    if depth > 8:
+        return None
+    if isinstance(value, dict):
+        for key in keys:
+            if value.get(key) not in (None, ''):
+                return value[key]
+        for child in value.values():
+            found = _sim_assisted_find_value(child, keys, depth + 1)
+            if found not in (None, ''):
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _sim_assisted_find_value(child, keys, depth + 1)
+            if found not in (None, ''):
+                return found
+    return None
+
+
+def _sim_assisted_prepare_portrait(citizen_id, account_id='', identity_payload=None):
+    """Replay the captured ID-1 portrait preparation with a local CCCD image."""
+    citizen_id = re.sub(r'\D', '', str(citizen_id or ''))
+    portrait_bytes, portrait_path = _sim_assisted_find_portrait(citizen_id)
+    menu_id = int(SIM_ASSISTED_MENU_ID)
+
+    # Keep the order from the completed HTTP Toolkit capture. The two config
+    # responses can contain credentials, therefore they are deliberately not
+    # returned to the browser or written to logs.
+    if identity_payload is None:
+        identity_payload = _sim_assisted_onebss_get(
+            '/app-banhang/kenhban-simkit/truy_van_dinhdanh',
+            {'card_id': citizen_id}, account_id)
+    _device_auth_onebss_post(
+        '/app-com/Config/token_ekyc', {'menu_id': menu_id}, account_id,
+        menu_id=SIM_ASSISTED_MENU_ID)
+    _device_auth_onebss_post(
+        '/quantri/user/get_ekyc_config', {'menu_id': menu_id}, account_id,
+        menu_id=SIM_ASSISTED_MENU_ID)
+    initialized = _device_auth_onebss_post(
+        '/app-banhang/Ekyc/init_log_uuid', {
+            'p_type': None,
+            'p_id': None,
+            'p_so_gt': None,
+            'p_loai_gt': None,
+            'menu_id': menu_id,
+        }, account_id, menu_id=SIM_ASSISTED_MENU_ID)
+    request_id = _sim_assisted_find_value(
+        initialized, ('request_id', 'requestId'))
+    if request_id in (None, ''):
+        raise DeviceAuthError('init_log_uuid không trả request_id', 502)
+    _device_auth_onebss_post(
+        '/app-banhang/Ekyc/log_ekyc', {
+            'p_order_id': None,
+            'p_tran_id': None,
+            'p_step': 'OTHER_-1',
+            'p_ai_info': None,
+            'p_ai_face': '',
+            'p_ai_liveness': '',
+            'p_front_liveness': None,
+            'p_rear_liveness': None,
+            'requestId': request_id,
+            'menu_id': menu_id,
+        }, account_id, menu_id=SIM_ASSISTED_MENU_ID)
+    uploaded = _device_auth_upload_to_onebss(
+        portrait_bytes, account_id, menu_id=SIM_ASSISTED_MENU_ID)
+    portrait_file_id = _sim_assisted_find_value(
+        uploaded, ('id_taptin', 'id_tap_tin', 'file_id', 'id'))
+    if portrait_file_id in (None, ''):
+        raise DeviceAuthError('update_file không trả id_taptin của ảnh chân dung', 502)
+    return {
+        'portrait_file_id': portrait_file_id,
+        'portrait_file_name': os.path.basename(portrait_path),
+        'request_id': request_id,
+        # Internal callers reuse the exact read-only identity response so the
+        # completion sequence does not query the same CCCD twice.  The public
+        # prepare route below deliberately strips this value.
+        'identity_payload': identity_payload,
+    }
+
+
+def _sim_assisted_payload_data(payload):
+    if isinstance(payload, dict) and isinstance(payload.get('data'), dict):
+        return payload['data']
+    return payload if isinstance(payload, dict) else {}
+
+
+def _sim_assisted_int(value, label):
+    digits = re.sub(r'\D', '', str(value or ''))
+    if not digits:
+        raise DeviceAuthError(f'Thiếu {label}', 400)
+    return int(digits)
+
+
+def _sim_assisted_complete_customer(payload, account_id=''):
+    """Finish registration method 1 using the captured Employee API flow."""
+    citizen_id = re.sub(r'\D', '', str(
+        payload.get('citizen_id') or payload.get('cccd') or ''))
+    if not 8 <= len(citizen_id) <= 20:
+        raise DeviceAuthError('CCCD phải có từ 8 đến 20 chữ số', 400)
+    order_id = _sim_assisted_int(payload.get('order_id'), 'id_donhang')
+    customer_id = _sim_assisted_int(payload.get('customer_id'), 'id_kbsk_kh')
+    customer_name = str(payload.get('customer_name') or '').strip()
+    phone = re.sub(r'\D', '', str(payload.get('phone') or ''))
+    if not customer_name:
+        raise DeviceAuthError('Thiếu tên khách hàng', 400)
+    if not 9 <= len(phone) <= 15:
+        raise DeviceAuthError('Số điện thoại liên hệ không hợp lệ', 400)
+    subscriber_type = _sim_assisted_int(
+        payload.get('subscriber_type') or 21, 'loại thuê bao')
+
+    identity_payload = _sim_assisted_onebss_get(
+        '/app-banhang/kenhban-simkit/truy_van_dinhdanh',
+        {'card_id': citizen_id}, account_id)
+    identity = _sim_assisted_payload_data(identity_payload)
+    cards = identity.get('customer_cards')
+    faces = identity.get('customer_faces')
+    cards = cards if isinstance(cards, list) else []
+    faces = faces if isinstance(faces, list) else []
+    card_source = next((item for item in cards if isinstance(item, dict)), None)
+    uuid_customer = str(identity.get('uuid_customer') or '').strip()
+    if card_source is None or not uuid_customer:
+        raise DeviceAuthError(
+            'CCCD chưa có dữ liệu định danh cũ để tái sử dụng giấy tờ', 409)
+
+    portrait = _sim_assisted_prepare_portrait(
+        citizen_id, account_id, identity_payload=identity_payload)
+    portrait_file_id = portrait['portrait_file_id']
+    client_session = str(portrait.get('request_id') or '')
+
+    raw_extra = card_source.get('extra_info')
+    if isinstance(raw_extra, str):
+        try:
+            extra = json.loads(raw_extra)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            extra = {}
+    else:
+        extra = dict(raw_extra) if isinstance(raw_extra, dict) else {}
+    extra.setdefault('previous_verify_method', 'NFC')
+    extra.setdefault('loai_gt', '45')
+    extra.setdefault('loai_gt_name', 'CĂN CƯỚC CÔNG DÂN')
+    extra.setdefault('nationalityid', '232')
+    extra_json = json.dumps(extra, ensure_ascii=False, separators=(',', ':'))
+
+    try:
+        document_type_id = int(str(extra.get('loai_gt') or '45'))
+    except (TypeError, ValueError):
+        document_type_id = 45
+    document_type_name = str(
+        extra.get('loai_gt_name') or 'CĂN CƯỚC CÔNG DÂN')
+    gender = str(card_source.get('gender') or '').strip()
+    try:
+        gender_id = int(str(extra.get('genderid') or
+                            (1 if gender.casefold() == 'male' else 2)))
+    except (TypeError, ValueError):
+        gender_id = 1 if gender.casefold() == 'male' else 2
+    try:
+        nationality_id = int(str(extra.get('nationalityid') or '232'))
+    except (TypeError, ValueError):
+        nationality_id = 232
+
+    customer_card = {
+        'card_id': citizen_id,
+        'card_category_id': document_type_id,
+        'image_front_url': card_source.get('img_front'),
+        'image_back_url': card_source.get('img_back'),
+        # The order/customer name stays the random value generated per Excel
+        # row; only the saved identity/card evidence is reused.
+        'full_name': customer_name,
+        'dob': card_source.get('birth_day'),
+        'gender': gender or None,
+        'nationality': card_source.get('nationality'),
+        'origin_location': card_source.get('origin_location'),
+        'recent_location': card_source.get('recent_location'),
+        'issue_date': card_source.get('issue_date'),
+        'old_id': None,
+        'spouse_name': None,
+        'mom_name': None,
+        'dad_name': None,
+        'features': None,
+        'ethnic': None,
+        'religion': None,
+        'nation_policy': None,
+        'nation_slogan': None,
+        'issue_place': card_source.get('issue_place'),
+        'valid_date': card_source.get('valid_date'),
+        'extra_info': extra_json,
+        'hash_dg': None,
+        'gender_id': gender_id,
+        'nationality_id': nationality_id,
+        # The captured app sends this field as an optional catalogue id.  The
+        # saved identity stores a text code here, so do not pass that code as
+        # an id (the successful live request omitted it).
+        'issue_place_id': None,
+        'txnid': None,
+        'so_visa': None,
+        'ngay_hh_visa': None,
+        'result_c06': None,
+        'id_loai_kh': 1,
+    }
+
+    face_payload = {
+        'hash_face': None,
+        'uuid_customer': uuid_customer,
+        'client_session': client_session,
+        'extra_info_customer': extra_json,
+        'id_anh_chandung': portrait_file_id,
+        'id_loai_giayto': document_type_id,
+        'loai_giayto': document_type_name,
+        'id_donhang': order_id,
+        'id_kbsk_kh': customer_id,
+        'customer_card': customer_card,
+    }
+    _device_auth_onebss_post(
+        '/app-banhang/kenhban-simkit/xac_thuc_khuonmat',
+        face_payload, account_id, menu_id=SIM_ASSISTED_MENU_ID)
+
+    verified_face = next((
+        item for item in faces
+        if isinstance(item, dict) and str(item.get('verify_status')) == '1'
+    ), next((item for item in faces if isinstance(item, dict)), {}))
+    add_payload = {
+        'channel': str(verified_face.get('channel') or '36'),
+        'full_name': customer_name,
+        'phone': phone,
+        'email': None,
+        'img_face': str(portrait_file_id),
+        'uuid_customer': uuid_customer,
+        'verify_status': 1,
+        'reference': verified_face.get('image_url'),
+        'client_session': client_session,
+        'id_anh_chandung': portrait_file_id,
+        'id_donhang': order_id,
+        'id_kbsk_kh': customer_id,
+        'id_loai_giayto': document_type_id,
+        'loai_giayto': document_type_name,
+        'type': None,
+        'request_id_nfc': None,
+        'dataSign': None,
+        'dataBase64': None,
+        'customer_type': 1,
+        'so_tb': phone,
+        'loai_tb': subscriber_type,
+        'customer_card': customer_card,
+    }
+    completed = _device_auth_onebss_post(
+        '/app-banhang/kenhban-simkit/add_update_khachhang',
+        add_payload, account_id, menu_id=SIM_ASSISTED_MENU_ID)
+    completed_order_id = str(_sim_assisted_find_value(
+        completed, ('id_donhang', 'ID_DONHANG')) or '')
+    completed_customer_id = str(_sim_assisted_find_value(
+        completed, ('id_kbsk_kh', 'id_dhsk_kh', 'customerId')) or '')
+    completed_status = str(_sim_assisted_find_value(
+        completed, ('id_trangthai', 'ID_TRANGTHAI')) or '')
+    completed_method = str(_sim_assisted_find_value(
+        completed, ('id_hinhthuc_dk_tttb', 'ID_HINHTHUC_DK_TTTB')) or '')
+    if (completed_order_id != str(order_id) or
+            completed_customer_id != str(customer_id) or
+            completed_status != '4' or completed_method != '1'):
+        raise DeviceAuthError(
+            'add_update_khachhang chưa xác nhận đúng đơn, khách hàng, trạng thái 4 và phương thức 1',
+            409, upstream=completed)
+    return {
+        'portrait_file_id': portrait_file_id,
+        'portrait_file_name': portrait['portrait_file_name'],
+        'request_id': client_session,
+        'order_response': completed,
+    }
+
+
+@app.post('/api/sim-assisted/prepare-portrait')
+@login_required
+def sim_assisted_prepare_portrait():
+    payload = request.get_json(silent=True) or {}
+    account_id = str(payload.get('account_id') or '').strip()
+    try:
+        # Resolve the requested account before reading/uploading a customer
+        # image; this also prevents an unknown account id from falling back to
+        # the primary session accidentally.
+        _get_account_context(account_id)
+        result = _sim_assisted_prepare_portrait(
+            payload.get('citizen_id') or payload.get('cccd'), account_id)
+        public_result = {
+            key: result[key] for key in (
+                'portrait_file_id', 'portrait_file_name', 'request_id')
+            if key in result
+        }
+        return jsonify({'ok': True, **public_result})
+    except DeviceAuthError as exc:
+        return jsonify(_device_auth_error_body(exc)), exc.status
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 404
+    except Exception as exc:
+        print(f'[SIM_ASSISTED] portrait preparation failed: {exc}')
+        return jsonify({'ok': False, 'error': f'Lỗi chuẩn bị ảnh chân dung: {exc}'}), 500
+
+
+@app.post('/api/sim-assisted/complete-customer')
+@login_required
+def sim_assisted_complete_customer():
+    payload = request.get_json(silent=True) or {}
+    account_id = str(payload.get('account_id') or '').strip()
+    try:
+        _get_account_context(account_id)
+        result = _sim_assisted_complete_customer(payload, account_id)
+        return jsonify({'ok': True, **result})
+    except DeviceAuthError as exc:
+        return jsonify(_device_auth_error_body(exc)), exc.status
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 404
+    except Exception as exc:
+        print(f'[SIM_ASSISTED] customer completion failed: {exc}')
+        return jsonify({
+            'ok': False,
+            'error': f'Lỗi hoàn tất khách hàng kênh bán hỗ trợ: {exc}',
+        }), 500
 
 
 @app.post('/api/device-auth/verify')
