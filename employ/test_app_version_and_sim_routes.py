@@ -474,6 +474,48 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
         self.assertIn("p_prefix:prefix, p_isdn:suffix", search)
         self.assertNotIn("const prefix = nationalNumber", helper + search)
 
+    def test_order_history_defaults_to_all_and_pending_means_unpaid(self):
+        self.assertIn(
+            '<option value="-1" selected>Tất cả</option>', self.source)
+        self.assertIn(
+            "const statusFilter = String(document.getElementById('sim-history-status')?.value || '-1').trim();",
+            self.source,
+        )
+        ensure_dates = self.source[
+            self.source.index('function simEnsureHistoryDates'):
+            self.source.index('function simHistoryApiDate')
+        ]
+        self.assertIn("const firstDayOfMonth = `${today.slice(0, 8)}01`;", ensure_dates)
+        pending = self.source[
+            self.source.index('function simHistoryIsPending'):
+            self.source.index('function simHistoryCanCancel')
+        ]
+        self.assertIn("paymentStatus !== '1'", pending)
+        self.assertIn("statusId !== '0'", pending)
+        self.assertNotIn('initializationStatus', pending)
+
+    def test_order_history_expands_api_cap_and_paginates_fifty_rows(self):
+        history = self.source[
+            self.source.index('const SIM_HISTORY_PAGE_SIZE'):
+            self.source.index('// ── Giỏ hàng ──')
+        ]
+        self.assertIn('const SIM_HISTORY_PAGE_SIZE = 50;', history)
+        self.assertIn('const SIM_HISTORY_API_CAP = 100;', history)
+        self.assertIn('function simHistorySplitRange', history)
+        self.assertIn('async function simFetchCompleteOrderHistory', history)
+        self.assertIn('function simHistoryIsEmptyRangeResponse', history)
+        self.assertIn("code === 'BSS-00004000'", history)
+        self.assertIn('if (simHistoryIsEmptyRangeResponse(response)) return;', history)
+        self.assertIn('rows.length === SIM_HISTORY_API_CAP', history)
+        self.assertLess(
+            history.index('split.newer.fromIso'),
+            history.index('split.older.fromIso'),
+        )
+        self.assertIn(
+            'allRows.slice(start, start + SIM_HISTORY_PAGE_SIZE)', history)
+        self.assertIn('simHistoryOrderKey', history)
+        self.assertIn('50 đơn/trang', history)
+
 
 if __name__ == '__main__':
     unittest.main()

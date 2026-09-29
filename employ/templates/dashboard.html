@@ -92,6 +92,14 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .sim-batch-wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px}
 .sim-batch-wallet-grid span{color:var(--text3);display:block;font-size:9px;text-transform:uppercase;margin-bottom:2px}
 .sim-batch-wallet-status{margin-top:7px;font-size:10px;color:var(--text3);overflow-wrap:anywhere}
+.wallet-history-summary{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:8px;margin-top:12px}
+.wallet-history-summary>div{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);min-width:0}
+.wallet-history-summary span{display:block;color:var(--text3);font-size:9px;text-transform:uppercase;margin-bottom:4px}
+.wallet-history-summary strong{display:block;overflow-wrap:anywhere}
+.wallet-history-frame-wrap{min-height:520px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg3);position:relative}
+.wallet-history-frame{display:none;width:100%;height:68vh;min-height:520px;border:0;background:#fff}
+.wallet-history-frame.ready{display:block}
+.wallet-history-empty{min-height:520px;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--text3);line-height:1.6}
 
 /* ── Layout ── */
 #app{display:flex;flex:1;overflow:hidden}
@@ -120,7 +128,8 @@ body{display:flex;flex-direction:column;height:100vh;overflow:hidden}
 /* Giao diện vận hành rút gọn: chỉ hiện các nghiệp vụ đang được sử dụng. */
 #sidebar > .sidebar-section:first-child,
 #sidebar > .sidebar-section:last-child{display:none}
-#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="seriallookup"]):not([data-panel="account"]):not([data-panel="donhang"]):not([data-panel="icoc"]):not([data-panel="package-registration"]):not([data-panel="doisim"]):not([data-panel="deviceauth"]){display:none}
+#sidebar .nav-item:not([data-panel="lookup"]):not([data-panel="seriallookup"]):not([data-panel="account"]):not([data-panel="wallet-history"]):not([data-panel="donhang"]):not([data-panel="icoc"]):not([data-panel="package-registration"]):not([data-panel="doisim"]):not([data-panel="deviceauth"]){display:none}
+@media(max-width:800px){.wallet-history-summary{grid-template-columns:1fr}.wallet-history-frame,.wallet-history-frame-wrap,.wallet-history-empty{min-height:430px}}
 
 .doisim-progress{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:0 0 14px}
 .doisim-step{border:1px solid var(--border);background:var(--bg2);border-radius:9px;padding:10px 12px;color:var(--text3);font-size:12px}
@@ -928,6 +937,7 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
     <div class="sidebar-section">
       <div class="sidebar-section-title">Nghiệp vụ</div>
       <div class="nav-item active" onclick="showPanel('account')" data-panel="account"><span class="icon">👥</span>Quản lý account</div>
+      <div class="nav-item" onclick="showPanel('wallet-history')" data-panel="wallet-history"><span class="icon">👛</span>Lịch sử giao dịch ví</div>
       <div class="nav-item" onclick="showPanel('lookup')" data-panel="lookup"><span class="icon">🔎</span><span>Tra cứu theo SĐT</span></div>
       <div class="nav-item" onclick="showPanel('seriallookup')" data-panel="seriallookup"><span class="icon">💳</span>Tra cứu seri SIM</div>
       <div class="nav-item" onclick="showPanel('thuebao')" data-panel="thuebao"><span class="icon">📱</span>Tra cứu thuê bao</div>
@@ -1252,6 +1262,52 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
             <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:10px">Mật khẩu được mã hóa theo tài khoản Windows và chỉ hiển thị dạng ẩn. “Đăng xuất” chỉ gỡ token đang dùng; tài khoản đã lưu có thể đăng nhập lại từ nút “Thêm tài khoản”. “Xóa tài khoản” xóa hẳn token và mật khẩu đã lưu của riêng account đó. Bên các tab chạy SIM và IC/OC chỉ cần chọn account cần dùng.</div>
             <div id="account-management-list" style="overflow:auto"><div style="color:var(--text3);font-size:12px">Đang tải danh sách...</div></div>
             <div id="account-management-message" style="margin-top:9px;font-size:12px;color:var(--text2)"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ LỊCH SỬ GIAO DỊCH VÍ VNPT PAY ══ -->
+      <div class="panel" id="panel-wallet-history">
+        <div class="section-header">
+          <div>
+            <h2>👛 Lịch sử giao dịch ví</h2>
+            <div class="sub">Mở trang lịch sử VNPT Pay theo đúng luồng WalletInfo loại 9 của ứng dụng Employee</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a id="wallet-history-open" class="btn-sm" href="#" target="_blank" rel="noopener noreferrer" style="display:none;text-decoration:none">↗ Mở trong cửa sổ mới</a>
+            <button id="wallet-history-refresh" type="button" class="btn-primary" onclick="walletHistoryLoad(true)">Làm mới lịch sử</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-header"><h3>Tài khoản ví</h3></div>
+          <div class="card-body">
+            <div class="form-group" style="max-width:460px">
+              <label>Tài khoản Employee</label>
+              <select id="wallet-history-account" onchange="walletHistoryAccountChanged()">
+                <option value="">Đang tải danh sách tài khoản...</option>
+              </select>
+            </div>
+            <div class="wallet-history-summary">
+              <div><span>Tự động đăng nhập</span><strong id="wallet-history-auto-login">Chưa kiểm tra</strong></div>
+              <div><span>Wallet ID</span><strong id="wallet-history-wallet-id" class="mono">--</strong></div>
+              <div><span>Wallet Account ID</span><strong id="wallet-history-wallet-account-id" class="mono">--</strong></div>
+            </div>
+            <div id="wallet-history-status" style="font-size:12px;color:var(--text2);margin-top:10px" aria-live="polite">Chọn tài khoản để tải lịch sử giao dịch.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Lịch sử trên VNPT Pay</h3>
+            <span style="font-size:10px;color:var(--text3)">SelectedMenuId 10281</span>
+          </div>
+          <div class="card-body">
+            <div class="wallet-history-frame-wrap">
+              <div id="wallet-history-empty" class="wallet-history-empty">Lịch sử giao dịch sẽ hiển thị tại đây sau khi OneBSS trả trang WalletInfo của tài khoản đã chọn.</div>
+              <iframe id="wallet-history-frame" class="wallet-history-frame" title="Lịch sử giao dịch ví VNPT Pay" referrerpolicy="no-referrer" allow="clipboard-read; clipboard-write"></iframe>
+            </div>
+            <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">Nếu VNPT Pay không cho hiển thị trong khung do chính sách bảo mật, dùng nút “Mở trong cửa sổ mới”. Tool chỉ dùng URL do OneBSS trả về và không ghi token ví vào source.</div>
           </div>
         </div>
       </div>
@@ -1700,9 +1756,9 @@ pre.resp-json{font-family:'JetBrains Mono',monospace;font-size:11.5px;line-heigh
               <div class="form-group"><label>Tài khoản thực hiện</label><select id="sim-history-account" onchange="simLoadOrderHistory({force:true})"><option value="">Đang tải tài khoản...</option></select></div>
               <div class="form-group"><label>Từ ngày</label><input id="sim-history-from" type="date" onchange="simLoadOrderHistory({force:true})"></div>
               <div class="form-group"><label>Đến ngày</label><input id="sim-history-to" type="date" onchange="simLoadOrderHistory({force:true})"></div>
-              <div class="form-group"><label>Trạng thái</label><select id="sim-history-status" onchange="simLoadOrderHistory({force:true})"><option value="pending" selected>Chỉ đơn đang treo</option><option value="-1">Tất cả</option><option value="0">Đã hủy</option><option value="name:chon-so-kit">Chọn số/KIT</option><option value="name:dang-ky-goi">Đăng ký gói cước</option><option value="name:nhap-thong-tin-kh">Nhập thông tin KH</option><option value="name:thanh-toan">Thanh toán</option><option value="5">Khởi tạo thuê bao</option><option value="6">Đăng ký thuê bao</option><option value="name:hoan-thanh-don">Hoàn thành đơn hàng</option><option value="name:het-han">Hết hạn</option><option value="name:de-nghi-huy">Đề nghị hủy</option></select></div>
+              <div class="form-group"><label>Trạng thái</label><select id="sim-history-status" onchange="simLoadOrderHistory({force:true})"><option value="-1" selected>Tất cả</option><option value="pending">Đơn treo (chưa thanh toán)</option><option value="0">Đã hủy</option><option value="name:chon-so-kit">Chọn số/KIT</option><option value="name:dang-ky-goi">Đăng ký gói cước</option><option value="name:nhap-thong-tin-kh">Nhập thông tin KH</option><option value="name:thanh-toan">Thanh toán</option><option value="5">Khởi tạo thuê bao</option><option value="6">Đăng ký thuê bao</option><option value="name:hoan-thanh-don">Hoàn thành đơn hàng</option><option value="name:het-han">Hết hạn</option><option value="name:de-nghi-huy">Đề nghị hủy</option></select></div>
             </div>
-            <div id="sim-history-status-text" style="font-size:12px;color:var(--text3);margin:2px 0 10px">Đang tải các đơn SIM Kit đang treo hôm nay...</div>
+            <div id="sim-history-status-text" style="font-size:12px;color:var(--text3);margin:2px 0 10px">Đang tải tất cả đơn SIM Kit trong tháng này...</div>
             <div id="sim-history-table" class="table-wrap"></div>
           </div>
         </div>
@@ -2672,6 +2728,7 @@ const BASE_URL = String(DASHBOARD_RUNTIME.base_url || '');
 // ── Map panel → menu ID thực từ server ──
 const PANEL_MENU_MAP = {
   'lookup':  { id: 11213, name: 'Tra cứu thuê bao di động' },
+  'wallet-history': { id: 10281, name: 'Lịch sử giao dịch ví' },
   'seriallookup': { id: 699060, name: 'Tra cứu seri sim' },
   'thuebao': { id: 11213, name: 'Tra cứu thuê bao di động' },
   'cuoc':    { id: 11213, name: 'Cước & Dịch vụ di động' },
@@ -2863,6 +2920,11 @@ async function showPanel(name) {
       doiSimSetPermissionBadge('err', error.message || 'Không kiểm tra được quyền DOISIM');
     });
   }
+  if (name === 'wallet-history') {
+    walletHistoryInitialize().catch(error => {
+      walletHistorySetStatus(error.message || 'Không tải được lịch sử giao dịch ví.', true);
+    });
+  }
   // Chỉ tải đầu số sau khi session đã chuyển đúng SelectedMenuId. Trước đây
   // hai request chạy song song nên API chọn số thỉnh thoảng nhận sai menu.
   if (name === 'donhang' && !window._simPrefixesLoaded) {
@@ -3022,9 +3084,7 @@ function renderAccountManagement() {
       : (account.loggedIn ? (account.reauthRequired ? 'Cần đăng nhập lại' : 'Token đã hết hạn') : 'Đã đăng xuất');
     const statusColor = active ? '#86efac' : (account.loggedIn ? '#fca5a5' : 'var(--text3)');
     const logoutButton = account.loggedIn
-      ? (account.primary
-        ? '<a href="/logout"><button type="button" class="btn-sm" style="color:#fca5a5">Đăng xuất</button></a>'
-        : `<button type="button" class="btn-sm" style="color:#fca5a5" onclick="removeMultiAccount('${accountId}')">Đăng xuất</button>`)
+      ? `<button type="button" class="btn-sm" style="color:#fca5a5" onclick="removeMultiAccount('${accountId}')">Đăng xuất</button>`
       : '<span style="color:var(--text3)">—</span>';
     const refreshControl = remaining <= 120
       ? `<button type="button" class="btn-sm" onclick="refreshMultiAccount('${accountId}')">Làm mới</button>`
@@ -3215,8 +3275,15 @@ async function addMultiAccountByToken() {
 async function removeMultiAccount(accountId) {
   if (simBatchState?.running || icocBatchState?.running) { multiAccountMessage('Không thể gỡ tài khoản khi batch đang chạy', true); return; }
   try {
-    await multiAccountRequest('/api/accounts/remove', {account_id:accountId});
-    multiAccountMessage('Đã đăng xuất tài khoản khỏi phiên chạy; thông tin đăng nhập mã hóa vẫn được giữ trên máy.');
+    const data = await multiAccountRequest('/api/accounts/remove', {account_id:accountId});
+    if (data.logout_required) {
+      window.location.href = '/login';
+      return;
+    }
+    const promotedUsername = String(data.account?.username || '').trim();
+    multiAccountMessage(data.promoted
+      ? `Đã đăng xuất tài khoản chính và chuyển ${promotedUsername || 'tài khoản còn lại'} thành phiên chính.`
+      : 'Đã đăng xuất tài khoản khỏi phiên chạy; thông tin đăng nhập mã hóa vẫn được giữ trên máy.');
     await loadMultiAccounts(true);
   } catch (error) {
     multiAccountMessage(error.message, true);
@@ -3312,7 +3379,10 @@ async function deleteManagedAccount(accountId) {
       window.location.href = '/login';
       return;
     }
-    multiAccountMessage(`Đã xóa ${username} khỏi tool.`);
+    const promotedUsername = String(data.account?.username || '').trim();
+    multiAccountMessage(data.promoted
+      ? `Đã xóa ${username} và chuyển ${promotedUsername || 'tài khoản còn lại'} thành phiên chính.`
+      : `Đã xóa ${username} khỏi tool.`);
     await loadMultiAccounts(true);
   } catch (error) {
     multiAccountMessage(error.message, true);
@@ -3320,6 +3390,313 @@ async function deleteManagedAccount(accountId) {
 }
 
 loadMultiAccounts(false).catch(() => {});
+
+// ── Lịch sử giao dịch Ví VNPT Pay ─────────────────────────────
+// Source Employee opens WalletInfo page type 9 in a WebView.  The desktop
+// build mirrors that read-only flow and keeps the short-lived wallet token
+// only in the desktop/WebView session, never in rendered text or persistent browser storage.
+const WALLET_HISTORY_MENU_ID = 10281;
+const walletHistoryState = {
+  loading:false,
+  accountId:'',
+  loadedAccountId:'',
+  url:'',
+  walletToken:'',
+  walletOrigin:'',
+  desktopBridge:false,
+  requestVersion:0,
+};
+
+function walletHistorySetStatus(message, error=false, success=false) {
+  const target = document.getElementById('wallet-history-status');
+  if (!target) return;
+  target.textContent = message || '';
+  target.style.color = error ? '#fca5a5' : (success ? '#86efac' : 'var(--text2)');
+}
+
+function walletHistoryResetView(message='Đang chuẩn bị trang lịch sử giao dịch...') {
+  walletHistoryState.url = '';
+  walletHistoryState.walletToken = '';
+  walletHistoryState.walletOrigin = '';
+  walletHistoryState.desktopBridge = false;
+  const frame = document.getElementById('wallet-history-frame');
+  const empty = document.getElementById('wallet-history-empty');
+  const open = document.getElementById('wallet-history-open');
+  if (frame) {
+    frame.classList.remove('ready');
+    frame.removeAttribute('src');
+  }
+  if (empty) {
+    empty.style.display = '';
+    empty.textContent = message;
+  }
+  if (open) {
+    open.style.display = 'none';
+    open.removeAttribute('href');
+  }
+  const walletId = document.getElementById('wallet-history-wallet-id');
+  const walletAccountId = document.getElementById('wallet-history-wallet-account-id');
+  if (walletId) walletId.textContent = '--';
+  if (walletAccountId) walletAccountId.textContent = '--';
+}
+
+function walletHistorySetLoading(loading) {
+  walletHistoryState.loading = Boolean(loading);
+  const button = document.getElementById('wallet-history-refresh');
+  const select = document.getElementById('wallet-history-account');
+  if (button) {
+    button.disabled = walletHistoryState.loading;
+    button.textContent = walletHistoryState.loading ? 'Đang tải...' : 'Làm mới lịch sử';
+  }
+  if (select) select.disabled = walletHistoryState.loading;
+}
+
+function walletHistoryRenderAccounts(accounts) {
+  const select = document.getElementById('wallet-history-account');
+  if (!select) return null;
+  const list = Array.isArray(accounts) ? accounts : [];
+  if (!list.length) {
+    select.innerHTML = '<option value="">Không có tài khoản đang đăng nhập</option>';
+    walletHistoryState.accountId = '';
+    return null;
+  }
+  const previous = String(select.value || walletHistoryState.accountId || '');
+  const selected = list.find(account => String(account.id) === previous)
+    || list.find(account => account.primary)
+    || list[0];
+  select.innerHTML = list.map(account =>
+    `<option value="${simEsc(String(account.id || ''))}">${account.primary ? '⭐ ' : ''}${simEsc(account.username || '--')}</option>`
+  ).join('');
+  select.value = String(selected.id || '');
+  walletHistoryState.accountId = select.value;
+  return selected;
+}
+
+function walletHistoryAutoLoginValue(response) {
+  const body = apiBodyObject(response);
+  let value = body && typeof body === 'object' ? body.data : body;
+  if (value && typeof value === 'object') {
+    value = findApiValue(value, ['autoLogin','auto_login','isAutoLogin','enabled','value']);
+  }
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['true','1','yes','y'].includes(normalized)) return true;
+  if (['false','0','no','n'].includes(normalized)) return false;
+  return null;
+}
+
+function walletHistorySafeUrl(response) {
+  const body = apiBodyObject(response);
+  const payload = body && typeof body === 'object' && body.data != null ? body.data : body;
+  const raw = typeof payload === 'string'
+    ? payload
+    : findApiValue(payload, ['url','walletUrl','wallet_url','webViewUrl','webview_url','URL']);
+  if (!raw) return '';
+  try {
+    const parsed = new URL(String(raw).trim(), BASE_URL);
+    return parsed.protocol === 'https:' ? parsed.href : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function walletHistorySession(response) {
+  const body = apiBodyObject(response);
+  return {
+    token:String(findApiValue(body, ['token','walletToken','wallet_token']) || '').trim(),
+    url:walletHistorySafeUrl(response),
+    walletId:findApiValue(body, ['walletId','wallet_id']),
+    walletAccountId:findApiValue(body, ['walletAccountId','wallet_account_id']),
+  };
+}
+
+async function walletHistoryPrimeDesktopBridge(walletToken, url) {
+  const api = window.pywebview?.api;
+  if (!api || typeof api.set_wallet_context !== 'function') return false;
+  const result = await api.set_wallet_context(walletToken, url);
+  if (!result?.ok) {
+    throw new Error(result?.error || 'Không đồng bộ được phiên tự động đăng nhập Ví VNPT Pay.');
+  }
+  return true;
+}
+
+function walletHistoryPostTokenToFrame() {
+  const frame = document.getElementById('wallet-history-frame');
+  if (!frame?.contentWindow || !walletHistoryState.walletToken || !walletHistoryState.walletOrigin) return;
+  try {
+    frame.contentWindow.postMessage({
+      type:'vnpt-employee-wallet-token',
+      token:walletHistoryState.walletToken,
+    }, walletHistoryState.walletOrigin);
+  } catch (_) {
+    // Native WalletToken request headers remain the primary desktop bridge.
+  }
+}
+
+function walletHistoryShowPage(url, response, walletToken, desktopBridge=false) {
+  const frame = document.getElementById('wallet-history-frame');
+  const empty = document.getElementById('wallet-history-empty');
+  const open = document.getElementById('wallet-history-open');
+  const body = apiBodyObject(response);
+  const walletIdValue = findApiValue(body, ['walletId','wallet_id']);
+  const walletAccountIdValue = findApiValue(body, ['walletAccountId','wallet_account_id']);
+  const walletId = document.getElementById('wallet-history-wallet-id');
+  const walletAccountId = document.getElementById('wallet-history-wallet-account-id');
+  if (walletId) walletId.textContent = walletIdValue || '--';
+  if (walletAccountId) walletAccountId.textContent = walletAccountIdValue || '--';
+  walletHistoryState.url = url;
+  walletHistoryState.walletToken = String(walletToken || '');
+  walletHistoryState.walletOrigin = new URL(url).origin;
+  walletHistoryState.desktopBridge = Boolean(desktopBridge);
+  if (open) {
+    open.href = url;
+    open.style.display = '';
+  }
+  if (empty) empty.style.display = 'none';
+  if (frame) {
+    frame.onload = () => {
+      walletHistoryPostTokenToFrame();
+      setTimeout(walletHistoryPostTokenToFrame, 120);
+    };
+    frame.src = url;
+    frame.classList.add('ready');
+  }
+}
+
+async function walletHistoryEnsureAccountFresh(account) {
+  if (!account) throw new Error('Không tìm thấy tài khoản Employee đã chọn.');
+  if (managedAccountSeconds(account) > 120) return account;
+  const data = await multiAccountRequest('/api/accounts/refresh', {account_id:account.id});
+  Object.assign(account, data.account || {});
+  account.expiresAt = Date.now() + Math.max(0, Number(account.expires_in || 0)) * 1000;
+  return account;
+}
+
+async function walletHistoryLoad(force=true) {
+  if (walletHistoryState.loading) return false;
+  const select = document.getElementById('wallet-history-account');
+  const accountId = String(select?.value || walletHistoryState.accountId || '');
+  const account = multiAccountState.accounts.find(item => String(item.id) === accountId);
+  if (!account) {
+    walletHistoryResetView('Không có tài khoản đang đăng nhập để tải lịch sử ví.');
+    walletHistorySetStatus('Hãy đăng nhập hoặc thêm tài khoản trước.', true);
+    return false;
+  }
+  if (!force && walletHistoryState.loadedAccountId === accountId && walletHistoryState.url) return true;
+
+  const requestVersion = ++walletHistoryState.requestVersion;
+  walletHistoryState.accountId = accountId;
+  walletHistorySetLoading(true);
+  walletHistoryResetView('Đang kiểm tra trạng thái đăng nhập ví và lấy trang lịch sử...');
+  walletHistorySetStatus(`Đang tải lịch sử ví của ${account.username || 'tài khoản đã chọn'}...`);
+  const autoLoginElement = document.getElementById('wallet-history-auto-login');
+  if (autoLoginElement) {
+    autoLoginElement.textContent = 'Đang kiểm tra...';
+    autoLoginElement.style.color = 'var(--text2)';
+  }
+
+  try {
+    await walletHistoryEnsureAccountFresh(account);
+    const autoLoginResponse = await callApi(
+      '/app-thuno/VnptPay/kiemTraAuToLoginViVnptPay',
+      'POST',
+      {menu_id:WALLET_HISTORY_MENU_ID},
+      'json',
+      {},
+      accountId
+    );
+    if (!apiSucceeded(autoLoginResponse)) {
+      throw new Error(apiFailureMessage(autoLoginResponse, 'Không kiểm tra được trạng thái tự động đăng nhập ví'));
+    }
+    const autoLogin = walletHistoryAutoLoginValue(autoLoginResponse);
+    if (autoLoginElement) {
+      autoLoginElement.textContent = autoLogin === true ? 'Đã bật' : (autoLogin === false ? 'Chưa bật' : 'Không xác định');
+      autoLoginElement.style.color = autoLogin === true ? '#86efac' : (autoLogin === false ? '#fbbf24' : 'var(--text2)');
+    }
+
+    // Auto-login only returns a boolean.  Fetch the short-lived wallet
+    // session first; getWalletInfo/9 rejects a missing WalletToken with
+    // BSS-00003000.
+    const walletResponse = await callApi(
+      '/app-thuno/VnptPay/kiemTraViVnptPay',
+      'POST',
+      {menu_id:WALLET_HISTORY_MENU_ID},
+      'json',
+      {},
+      accountId
+    );
+    if (!apiSucceeded(walletResponse)) {
+      throw new Error(apiFailureMessage(walletResponse, 'Không lấy được phiên đăng nhập Ví VNPT Pay'));
+    }
+    const walletSession = walletHistorySession(walletResponse);
+    if (!walletSession.token) {
+      throw new Error('API kiemTraViVnptPay không trả walletToken để mở lịch sử ví.');
+    }
+
+    let historyResponse = await callApi(
+      '/app-thuno/VnptPay/getWalletInfo/9',
+      'POST',
+      {menu_id:WALLET_HISTORY_MENU_ID},
+      'json',
+      {WalletToken:walletSession.token},
+      accountId
+    );
+    if (!apiSucceeded(historyResponse)) {
+      throw new Error(apiFailureMessage(historyResponse, 'Không lấy được trang lịch sử giao dịch ví'));
+    }
+    // Some deployments put the WebView URL in the wallet-session response
+    // while getWalletInfo/9 only confirms the requested page.  Prefer the
+    // page-specific URL, then use the URL from the same authenticated session.
+    const historyUrl = walletHistorySafeUrl(historyResponse) || walletSession.url;
+    if (!historyUrl) {
+      throw new Error('OneBSS không trả URL HTTPS của trang lịch sử ví (WalletInfo loại 9).');
+    }
+    if (requestVersion !== walletHistoryState.requestVersion) return false;
+    const displayResponse = walletHistorySafeUrl(historyResponse)
+      ? historyResponse
+      : walletResponse;
+    const desktopBridge = await walletHistoryPrimeDesktopBridge(
+      walletSession.token, historyUrl);
+    walletHistoryShowPage(
+      historyUrl, displayResponse, walletSession.token, desktopBridge);
+    walletHistoryState.loadedAccountId = accountId;
+    const loginNote = autoLogin === false
+      ? ' Tự động đăng nhập chưa bật nên VNPT Pay có thể yêu cầu đăng nhập trong trang ví.'
+      : (desktopBridge
+        ? ' Phiên WalletToken đã được đồng bộ với WebView; bấm “LỊCH SỬ GIAO DỊCH” sẽ không hỏi lại mật khẩu.'
+        : ' Hãy mở chức năng này trong bản desktop để giữ đăng nhập khi vào chi tiết giao dịch.');
+    walletHistorySetStatus(`Đã mở ví của ${account.username}.${loginNote}`, false, true);
+    return true;
+  } catch (error) {
+    if (requestVersion === walletHistoryState.requestVersion) {
+      walletHistoryResetView(error.message || 'Không tải được lịch sử giao dịch ví.');
+      walletHistorySetStatus(error.message || 'Không tải được lịch sử giao dịch ví.', true);
+    }
+    return false;
+  } finally {
+    if (requestVersion === walletHistoryState.requestVersion) walletHistorySetLoading(false);
+  }
+}
+
+async function walletHistoryInitialize() {
+  const accounts = await loadMultiAccounts(false);
+  const selected = walletHistoryRenderAccounts(accounts);
+  if (!selected) {
+    walletHistoryResetView('Không có tài khoản đang đăng nhập để tải lịch sử ví.');
+    walletHistorySetStatus('Hãy đăng nhập hoặc thêm tài khoản trước.', true);
+    return false;
+  }
+  return walletHistoryLoad(false);
+}
+
+function walletHistoryAccountChanged() {
+  const select = document.getElementById('wallet-history-account');
+  walletHistoryState.accountId = String(select?.value || '');
+  walletHistoryState.loadedAccountId = '';
+  walletHistoryLoad(true).catch(error => {
+    walletHistorySetStatus(error.message || 'Không tải được lịch sử giao dịch ví.', true);
+  });
+}
 
 // ── Ảnh hồ sơ thuê bao ──
 let lookupImageCount = 0;
@@ -8722,9 +9099,10 @@ function simHistoryTodayIso() {
 
 function simEnsureHistoryDates() {
   const today = simHistoryTodayIso();
+  const firstDayOfMonth = `${today.slice(0, 8)}01`;
   const from = document.getElementById('sim-history-from');
   const to = document.getElementById('sim-history-to');
-  if (from && !from.value) from.value = today;
+  if (from && !from.value) from.value = firstDayOfMonth;
   if (to && !to.value) to.value = today;
 }
 
@@ -8771,7 +9149,7 @@ function simHistoryAccountBusy(accountId) {
 // Trạng thái trong app mobile OneBSS. Một số trạng thái không có mã ổn định
 // trong dữ liệu lịch sử, nên các lựa chọn đó được lọc theo tên sau khi tải -1.
 const SIM_HISTORY_STATUS_DEFINITIONS = Object.freeze([
-  {value:'pending', label:'Chỉ đơn đang treo'},
+  {value:'pending', label:'Đơn treo (chưa thanh toán)'},
   {value:'-1', label:'Tất cả'},
   {value:'0', label:'Đã hủy', ids:['0'], names:['da huy']},
   {value:'name:chon-so-kit', label:'Chọn số/KIT', names:['chon so/kit','chon so kit','chon so']},
@@ -8817,16 +9195,8 @@ function simHistoryIsPending(row) {
   if (!orderId) return false;
   const statusId = String(row?.id_trangthai ?? '').trim();
   const paymentStatus = String(row?.id_trangthai_thanhtoan ?? '').trim();
-  const initializationStatus = String(row?.trang_thai_khoitao ?? '').trim();
-  const statusName = simHistoryNormalizeStatusText(row?.ten_trangthai);
-  // Đã thu tiền hoặc OneBSS đã xác nhận khởi tạo thuê bao là hoàn tất,
-  // không đưa vào danh sách đơn treo/hủy.  Chỉ giữ đơn chưa thanh toán,
-  // chưa khởi tạo thành công và chưa ở trạng thái kết thúc/hủy.
-  if (paymentStatus === '1' || initializationStatus === '1' || statusId === '0' ||
-      /(huy|hoan tat|hoan thanh|da giao|da khoi tao|da dong|thanh cong|ket thuc)/i.test(statusName)) {
-    return false;
-  }
-  return true;
+  // Đơn treo là đơn chưa thu tiền. Đơn đã hủy không còn là đơn đang treo.
+  return paymentStatus !== '1' && statusId !== '0';
 }
 
 function simHistoryCanCancel(row) {
@@ -8958,25 +9328,174 @@ async function simCancelSelectedOrders() {
   return success > 0;
 }
 
-function simRenderOrderHistory(rows) {
+const SIM_HISTORY_PAGE_SIZE = 50;
+const SIM_HISTORY_API_CAP = 100;
+const SIM_HISTORY_MAX_FETCHES = 512;
+const simOrderHistoryState = {
+  rows: [],
+  page: 1
+};
+
+function simHistoryDayNumber(isoDate) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || ''));
+  if (!match) return NaN;
+  return Math.floor(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000);
+}
+
+function simHistoryIsoFromDayNumber(dayNumber) {
+  return new Date(dayNumber * 86400000).toISOString().slice(0, 10);
+}
+
+function simHistorySplitRange(fromIso, toIso) {
+  const fromDay = simHistoryDayNumber(fromIso);
+  const toDay = simHistoryDayNumber(toIso);
+  if (!Number.isFinite(fromDay) || !Number.isFinite(toDay) || fromDay >= toDay) return null;
+  const middleDay = fromDay + Math.floor((toDay - fromDay) / 2);
+  return {
+    older: {fromIso, toIso: simHistoryIsoFromDayNumber(middleDay)},
+    newer: {fromIso: simHistoryIsoFromDayNumber(middleDay + 1), toIso}
+  };
+}
+
+function simHistoryResponseRows(body) {
+  if (Array.isArray(body?.data)) return body.data;
+  if (Array.isArray(body?.data?.rows)) return body.data.rows;
+  if (Array.isArray(body?.rows)) return body.rows;
+  return [];
+}
+
+function simHistoryReportedCount(body) {
+  const candidates = [
+    body?.page_info?.record_count,
+    body?.pageInfo?.recordCount,
+    body?.data?.page_info?.record_count,
+    body?.data?.pageInfo?.recordCount,
+    body?.record_count,
+    body?.recordCount
+  ];
+  for (const candidate of candidates) {
+    const count = Number(candidate);
+    if (Number.isFinite(count) && count >= 0) return count;
+  }
+  return null;
+}
+
+function simHistoryOrderKey(row, fallback) {
+  for (const field of ['id_donhang', 'ma_donhang', 'ma_gd', 'ma_gt']) {
+    const value = String(row?.[field] ?? '').trim();
+    if (value) return `${field}:${value}`;
+  }
+  return `fallback:${fallback}`;
+}
+
+function simHistoryIsEmptyRangeResponse(response) {
+  const body = apiBodyObject(response);
+  if (!body || typeof body !== 'object') return false;
+  const code = String(body.error_code ?? body.errorCode ?? body.code ?? '').trim().toUpperCase();
+  if (code === 'BSS-00004000') return true;
+  const message = simHistoryNormalizeStatusText(body.message ?? body.msg ?? '');
+  return Number(response?.status || 0) >= 200 && Number(response?.status || 0) < 300 &&
+    body.data == null && /^(khong co thong tin|no data)$/.test(message);
+}
+
+async function simFetchOrderHistoryRange(fromIso, toIso, apiStatusFilter, accountId, accumulator, statusText) {
+  if (accumulator.fetchCount >= SIM_HISTORY_MAX_FETCHES) {
+    accumulator.unresolvedRanges.push(`${fromIso}–${toIso}`);
+    return;
+  }
+  accumulator.fetchCount += 1;
+  const fromDate = simHistoryApiDate(fromIso);
+  const toDate = simHistoryApiDate(toIso);
+  if (statusText) {
+    statusText.textContent = `Đang tải toàn bộ lịch sử ${fromDate} đến ${toDate} · lượt API ${accumulator.fetchCount}...`;
+    statusText.style.color = 'var(--text3)';
+  }
+  const response = await callApi(`${SIM_SELF_REG_PREFIX}/listdsdonhang_v2`, 'POST', {
+    p_nguondon: '-1',
+    p_loaidon: '-1',
+    p_thoigian: `${fromDate}|${toDate}`,
+    p_id_trangthai: apiStatusFilter,
+    p_long: null,
+    p_lat: null,
+    p_id_hinhthuc_dk: -1,
+    p_id_thoigian_conlai: 1,
+    p_loai_thuebao_id: 21,
+    menu_id: SIM_SELF_REG_MENU_ID
+  }, 'json', {}, accountId);
+  if (!apiSucceeded(response)) {
+    // OneBSS dùng BSS-00004000 cho một khoảng ngày hợp lệ nhưng không có đơn.
+    // Khi đang chia nhỏ khoảng >100 đơn, đây là mảng rỗng của riêng nhánh đó,
+    // không phải lỗi khiến toàn bộ kết quả đã tải ở các nhánh khác bị xóa.
+    if (simHistoryIsEmptyRangeResponse(response)) return;
+    throw new Error(apiFailureMessage(response, `Không tải được lịch sử ${fromDate} đến ${toDate}`));
+  }
+  const body = apiBodyObject(response);
+  const rows = simHistoryResponseRows(body);
+  const reportedCount = simHistoryReportedCount(body);
+  const mayBeCapped = rows.length === SIM_HISTORY_API_CAP ||
+    (reportedCount !== null && reportedCount > rows.length);
+  const split = mayBeCapped ? simHistorySplitRange(fromIso, toIso) : null;
+  if (split) {
+    // Tải khoảng mới hơn trước để giữ thứ tự lịch sử gần nhất ở đầu danh sách.
+    await simFetchOrderHistoryRange(split.newer.fromIso, split.newer.toIso, apiStatusFilter, accountId, accumulator, statusText);
+    await simFetchOrderHistoryRange(split.older.fromIso, split.older.toIso, apiStatusFilter, accountId, accumulator, statusText);
+    return;
+  }
+  rows.forEach((row, index) => {
+    const key = simHistoryOrderKey(row, `${fromIso}:${toIso}:${index}`);
+    if (!accumulator.rowsByKey.has(key)) accumulator.rowsByKey.set(key, row);
+  });
+  if (mayBeCapped) accumulator.unresolvedRanges.push(`${fromIso}–${toIso}`);
+}
+
+async function simFetchCompleteOrderHistory(fromIso, toIso, apiStatusFilter, accountId, statusText) {
+  const accumulator = {
+    rowsByKey: new Map(),
+    fetchCount: 0,
+    unresolvedRanges: []
+  };
+  await simFetchOrderHistoryRange(fromIso, toIso, apiStatusFilter, accountId, accumulator, statusText);
+  return {
+    rows: [...accumulator.rowsByKey.values()],
+    fetchCount: accumulator.fetchCount,
+    unresolvedRanges: accumulator.unresolvedRanges
+  };
+}
+
+function simHistoryGoToPage(page) {
+  const totalPages = Math.max(1, Math.ceil(simOrderHistoryState.rows.length / SIM_HISTORY_PAGE_SIZE));
+  simOrderHistoryState.page = Math.min(totalPages, Math.max(1, Number(page) || 1));
+  simRenderOrderHistory();
+}
+
+function simRenderOrderHistory(rows=null, {resetPage=false}={}) {
   const target = document.getElementById('sim-history-table');
   if (!target) return;
-  if (!rows.length) {
+  if (Array.isArray(rows)) simOrderHistoryState.rows = rows;
+  if (resetPage) simOrderHistoryState.page = 1;
+  const allRows = simOrderHistoryState.rows;
+  if (!allRows.length) {
     target.innerHTML = '<div style="padding:14px;color:var(--text3);border:1px solid var(--border);border-radius:8px">Không có đơn hàng trong khoảng thời gian đã chọn.</div>';
     simHistoryUpdateCancelSelection();
     return;
   }
+  const totalPages = Math.max(1, Math.ceil(allRows.length / SIM_HISTORY_PAGE_SIZE));
+  const currentPage = Math.min(totalPages, Math.max(1, Number(simOrderHistoryState.page) || 1));
+  simOrderHistoryState.page = currentPage;
+  const start = (currentPage - 1) * SIM_HISTORY_PAGE_SIZE;
+  const rowsOnPage = allRows.slice(start, start + SIM_HISTORY_PAGE_SIZE);
+  const end = start + rowsOnPage.length;
   const accountId = simHistorySelectedAccountId();
   target.innerHTML = `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px"><table class="result-table" style="min-width:1450px">
-    <thead><tr><th><input id="sim-history-select-all" type="checkbox" title="Chọn tất cả đơn chưa thanh toán" onchange="simHistoryToggleAll(this.checked)"></th><th>#</th><th>Mã đơn</th><th>Số thuê bao</th><th>Khách hàng</th><th>Trạng thái</th><th>Thanh toán</th><th>Tiền</th><th>SIM/MSIN</th><th>Ngày tạo</th><th>Ngày khởi tạo</th><th>Thời gian còn lại</th><th>Hình thức ĐK</th><th>Địa chỉ</th><th>Thao tác</th></tr></thead>
-    <tbody>${rows.map((row, index) => {
+    <thead><tr><th><input id="sim-history-select-all" type="checkbox" title="Chọn tất cả đơn chưa thanh toán trên trang này" onchange="simHistoryToggleAll(this.checked)"></th><th>#</th><th>Mã đơn</th><th>Số thuê bao</th><th>Khách hàng</th><th>Trạng thái</th><th>Thanh toán</th><th>Tiền</th><th>SIM/MSIN</th><th>Ngày tạo</th><th>Ngày khởi tạo</th><th>Thời gian còn lại</th><th>Hình thức ĐK</th><th>Địa chỉ</th><th>Thao tác</th></tr></thead>
+    <tbody>${rowsOnPage.map((row, index) => {
       const paid = String(row?.id_trangthai_thanhtoan ?? '') === '1';
       const amount = Number(row?.tien);
       const amountLabel = Number.isFinite(amount) ? `${amount.toLocaleString('vi-VN')} đ` : '--';
       const orderCode = row?.ma_donhang || row?.ma_gd || row?.ma_gt || row?.id_donhang || '--';
       return `<tr>
         <td>${simHistoryCanCancel(row) ? `<input type="checkbox" data-sim-cancel-order="${simEsc(row?.id_donhang ?? '')}" aria-label="Chọn hủy đơn ${simEsc(row?.id_donhang ?? '')}" onchange="simHistoryUpdateCancelSelection()">` : '<span style="color:var(--text3)">—</span>'}</td>
-        <td>${index + 1}</td>
+        <td>${start + index + 1}</td>
         <td><b>${simEsc(orderCode)}</b><div style="font-size:10px;color:var(--text3)">ID ${simEsc(row?.id_donhang ?? '--')}</div></td>
         <td style="font-family:monospace;color:var(--accent)">${simEsc(row?.so_dt ?? '--')}</td>
         <td>${simEsc(row?.ten_kh ?? '--')}<div style="font-size:10px;color:var(--text3)">${simEsc(row?.dienthoai_lienhe ?? '')}</div></td>
@@ -8992,7 +9511,14 @@ function simRenderOrderHistory(rows) {
         <td>${simHistoryCancelControl(row, accountId)}</td>
       </tr>`;
     }).join('')}</tbody>
-  </table></div>`;
+  </table></div>
+  <div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:12px">
+    <button type="button" class="btn-sm" onclick="simHistoryGoToPage(1)" ${currentPage <= 1 ? 'disabled' : ''}>« Đầu</button>
+    <button type="button" class="btn-sm" onclick="simHistoryGoToPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>‹ Trước</button>
+    <span style="color:var(--text2);font-size:12px">Trang <b>${currentPage}/${totalPages}</b> · ${start + 1}–${end}/${allRows.length} đơn</span>
+    <button type="button" class="btn-sm" onclick="simHistoryGoToPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>Sau ›</button>
+    <button type="button" class="btn-sm" onclick="simHistoryGoToPage(${totalPages})" ${currentPage >= totalPages ? 'disabled' : ''}>Cuối »</button>
+  </div>`;
   simHistoryUpdateCancelSelection();
 }
 
@@ -9005,7 +9531,7 @@ async function simLoadOrderHistory({force=false}={}) {
   const toIso = document.getElementById('sim-history-to')?.value || '';
   const fromDate = simHistoryApiDate(fromIso);
   const toDate = simHistoryApiDate(toIso);
-  const statusFilter = String(document.getElementById('sim-history-status')?.value || 'pending').trim();
+  const statusFilter = String(document.getElementById('sim-history-status')?.value || '-1').trim();
   const statusDefinition = simHistoryStatusDefinition(statusFilter);
   const apiStatusFilter = !statusDefinition || statusFilter === 'pending' || statusFilter === '-1'
     ? '-1' : (statusDefinition.apiId || (statusDefinition.ids?.length === 1 ? statusDefinition.ids[0] : '-1'));
@@ -9021,42 +9547,39 @@ async function simLoadOrderHistory({force=false}={}) {
   window._simHistoryLoading = true;
   if (refreshButton) { refreshButton.disabled = true; refreshButton.textContent = 'Đang tải...'; }
   if (statusText) { statusText.textContent = `Đang tải lịch sử ${fromDate} đến ${toDate}...`; statusText.style.color = 'var(--text3)'; }
-  const response = await callApi(`${SIM_SELF_REG_PREFIX}/listdsdonhang_v2`, 'POST', {
-    p_nguondon: '-1',
-    p_loaidon: '-1',
-    p_thoigian: `${fromDate}|${toDate}`,
-    p_id_trangthai: apiStatusFilter,
-    p_long: null,
-    p_lat: null,
-    p_id_hinhthuc_dk: -1,
-    p_id_thoigian_conlai: 1,
-    p_loai_thuebao_id: 21,
-    menu_id: SIM_SELF_REG_MENU_ID
-  }, 'json', {}, simHistorySelectedAccountId());
-  window._simHistoryLoading = false;
-  if (refreshButton) { refreshButton.disabled = false; refreshButton.textContent = 'Làm mới lịch sử'; }
-  if (!apiSucceeded(response)) {
+  let result;
+  try {
+    result = await simFetchCompleteOrderHistory(
+      fromIso, toIso, apiStatusFilter, simHistorySelectedAccountId(), statusText
+    );
+  } catch (error) {
     window._simHistoryLoaded = false;
-    simRenderOrderHistory([]);
+    simRenderOrderHistory([], {resetPage:true});
     if (statusText) {
-      statusText.textContent = apiFailureMessage(response, 'Không tải được lịch sử đơn hàng SIM Kit');
+      statusText.textContent = error?.message || 'Không tải được lịch sử đơn hàng SIM Kit';
       statusText.style.color = '#fca5a5';
     }
     return false;
+  } finally {
+    window._simHistoryLoading = false;
+    if (refreshButton) { refreshButton.disabled = false; refreshButton.textContent = 'Làm mới lịch sử'; }
   }
-  const body = apiBodyObject(response);
-  const allRows = Array.isArray(body?.data) ? body.data : [];
+  const allRows = result.rows;
   const rows = statusFilter === 'pending'
     ? allRows.filter(simHistoryIsPending)
     : (statusFilter === '-1' ? allRows : allRows.filter(row => simHistoryMatchesStatus(row, statusFilter)));
   window._simHistoryLoaded = true;
-  simRenderOrderHistory(rows);
+  simRenderOrderHistory(rows, {resetPage:true});
   if (statusText) {
-    const label = statusFilter === 'pending' ? 'Đang treo' : simHistoryStatusLabel(statusFilter);
-    statusText.textContent = `${label}: ${rows.length} đơn từ ${fromDate} đến ${toDate}` +
+    const label = statusFilter === 'pending' ? 'Đơn treo (chưa thanh toán)' : simHistoryStatusLabel(statusFilter);
+    const incomplete = result.unresolvedRanges.length > 0;
+    statusText.textContent = `${label}: ${rows.length} đơn từ ${fromDate} đến ${toDate} · 50 đơn/trang · ${result.fetchCount} lượt API` +
       (statusFilter === 'pending' && allRows.length !== rows.length
-        ? ` · đã ẩn ${allRows.length - rows.length} đơn đã thanh toán/hoàn tất` : '.');
-    statusText.style.color = rows.length ? '#86efac' : 'var(--text3)';
+        ? ` · đã ẩn ${allRows.length - rows.length} đơn đã thanh toán/đã hủy` : '') +
+      (incomplete
+        ? ` · Cảnh báo: API vẫn chạm mức 100 đơn trong ${result.unresolvedRanges.join(', ')}, có thể còn thiếu dữ liệu.`
+        : '.');
+    statusText.style.color = incomplete ? '#fbbf24' : (rows.length ? '#86efac' : 'var(--text3)');
   }
   return true;
 }

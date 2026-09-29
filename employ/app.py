@@ -1860,6 +1860,56 @@ def _account_seconds_remaining(context):
         return 0
 
 
+def _promote_extra_account_to_primary():
+    """Keep the app signed in by promoting another authenticated account.
+
+    Account management used to route the primary account through ``/logout``,
+    which clears every account in the Flask session. Promotion replaces only
+    the primary credentials and removes the promoted account from the extras
+    map, leaving menus and the rest of the dashboard state intact.
+    """
+    with _multi_account_lock:
+        extras = session.get('multi_accounts') or {}
+        extras = dict(extras) if isinstance(extras, dict) else {}
+        authenticated = []
+        for account_id, value in extras.items():
+            if not isinstance(value, dict):
+                continue
+            context = dict(value)
+            if not context.get('username') or not context.get('access_token'):
+                continue
+            context['id'] = str(account_id)
+            context['primary'] = False
+            authenticated.append(context)
+
+        if not authenticated:
+            return None
+
+        # Prefer a token that is still valid. An expired token is still a
+        # better fallback than destroying every session: the user can refresh
+        # that one account from Account management without logging in again.
+        promoted = next(
+            (item for item in authenticated
+             if _account_seconds_remaining(item) > 0),
+            authenticated[0])
+        promoted_id = promoted['id']
+        extras.pop(promoted_id, None)
+
+        session['username'] = str(promoted.get('username') or '').strip()
+        session['account_phone'] = str(promoted.get('phone') or '').strip()
+        session['access_token'] = promoted.get('access_token') or ''
+        session['refresh_token'] = promoted.get('refresh_token') or ''
+        session['expires_in'] = promoted.get('expires_in') or 3600
+        session['token_time'] = promoted.get('token_time') or time.time()
+        session['device_id'] = promoted.get('device_id') or ''
+        session['app_secret'] = promoted.get('app_secret') or ''
+        session['multi_accounts'] = extras
+
+    _save_persistent_session()
+    promoted['primary'] = True
+    return promoted
+
+
 def get_headers(menu_id=None, account_id=None):
     """Headers chuẩn cho tất cả API calls - dùng active_menu_id từ session"""
     active_mid = menu_id or session.get('active_menu_id', APP_CFG['SELECTED_MENU'])
@@ -1946,6 +1996,18 @@ ENDPOINT_MENU_ROUTES = (
     ('/app-banhang/thuebaodidong/', '11213'),
 )
 
+# The VNPT Pay wallet-information screen is a separate Employee function from
+# SIM-order payment.  The captured mobile flow uses menu 10281 for checking
+# automatic login and opening wallet-information page type 9 (transaction
+# history).  Keep this allow-list narrow because the same VnptPay namespace is
+# also used by the SIM Kit menus 699161 and 810641.
+WALLET_HISTORY_MENU_ID = '10281'
+WALLET_HISTORY_ENDPOINTS = frozenset({
+    '/app-thuno/VnptPay/kiemTraAuToLoginViVnptPay',
+    '/app-thuno/VnptPay/getWalletInfo/9',
+    '/app-thuno/VnptPay/kiemTraViVnptPay',
+})
+
 # Các endpoint chỉ đọc theo source mobile. Một số cụm OneBSS hiện vẫn dùng
 # GET, trong khi một số gateway khác trả 405 cho GET và chỉ nhận POST. Proxy
 # được phép thử phương thức còn lại riêng cho danh sách này; tuyệt đối không
@@ -1990,6 +2052,11 @@ def endpoint_menu_id(endpoint_path, fallback=None, body=None):
             isinstance(body, dict) and
             str(body.get('menu_id') or '').strip() == '810641'):
         return '810641'
+    if (endpoint_path in WALLET_HISTORY_ENDPOINTS and
+            isinstance(body, dict) and
+            str(body.get('menu_id') or '').strip() ==
+            WALLET_HISTORY_MENU_ID):
+        return WALLET_HISTORY_MENU_ID
     # VNPT Pay is also shared by legacy and customer-self-registration SIM
     # flows.  The completed mobile capture keeps menu 810641 for wallet auth,
     # balance and token refresh in this branch.
@@ -2647,8 +2714,26 @@ def api_accounts_confirm():
 @login_required
 def api_accounts_remove():
     account_id = str((request.get_json(silent=True) or {}).get('account_id') or '').strip()
-    if not account_id or account_id == _primary_account_context().get('id'):
-        return jsonify({'ok': False, 'error': 'Không thể gỡ phiên tài khoản chính'}), 400
+    if not account_id:
+        return jsonify({'ok': False, 'error': 'Thiếu tài khoản cần đăng xuất'}), 400
+    if account_id == _primary_account_context().get('id'):
+        promoted = _promote_extra_account_to_primary()
+        if promoted:
+            return jsonify({
+                'ok': True,
+                'removed': True,
+                'promoted': True,
+                'logout_required': False,
+                'account': _public_account_summary(promoted),
+            })
+        session.clear()
+        _clear_persistent_session()
+        return jsonify({
+            'ok': True,
+            'removed': True,
+            'promoted': False,
+            'logout_required': True,
+        })
     with _multi_account_lock:
         extras = session.get('multi_accounts') or {}
         extras = dict(extras) if isinstance(extras, dict) else {}
@@ -2669,12 +2754,23 @@ def api_accounts_delete():
     primary_id = _primary_account_context().get('id')
     deleted_saved = delete_saved_employee_account(account_id)
     if account_id == primary_id:
+        promoted = _promote_extra_account_to_primary()
+        if promoted:
+            return jsonify({
+                'ok': True,
+                'deleted': True,
+                'deleted_saved': deleted_saved,
+                'promoted': True,
+                'logout_required': False,
+                'account': _public_account_summary(promoted),
+            })
         session.clear()
         _clear_persistent_session()
         return jsonify({
             'ok': True,
             'deleted': True,
             'deleted_saved': deleted_saved,
+            'promoted': False,
             'logout_required': True,
         })
 

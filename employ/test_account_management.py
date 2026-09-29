@@ -72,6 +72,71 @@ class AccountManagementTests(unittest.TestCase):
         with self.client.session_transaction() as active_session:
             self.assertNotIn(extra_id, active_session.get('multi_accounts', {}))
 
+    def test_logout_primary_promotes_active_extra_without_leaving_dashboard(self):
+        extra_id = app_module._account_id('extra.user')
+        self._login_primary({
+            extra_id: {
+                'id': extra_id,
+                'username': 'extra.user',
+                'phone': '0912345678',
+                'access_token': 'extra-token',
+                'refresh_token': 'extra-refresh',
+                'expires_in': 3600,
+                'token_time': time.time(),
+                'device_id': 'extra-device',
+                'app_secret': 'extra-app-secret',
+            },
+        })
+
+        response = self.client.post('/api/accounts/remove', json={
+            'account_id': app_module._account_id('primary.user'),
+        })
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['promoted'])
+        self.assertFalse(payload['logout_required'])
+        self.assertEqual(payload['account']['username'], 'extra.user')
+        with self.client.session_transaction() as active_session:
+            self.assertEqual(active_session['username'], 'extra.user')
+            self.assertEqual(active_session['access_token'], 'extra-token')
+            self.assertEqual(active_session['refresh_token'], 'extra-refresh')
+            self.assertEqual(active_session['account_phone'], '0912345678')
+            self.assertEqual(active_session.get('multi_accounts'), {})
+        dashboard = self.client.get('/dashboard')
+        self.assertEqual(dashboard.status_code, 200)
+
+    def test_delete_primary_promotes_extra_and_only_deletes_selected_login(self):
+        app_module.save_employee_account('primary.user', 'primary-password')
+        app_module.save_employee_account('extra.user', 'extra-password')
+        extra_id = app_module._account_id('extra.user')
+        self._login_primary({
+            extra_id: {
+                'id': extra_id,
+                'username': 'extra.user',
+                'access_token': 'extra-token',
+                'refresh_token': 'extra-refresh',
+                'expires_in': 3600,
+                'token_time': time.time(),
+            },
+        })
+
+        response = self.client.post('/api/accounts/delete', json={
+            'account_id': app_module._account_id('primary.user'),
+        })
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['promoted'])
+        self.assertFalse(payload['logout_required'])
+        self.assertIsNone(app_module.get_saved_employee_account(
+            app_module._account_id('primary.user')))
+        self.assertIsNotNone(app_module.get_saved_employee_account(extra_id))
+        with self.client.session_transaction() as active_session:
+            self.assertEqual(active_session['username'], 'extra.user')
+            self.assertEqual(active_session['access_token'], 'extra-token')
+
     def test_pasted_token_adds_independent_extra_session_without_otp(self):
         self._login_primary()
         app_module.save_employee_account('token.user', 'encrypted-password-source')
