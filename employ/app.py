@@ -38,6 +38,7 @@ except ImportError as _ekyc_err:
 app = Flask(__name__)
 app.secret_key = 'vnpt-employ-static-key-2026-x9k2m'
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+DEFAULT_LOCAL_WEB_PORT = 59173
 
 # ─── Server-side session (tùy filesystem, không bị giới hạn 4KB cookie) ───
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -5931,4 +5932,4 @@ if __name__ == '__main__':
             use_reloader=False,
             threaded=True,
             host=os.environ.get('VNPT_EMPLOY_HOST', '127.0.0.1'),
-            port=5056)
+            port=int(os.environ.get('VNPT_EMPLOY_PORT', DEFAULT_LOCAL_WEB_PORT)))

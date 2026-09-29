@@ -10,6 +10,9 @@ import app as app_module
 
 
 class AppVersionTests(unittest.TestCase):
+    def test_source_server_uses_dedicated_local_port(self):
+        self.assertEqual(app_module.DEFAULT_LOCAL_WEB_PORT, 59173)
+
     def test_default_version_and_app_secret_are_current(self):
         self.assertEqual(app_module.DEFAULT_APP_VERSION, '1.5.41.130')
         with patch.dict(app_module.APP_CFG, {'APP_VERSION': '1.5.41.130'}):
@@ -357,7 +360,7 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
     def test_manual_payment_uses_completed_captured_sequence(self):
         payment = self.source[
             self.source.index('async function simConfirmPayment'):
-            self.source.index('function simTodayApiDate')
+            self.source.index('async function simCompletePaidOrder')
         ]
         self.assertIn('await simRefreshVnptWalletCredentials()', payment)
         self.assertIn('`${SIM_SELF_REG_PREFIX}/xacnhan_thanhtoan`', payment)
@@ -373,16 +376,16 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
         ]
         self.assertIn('`${SIM_SELF_REG_PREFIX}/hoanthanh_donhang_tratruoc`', completion)
         self.assertIn("p_ma_donhang:''", completion)
-        self.assertIn('simFindSelfRegOrderInHistory', completion)
-        self.assertIn('simSelfRegHistoryIsComplete', completion)
-        self.assertLess(
-            completion.index('hoanthanh_donhang_tratruoc'),
-            completion.index('simFindSelfRegOrderInHistory'),
-        )
-        self.assertLess(
-            completion.index('simFindSelfRegOrderInHistory'),
-            completion.index('simWizardState.completed = true'),
-        )
+        self.assertNotIn('simFindSelfRegOrderInHistory', completion)
+        self.assertNotIn('listdsdonhang_v2', completion)
+        self.assertIn('simServerPaymentAmount(paymentResponse', completion)
+        self.assertIn('await simLoadVnptBalance({announce:false})', completion)
+
+        total_helper = self.source[
+            self.source.index('function simPaymentTotal'):
+            self.source.index('function simUpdatePaymentSummary')
+        ]
+        self.assertIn('simWalletMoney(simWizardState.totalAmount)', total_helper)
 
     def test_batch_input_requires_cccd_and_maps_it_to_selected_method(self):
         self.assertIn('citizenIdColumn: 2', self.source)
@@ -422,13 +425,38 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
             'await simBatchRefreshWalletCredentials',
             '`${SIM_SELF_REG_PREFIX}/xacnhan_thanhtoan`',
             '`${SIM_SELF_REG_PREFIX}/hoanthanh_donhang_tratruoc`',
-            'simBatchFindSelfRegOrderInHistory',
         ]
         positions = [batch_process.index(marker) for marker in expected_markers]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('p_thongtin_hoadon:null', batch_process)
-        self.assertIn('simSelfRegHistoryIsComplete(historyRow, orderId, row.serial)', batch_process)
+        self.assertNotIn('simBatchFindSelfRegOrderInHistory', batch_process)
+        self.assertNotIn('listdsdonhang_v2', batch_process)
         self.assertNotIn("'/app-banhang/donhang_simkit/", batch_process)
+
+    def test_excel_batch_uses_server_amount_and_refreshes_real_wallet_balance(self):
+        helpers = self.source[
+            self.source.index('function simBatchItemsTotal'):
+            self.source.index('async function simBatchWithPaymentLock')
+        ]
+        batch_process = self.source[
+            self.source.index('async function simBatchProcessRow'):
+            self.source.index('function simHistoryTodayIso')
+        ]
+        self.assertIn('function simServerPaymentAmount', helpers)
+        self.assertIn('const quotedAmount = [initialized, paymentStep, customerStep]', batch_process)
+        self.assertIn('const paidAmount = simServerPaymentAmount(payment)', batch_process)
+        self.assertIn('await simBatchRefreshWalletBalance(wallet, shared.account)', batch_process)
+        self.assertNotIn('wallet.balance = Math.max(0, balance - amount)', batch_process)
+
+    def test_excel_batch_checkpoints_every_finished_row_before_continuing(self):
+        sim_batch = self.source[
+            self.source.index('async function simBatchStartRunOutput'):
+            self.source.index('function simBatchRandomItem')
+        ]
+        self.assertIn('async function simBatchCheckpointRow(row)', sim_batch)
+        self.assertEqual(sim_batch.count('const finishRow = async (row, success)'), 3)
+        self.assertEqual(sim_batch.count('await simBatchCheckpointRow(row)'), 3)
+        self.assertIn('Đã dừng để tránh mất kết quả', sim_batch)
 
     def test_excel_batch_derives_country_prefix_from_the_last_seven_digits(self):
         helper = self.source[

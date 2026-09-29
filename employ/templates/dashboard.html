@@ -5083,6 +5083,8 @@ function simPaymentItems() {
 }
 
 function simPaymentTotal(items=simPaymentItems()) {
+  const serverAmount = simWalletMoney(simWizardState.totalAmount);
+  if (Number.isFinite(serverAmount) && serverAmount >= 0) return serverAmount;
   return items.reduce((total, item) => total + ((Number(item.tien) || 0) + (Number(item.vat) || 0)) * (Number(item.so_luong) || 1), 0);
 }
 
@@ -6038,45 +6040,6 @@ async function simConfirmPayment(confirmed) {
   await simCompletePaidOrder(r);
 }
 
-function simTodayApiDate() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone:'Asia/Ho_Chi_Minh', year:'numeric', month:'2-digit', day:'2-digit'
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
-  return `${values.day}/${values.month}/${values.year}`;
-}
-
-async function simFindSelfRegOrderInHistory(orderId, accountId='') {
-  const today = simTodayApiDate();
-  const response = await callApi(`${SIM_SELF_REG_PREFIX}/listdsdonhang_v2`, 'POST', {
-    p_nguondon:'-1',
-    p_loaidon:'-1',
-    p_thoigian:`${today}|${today}`,
-    p_id_trangthai:'-1',
-    p_long:null,
-    p_lat:null,
-    p_id_hinhthuc_dk:-1,
-    p_id_thoigian_conlai:1,
-    p_loai_thuebao_id:21,
-    menu_id:SIM_SELF_REG_MENU_ID
-  }, 'json', {}, accountId);
-  if (!apiSucceeded(response)) return {response, row:null};
-  const body = apiBodyObject(response);
-  const rows = Array.isArray(body?.data) ? body.data : [];
-  const row = rows.find(item => String(simValue(item, ['id_donhang','ID_DONHANG']) || '') === String(orderId)) || null;
-  return {response, row};
-}
-
-function simSelfRegHistoryIsComplete(row, orderId, serial='') {
-  if (!row || String(simValue(row, ['id_donhang','ID_DONHANG']) || '') !== String(orderId)) return false;
-  const statusId = String(simValue(row, ['id_trangthai','ID_TRANGTHAI']) || '');
-  const paymentStatusId = String(simValue(row, ['id_trangthai_thanhtoan','ID_TRANGTHAI_THANHTOAN']) ?? '');
-  const initialized = String(simValue(row, ['trang_thai_khoitao','TRANG_THAI_KHOITAO','trangthai_khoitao']) ?? '');
-  const returnedSerial = String(simValue(row, ['so_sim','SO_SIM']) || '').replace(/\D/g, '');
-  return statusId === '7' && paymentStatusId === '1' && initialized === '1' &&
-    (!serial || returnedSerial === String(serial));
-}
-
 async function simCompletePaidOrder(paymentResponse=null) {
   if (!simWizardState.paymentConfirmed) return false;
   if (simWizardState.completed) return true;
@@ -6095,23 +6058,17 @@ async function simCompletePaidOrder(paymentResponse=null) {
     simStepMessage('sim-payment-resp', 'Thanh toán đã thành công nhưng OneBSS chưa trả res_code=1 cho bước hoàn tất. Không gửi lại thanh toán.', true);
     return false;
   }
-  simStepMessage('sim-payment-resp', 'Đã hoàn tất đơn. Đang đối soát trạng thái cuối trong lịch sử OneBSS...');
-  const history = await simFindSelfRegOrderInHistory(simWizardState.orderId);
-  const serial = String(document.getElementById('sim-blank-serial')?.value || '').replace(/\D/g, '');
-  if (!apiSucceeded(history.response) || !simSelfRegHistoryIsComplete(history.row, simWizardState.orderId, serial)) {
-    simStepMessage('sim-payment-resp', 'Đã thanh toán và gọi hoàn tất nhưng lịch sử chưa xác nhận đủ trạng thái 7 / Đã thu tiền / Đã khởi tạo. Không gửi lại giao dịch; bấm đối soát lại sau.', true);
-    const button = document.getElementById('sim-payment-continue-btn');
-    if (button) { button.disabled = false; button.textContent = 'Đối soát lại đơn đã thanh toán'; }
-    return false;
-  }
+  const paidAmount = simServerPaymentAmount(paymentResponse || simWizardState.paymentResponse);
+  if (Number.isFinite(paidAmount) && paidAmount >= 0) simWizardState.totalAmount = paidAmount;
+  if (simWizardState.tokenPay) await simLoadVnptBalance({announce:false});
   simWizardState.completed = true;
-  simWizardState.orderResponse = {status:200, body:{data:history.row, message:'Hoàn tất đơn hàng'}};
-  simRenderPaidSession(paymentResponse || simWizardState.orderResponse, {badge:'HOÀN TẤT · ĐÃ ĐỐI SOÁT'});
+  simWizardState.orderResponse = paymentResponse || simWizardState.paymentResponse || completion;
+  simRenderPaidSession(simWizardState.orderResponse, {badge:'HOÀN TẤT'});
   const paymentButton = document.getElementById('sim-payment-continue-btn');
   if (paymentButton) { paymentButton.disabled = true; paymentButton.textContent = '✓ Đơn đã hoàn tất'; }
   const wizardNote = document.getElementById('sim-wizard-note');
-  if (wizardNote) wizardNote.textContent = 'OneBSS đã xác nhận đơn hoàn tất, đã thu tiền và SIM đã khởi tạo.';
-  simStepMessage('sim-payment-resp', `Hoàn tất đơn ${simWizardState.orderId}: VNPT Pay đã thu tiền và lịch sử OneBSS đã xác nhận SIM khởi tạo thành công.`);
+  if (wizardNote) wizardNote.textContent = 'OneBSS đã xác nhận thanh toán và hoàn tất đơn; có thể kiểm tra lại ở màn hình Lịch sử khi cần.';
+  simStepMessage('sim-payment-resp', `Hoàn tất đơn ${simWizardState.orderId}: VNPT Pay đã thu tiền và OneBSS trả res_code=1.`);
   window._simHistoryLoaded = false;
   return true;
 }
@@ -7349,6 +7306,19 @@ function simBatchQueueOutputRow(row) {
   return simBatchState.outputSaveTail;
 }
 
+async function simBatchCheckpointRow(row) {
+  await simBatchQueueOutputRow(row);
+  if (row?.outputSaved) return true;
+  simBatchState.stopRequested = true;
+  simBatchState.paused = true;
+  simBatchSetStatus(
+    `Đã xử lý dòng ${row?.excelRow || '--'} nhưng chưa ghi được file phiên và file tổng: ` +
+    `${row?.outputSaveError || simBatchState.outputSaveError || 'lỗi lưu output'}. Đã dừng để tránh mất kết quả.`,
+    true
+  );
+  return false;
+}
+
 async function simBatchWriteRunOutput() {
   await Promise.resolve(simBatchState.outputSaveTail).catch(() => {});
   const pending = simBatchState.rows.filter(row => row.finishedAt && !row.outputSaved);
@@ -7405,24 +7375,24 @@ async function simBatchRunLegacyExcel() {
   let ok = simBatchState.rows.filter(row => row.finishedAt && row.status === 'success').length;
   let failed = done - ok;
 
-  const finishRow = (row, success) => {
+  const finishRow = async (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
     done++;
     if (success) ok++; else failed++;
     simBatchRenderTable();
     simBatchSetProgress(done, simBatchState.rows.length, ok, failed, `${row.user} · ${row.msisdn}`);
-    simBatchQueueOutputRow(row);
+    await simBatchCheckpointRow(row);
   };
 
-  const failQueuePreparation = (account, error) => {
+  const failQueuePreparation = async (account, error) => {
     simBatchSetAccountStatus(account.id, `Không thể chạy: ${error.message}`, true);
-    (queues.get(account.id) || []).forEach(row => {
-      if (row.status !== 'pending') return;
+    for (const row of (queues.get(account.id) || [])) {
+      if (row.status !== 'pending') continue;
       row.status = 'error';
       row.stage = 'Không thể chuẩn bị tài khoản';
       row.result = `Lỗi chuẩn bị ${account.username}: ${error.message}`;
-      finishRow(row, false);
-    });
+      await finishRow(row, false);
+    }
   };
 
   try {
@@ -7435,7 +7405,7 @@ async function simBatchRunLegacyExcel() {
         shared.paymentTail = Promise.resolve();
         simBatchState.accountContexts.set(account.id, shared);
       } catch (error) {
-        failQueuePreparation(account, error);
+        await failQueuePreparation(account, error);
       }
     }));
 
@@ -7463,7 +7433,7 @@ async function simBatchRunLegacyExcel() {
           row.status = 'success';
           row.stage = 'Hoàn tất';
           row.result = `Thành công | Đơn ${result.orderId} | ${result.customerName} | ${result.tttbMethodName} | ${simWalletMoneyLabel(result.amount)} | ${result.address}`;
-          finishRow(row, true);
+          await finishRow(row, true);
         } catch (error) {
           simBatchApplyErrorDetails(row, error);
           row.status = 'error';
@@ -7476,7 +7446,7 @@ async function simBatchRunLegacyExcel() {
           if (Number(error.status || 0) === 401) account.expiresAt = 0;
           nextDelaySeconds = Math.max(nextDelaySeconds, Number(error.retryAfter || 0));
           simBatchSetAccountStatus(account.id, `Lỗi ${row.msisdn}; vẫn tiếp tục số kế tiếp`, true);
-          finishRow(row, false);
+          await finishRow(row, false);
         }
         if (index < queue.length - 1 && !simBatchState.stopRequested) {
           const shouldContinue = await simBatchWaitDelay(
@@ -7490,21 +7460,20 @@ async function simBatchRunLegacyExcel() {
     }));
 
     if (!simBatchState.stopRequested) {
-      simBatchState.rows.filter(row => row.valid && !row.finishedAt).forEach(row => {
+      for (const row of simBatchState.rows.filter(row => row.valid && !row.finishedAt)) {
         row.status = 'error';
         row.stage = 'Chưa chạy';
         row.result = `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
-        finishRow(row, false);
-      });
+        await finishRow(row, false);
+      }
     }
   } catch (error) {
-    simBatchState.rows.filter(row => row.valid && row.status === 'pending').forEach(row => {
+    for (const row of simBatchState.rows.filter(row => row.valid && row.status === 'pending')) {
       row.status = 'error';
       row.stage = 'Không thể bắt đầu';
       row.result = `Lỗi chuẩn bị: ${error.message}`;
-      row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
-      finishRow(row, false);
-    });
+      await finishRow(row, false);
+    }
   } finally {
     simBatchRenderTable();
     const remaining = simBatchState.rows.filter(row => row.valid && !row.finishedAt).length;
@@ -7579,15 +7548,15 @@ async function simBatchRunTwoPhase() {
   let assignmentFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'assignment_error').length;
   let nextUnusedSerialIndex = serialStartIndex;
 
-  const finishRow = (row, success) => {
+  const finishRow = async (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
     done++;
     if (success) ok++; else failed++;
     simBatchRenderTable();
     simBatchSetProgress(done, simBatchState.rows.length, ok, failed, `${row.user} · ${row.msisdn}`);
-    simBatchQueueOutputRow(row);
+    await simBatchCheckpointRow(row);
   };
-  const failNotFound = (row, message) => {
+  const failNotFound = async (row, message) => {
     row.status = 'error';
     row.stage = 'Tìm đúng số thuê bao';
     row.bucket = 'not_found';
@@ -7595,9 +7564,9 @@ async function simBatchRunTwoPhase() {
     row.original[1] = '';
     row.result = `Lỗi | ${row.stage}: ${message}`;
     notFound++;
-    finishRow(row, false);
+    await finishRow(row, false);
   };
-  const failLookup = (row, message) => {
+  const failLookup = async (row, message) => {
     row.status = 'error';
     row.stage = 'Lỗi tra kho';
     row.bucket = 'lookup_error';
@@ -7605,15 +7574,15 @@ async function simBatchRunTwoPhase() {
     row.original[1] = '';
     row.result = `LỖI TRA KHO | ${message}`;
     lookupFailed++;
-    finishRow(row, false);
+    await finishRow(row, false);
   };
-  const failAssignment = (row, message, stage='Gán serial') => {
+  const failAssignment = async (row, message, stage='Gán serial') => {
     row.status = 'error';
     row.stage = stage;
     row.bucket = 'assignment_error';
     row.result = `Lỗi | ${row.stage}: ${message}`;
     assignmentFailed++;
-    finishRow(row, false);
+    await finishRow(row, false);
   };
 
   try {
@@ -7646,7 +7615,7 @@ async function simBatchRunTwoPhase() {
         try {
           const selected = await simBatchSearchNumber(row, {account});
           if (!selected) {
-            failNotFound(row, 'OneBSS không trả đúng số thuê bao trong kho');
+            await failNotFound(row, 'OneBSS không trả đúng số thuê bao trong kho');
           } else {
             row.found = true;
             row.selectedNumber = selected;
@@ -7654,8 +7623,8 @@ async function simBatchRunTwoPhase() {
             row.stage = 'Đã tìm thấy · chờ cấp serial';
           }
         } catch (error) {
-          if (error.lookupFailure) failLookup(row, error.message);
-          else failNotFound(row, `Lỗi tra kho: ${error.message}`);
+          if (error.lookupFailure) await failLookup(row, error.message);
+          else await failNotFound(row, `Lỗi tra kho: ${error.message}`);
         }
         searchedCount++;
         simBatchRenderTable();
@@ -7669,22 +7638,23 @@ async function simBatchRunTwoPhase() {
       // thứ tự ghép serial.
       const foundRows = validRows.filter(row => row.found);
       const assignmentRows = [];
-      foundRows.forEach((row, index) => {
+      for (let index = 0; index < foundRows.length; index++) {
+        const row = foundRows[index];
         const serialItem = simBatchState.serialItems[serialStartIndex + index];
         if (!serialItem) {
-          failAssignment(row, 'Danh sách TXT đã hết serial SIM trắng');
-          return;
+          await failAssignment(row, 'Danh sách TXT đã hết serial SIM trắng');
+          continue;
         }
         row.serial = serialItem.serial || serialItem.raw;
         row.original[1] = row.serial;
         if (!serialItem.valid) {
-          failAssignment(row, `Serial dòng ${serialItem.position}: ${serialItem.error}`);
-          return;
+          await failAssignment(row, `Serial dòng ${serialItem.position}: ${serialItem.error}`);
+          continue;
         }
         row.status = 'pending_assignment';
         row.stage = `Đã ghép serial dòng ${serialItem.position} · chờ tạo đơn`;
         assignmentRows.push(row);
-      });
+      }
       nextUnusedSerialIndex = Math.min(
         simBatchState.serialItems.length,
         serialStartIndex + foundRows.length
@@ -7706,7 +7676,9 @@ async function simBatchRunTwoPhase() {
       }));
 
       if (!activeAccounts.length && assignmentRows.length) {
-        assignmentRows.forEach(row => failAssignment(row, 'Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, danh mục hoặc địa chỉ)'));
+        for (const row of assignmentRows) {
+          await failAssignment(row, 'Không có tài khoản nào chuẩn bị được dữ liệu dùng chung (phiên, danh mục hoặc địa chỉ)');
+        }
       } else if (assignmentRows.length) {
         const assignmentQueues = simBatchDistributeRows(assignmentRows, activeAccounts);
         await Promise.all(activeAccounts.map(async account => {
@@ -7729,14 +7701,14 @@ async function simBatchRunTwoPhase() {
               row.stage = 'Hoàn tất';
               row.bucket = 'success';
               row.result = `SĐT + SERIAL ĐÃ GÁN THÀNH CÔNG | Đơn ${result.orderId} | ${result.customerName} | ${result.tttbMethodName} | ${simWalletMoneyLabel(result.amount)} | ${result.address}`;
-              finishRow(row, true);
+              await finishRow(row, true);
             } catch (error) {
               simBatchApplyErrorDetails(row, error);
               const paid = error.mutationUncertain
                 ? 'CHƯA XÁC ĐỊNH, cần đối soát trước khi chạy lại | '
                 : (error.batchPaid ? 'ĐÃ THANH TOÁN, chưa xác nhận hoàn tất | ' : '');
               const order = error.batchOrderId ? `Đơn ${error.batchOrderId} | ` : '';
-              failAssignment(
+              await failAssignment(
                 row,
                 `${paid}${order}${error.batchStage || 'Xử lý'}: ${error.message}`,
                 error.batchStage || 'Xử lý'
@@ -7759,24 +7731,24 @@ async function simBatchRunTwoPhase() {
     }
 
     if (!simBatchState.stopRequested) {
-      simBatchState.rows.filter(row => row.valid && !row.finishedAt).forEach(row => {
+      for (const row of simBatchState.rows.filter(row => row.valid && !row.finishedAt)) {
         row.status = 'error';
         row.stage = 'Chưa chạy';
         row.bucket = row.found ? 'assignment_error' : 'not_found';
         row.result = 'Chưa chạy do lỗi ngoài dự kiến của luồng phụ trách';
         if (row.bucket === 'not_found') notFound++; else assignmentFailed++;
-        finishRow(row, false);
-      });
+        await finishRow(row, false);
+      }
     }
   } catch (error) {
-    simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status)).forEach(row => {
+    for (const row of simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status))) {
       row.status = 'error';
       row.stage = 'Không thể bắt đầu';
       row.bucket = row.found ? 'assignment_error' : 'not_found';
       row.result = `Không thể bắt đầu: ${error.message}`;
       if (row.bucket === 'not_found') notFound++; else assignmentFailed++;
-      finishRow(row, false);
-    });
+      await finishRow(row, false);
+    }
   } finally {
     const unusedSerialRows = simBatchState.stopRequested
       ? []
@@ -7845,15 +7817,15 @@ async function simBatchRun() {
   let assignmentFailed = simBatchState.rows.filter(row => row.finishedAt && row.bucket === 'assignment_error').length;
   let nextSerialIndex = simBatchState.rows.filter(row => row.finishedAt && row.serial).length;
 
-  const finishRow = (row, success) => {
+  const finishRow = async (row, success) => {
     row.finishedAt = new Date().toLocaleString('vi-VN', {hour12:false});
     done++;
     if (success) ok++; else failed++;
     simBatchRenderTable();
     simBatchSetProgress(done, simBatchState.rows.length, ok, failed, `${row.user} · ${row.msisdn}`);
-    simBatchQueueOutputRow(row);
+    await simBatchCheckpointRow(row);
   };
-  const failNotFound = (row, message) => {
+  const failNotFound = async (row, message) => {
     row.status = 'error';
     row.stage = 'SĐT không tìm thấy';
     row.bucket = 'not_found';
@@ -7861,9 +7833,9 @@ async function simBatchRun() {
     row.original[simBatchState.serialColumn] = '';
     row.result = `SĐT KHÔNG TÌM THẤY | ${message}`;
     notFound++;
-    finishRow(row, false);
+    await finishRow(row, false);
   };
-  const failLookup = (row, message) => {
+  const failLookup = async (row, message) => {
     row.status = 'error';
     row.stage = 'Lỗi tra kho';
     row.bucket = 'lookup_error';
@@ -7871,15 +7843,15 @@ async function simBatchRun() {
     row.original[simBatchState.serialColumn] = '';
     row.result = `LỖI TRA KHO | ${message}`;
     lookupFailed++;
-    finishRow(row, false);
+    await finishRow(row, false);
   };
-  const failAssignment = (row, message) => {
+  const failAssignment = async (row, message) => {
     row.status = 'error';
     row.stage = 'Gán serial lỗi';
     row.bucket = 'assignment_error';
     row.result = `SĐT TÌM THẤY NHƯNG GÁN SERIAL LỖI | ${message}`;
     assignmentFailed++;
-    finishRow(row, false);
+    await finishRow(row, false);
   };
   // JavaScript chạy phần đồng bộ này nguyên khối; dù nhiều tài khoản hoàn tất
   // tra kho gần nhau, mỗi lần gọi chỉ một luồng tăng chỉ số nên serial không
@@ -7923,19 +7895,19 @@ async function simBatchRun() {
           await simBatchEnsureAccountFresh(account);
           const selected = await simBatchSearchNumber(row, shared);
           if (!selected) {
-            failNotFound(row, 'OneBSS không trả đúng số thuê bao trong kho');
+            await failNotFound(row, 'OneBSS không trả đúng số thuê bao trong kho');
           } else {
             row.found = true;
             row.selectedNumber = selected;
             const serialItem = takeNextSerial();
             if (!serialItem) {
-              failAssignment(row, 'Danh sách Excel đã hết serial SIM trắng');
+              await failAssignment(row, 'Danh sách Excel đã hết serial SIM trắng');
             } else {
               row.serial = serialItem.serial || serialItem.raw;
               row.original[simBatchState.serialColumn] = row.serial;
               simBatchRenderTable();
               if (!serialItem.valid) {
-                failAssignment(row, `Serial dòng ${serialItem.sourceRow}: ${serialItem.error}`);
+                await failAssignment(row, `Serial dòng ${serialItem.sourceRow}: ${serialItem.error}`);
               } else {
                 row.stage = `Đã tìm thấy · gán serial ${row.serial}`;
                 const result = await simBatchProcessRow(row, shared, selected);
@@ -7944,7 +7916,7 @@ async function simBatchRun() {
                 row.stage = 'Hoàn tất';
                 row.bucket = 'success';
                 row.result = `Thành công | Đơn ${result.orderId} | ${result.customerName} | ${result.tttbMethodName} | ${simWalletMoneyLabel(result.amount)} | ${result.address}`;
-                finishRow(row, true);
+                await finishRow(row, true);
               }
             }
           }
@@ -7959,11 +7931,11 @@ async function simBatchRun() {
             row.bucket = 'assignment_error';
             row.result = `${prefix}${error.batchOrderId ? ` | Đơn ${error.batchOrderId}` : ''} | ${row.stage}: ${error.message}`;
             assignmentFailed++;
-            finishRow(row, false);
+            await finishRow(row, false);
           } else if (error.lookupFailure) {
-            failLookup(row, error.message);
+            await failLookup(row, error.message);
           } else {
-            failNotFound(row, `Lỗi tra kho: ${error.message}`);
+            await failNotFound(row, `Lỗi tra kho: ${error.message}`);
           }
           if (Number(error.status || 0) === 401) account.expiresAt = 0;
           nextDelaySeconds = Math.max(nextDelaySeconds, Number(error.retryAfter || 0));
@@ -7981,24 +7953,24 @@ async function simBatchRun() {
     }));
 
     if (!simBatchState.stopRequested) {
-      simBatchState.rows.filter(row => row.valid && !row.finishedAt).forEach(row => {
+      for (const row of simBatchState.rows.filter(row => row.valid && !row.finishedAt)) {
         row.status = 'error';
         row.stage = 'Chưa chạy';
         row.bucket = 'assignment_error';
         row.result = `Chưa chạy do lỗi ngoài dự kiến của luồng ${row.user}`;
         assignmentFailed++;
-        finishRow(row, false);
-      });
+        await finishRow(row, false);
+      }
     }
   } catch (error) {
-    simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status)).forEach(row => {
+    for (const row of simBatchState.rows.filter(row => row.valid && !['success','error'].includes(row.status))) {
       row.status = 'error';
       row.stage = 'Không thể bắt đầu';
       row.bucket = 'assignment_error';
       row.result = `Không thể bắt đầu: ${error.message}`;
       assignmentFailed++;
-      finishRow(row, false);
-    });
+      await finishRow(row, false);
+    }
   } finally {
     const unusedSerialRows = simBatchState.stopRequested
       ? []
@@ -8427,6 +8399,15 @@ function simBatchItemsTotal(items) {
     ((Number(item.tien) || 0) + (Number(item.vat) || 0)) * (Number(item.so_luong) || 1), 0);
 }
 
+function simServerPaymentAmount(response) {
+  const rawAmount = findApiValue(apiBodyObject(response), [
+    'thanh_tien', 'THANH_TIEN', 'tong_tien', 'TONG_TIEN',
+    'totalAmount', 'total_amount'
+  ]);
+  const amount = simWalletMoney(rawAmount);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
 async function simBatchWithPaymentLock(shared, task) {
   const previous = shared.paymentTail || Promise.resolve();
   let release;
@@ -8508,18 +8489,6 @@ async function simBatchReadSelfRegOrderStep(accountId, orderId) {
   return simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/step_donhang_simkit`, 'POST', {
     p_id_donhang:apiNumericOrText(orderId), menu_id:SIM_SELF_REG_MENU_ID
   });
-}
-
-async function simBatchFindSelfRegOrderInHistory(accountId, orderId) {
-  const today = simTodayApiDate();
-  const response = await simBatchCallApi(accountId, `${SIM_SELF_REG_PREFIX}/listdsdonhang_v2`, 'POST', {
-    p_nguondon:'-1', p_loaidon:'-1', p_thoigian:`${today}|${today}`,
-    p_id_trangthai:'-1', p_long:null, p_lat:null, p_id_hinhthuc_dk:-1,
-    p_id_thoigian_conlai:1, p_loai_thuebao_id:21, menu_id:SIM_SELF_REG_MENU_ID
-  });
-  const body = simBatchRequireApi(response, 'Không đối soát được lịch sử đơn hàng');
-  const rows = Array.isArray(body?.data) ? body.data : [];
-  return rows.find(item => String(simValue(item, ['id_donhang','ID_DONHANG']) || '') === String(orderId)) || null;
 }
 
 async function simBatchProcessRow(row, shared, selectedNumber=null) {
@@ -8668,7 +8637,13 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
       ? simBatchPaymentItems(initialized)
       : (simBatchPaymentItems(paymentStep).length ? simBatchPaymentItems(paymentStep) : simBatchPaymentItems(customerStep));
     if (!paymentItems.length) throw new Error('OneBSS không trả đủ khoản mục thanh toán và tiền SIM vật lý');
-    amount = simBatchItemsTotal(paymentItems);
+    const quotedAmount = [initialized, paymentStep, customerStep]
+      .map(simServerPaymentAmount)
+      .find(value => Number.isFinite(value));
+    // Khoản mục dùng để gửi lại OneBSS, nhưng tổng tiền hiển thị/kiểm tra ví phải
+    // ưu tiên số tiền đơn do server trả. Cộng tiền + VAT phía client có thể lớn
+    // hơn số VNPT Pay thực thu (ví dụ hiển thị 50.000 trong khi chỉ thu 37.500).
+    amount = Number.isFinite(quotedAmount) ? quotedAmount : simBatchItemsTotal(paymentItems);
 
     await simBatchWithPaymentLock(shared, async () => {
       setStage('Thanh toán · xác thực ví và kiểm tra số dư');
@@ -8705,13 +8680,20 @@ async function simBatchProcessRow(row, shared, selectedNumber=null) {
         throw new Error('Đã thu tiền nhưng API hoàn tất đơn không trả res_code=1');
       }
 
-      setStage('Đối soát lịch sử OneBSS');
-      const historyRow = await simBatchFindSelfRegOrderInHistory(accountId, orderId);
-      if (!simSelfRegHistoryIsComplete(historyRow, orderId, row.serial)) {
-        throw new Error('Đã thu tiền và gọi hoàn tất nhưng lịch sử chưa xác nhận trạng thái 7 / Đã thu tiền / Đã khởi tạo');
+      const paidAmount = simServerPaymentAmount(payment);
+      if (Number.isFinite(paidAmount)) amount = paidAmount;
+
+      // Không tự trừ số dư cache bằng số tiền ước tính. Sau khi thanh toán phải
+      // đọc lại getBalance để giao diện khớp số dư thật của VNPT Pay.
+      setStage('Đồng bộ số dư ví thực tế');
+      try {
+        await simBatchRefreshWalletBalance(wallet, shared.account);
+      } catch (balanceError) {
+        wallet.balance = null;
+        simBatchSyncWalletState(wallet, {
+          error:`Đơn ${orderId} đã hoàn tất; chưa làm mới được số dư: ${balanceError.message || balanceError}`
+        });
       }
-      wallet.balance = Math.max(0, balance - amount);
-      simBatchSyncWalletState(wallet);
     });
 
     return {
