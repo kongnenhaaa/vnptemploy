@@ -77,14 +77,22 @@ Session(app)
 SAVED_ACCOUNTS_FILE = os.path.join(_credential_root, 'employee_accounts.dat')
 _saved_accounts_lock = threading.RLock()
 
-# ─── SIM Kit batch Excel files ─────────────────────────────────────────────
-# Keep these in Documents so the files are stable, user-visible, and can be
-# opened by Excel.  Microsoft Store Python virtualizes writes to LOCALAPPDATA;
-# Excel is a separate process and cannot see those virtualized files.
+# ─── Portable business input/output files ─────────────────────────────────
+# The packaged app keeps its visible business files in a VNPTEmploy folder
+# beside the EXE.  Source mode keeps the historical Documents location, and
+# VNPT_EMPLOY_DOCUMENTS_ROOT can still override either location for tests or
+# managed deployments.
 _legacy_sim_batch_dir = os.path.join(_credential_root, 'SIM_Kit_Batch')
+_default_documents_root = (
+    os.path.dirname(sys.executable)
+    if getattr(sys, 'frozen', False)
+    else os.path.join(
+        os.environ.get('USERPROFILE') or os.path.expanduser('~'), 'Documents'
+    )
+)
 _documents_root = os.path.join(
     os.environ.get('VNPT_EMPLOY_DOCUMENTS_ROOT') or
-    os.path.join(os.environ.get('USERPROFILE') or os.path.expanduser('~'), 'Documents')
+    _default_documents_root
 )
 SIM_BATCH_DIR = os.path.join(_documents_root, 'VNPTEmploy', 'SIM_Kit_Batch')
 SIM_BATCH_INPUT_FILE = os.path.join(SIM_BATCH_DIR, 'SIM_Kit_Input.xlsx')
@@ -2995,6 +3003,8 @@ BUSINESS_ICOC_COOLDOWN_SECONDS = max(
 BUSINESS_LOOKUP_COOLDOWN_SECONDS = max(
     1.0, float(os.environ.get('VNPT_EMPLOY_LOOKUP_COOLDOWN_SECONDS', '1.5')))
 BUSINESS_MUTATION_CACHE_SECONDS = 24 * 3600
+BUSINESS_RATE_LIMIT_RETRY_SECONDS = max(
+    1, int(os.environ.get('VNPT_EMPLOY_RATE_LIMIT_RETRY_SECONDS', '30')))
 BUSINESS_GUARD_DB = os.path.join(_credential_root, 'business_guard.sqlite3')
 
 _business_guard_lock = threading.RLock()
@@ -3153,9 +3163,34 @@ def _business_request_slot(account_key, policy):
         account_lock.release()
 
 
+def _business_payload_rate_limited(payload):
+    """Recognise OneBSS' HTTP-200/500 business-level throttle response."""
+    if isinstance(payload, dict):
+        code = str(payload.get('error_code') or
+                   payload.get('errorCode') or '').strip().upper()
+        if code == 'BSS-00000500':
+            return True
+        message = ' '.join(
+            str(payload.get(key) or '')
+            for key in ('message', 'msg', 'detail', 'error_description')
+        )
+    else:
+        message = str(payload or '')
+    return bool(re.search(r'\bBSS-00000500\b', message, re.IGNORECASE))
+
+
 def _business_record_response(account_key, response):
-    if response.status_code == 429:
-        retry_after = _retry_after_seconds(response)
+    try:
+        payload = response.json()
+    except (TypeError, ValueError, json.JSONDecodeError):
+        payload = getattr(response, 'text', '')
+    rate_limited = (
+        response.status_code == 429 or
+        _business_payload_rate_limited(payload)
+    )
+    if rate_limited:
+        default_wait = BUSINESS_RATE_LIMIT_RETRY_SECONDS
+        retry_after = _retry_after_seconds(response, default=default_wait)
         with _business_guard_lock:
             _business_account_paused_until[account_key] = max(
                 _business_account_paused_until.get(account_key, 0),
@@ -3482,6 +3517,12 @@ def proxy():
                 resp.status_code, rb)
             if payload_succeeded:
                 _business_finish_mutation(operation_key, 'completed', result)
+            # BSS-00000500 explicitly rejects the request before applying the
+            # mutation.  It is therefore safe to release the idempotency claim
+            # and retry after the account-level cooldown instead of labelling
+            # the operation as an unknown outcome.
+            elif _business_payload_rate_limited(rb):
+                _business_finish_mutation(operation_key, 'failed')
             elif resp.status_code == 408 or resp.status_code >= 500:
                 _business_finish_mutation(operation_key, 'uncertain')
             else:
