@@ -46,6 +46,78 @@ class AccountManagementTests(unittest.TestCase):
         self.assertTrue(payload['skipped'])
         post.assert_not_called()
 
+    def test_account_list_marks_saved_credentials_for_active_user(self):
+        app_module.save_employee_account('primary.user', 'saved-password')
+        self._login_primary()
+
+        response = self.client.get('/api/accounts')
+
+        self.assertEqual(response.status_code, 200)
+        account = response.get_json()['accounts'][0]
+        self.assertEqual(account['username'], 'primary.user')
+        self.assertTrue(account['has_saved_credentials'])
+
+    def test_saved_primary_account_can_reauthenticate_through_otp(self):
+        app_module.save_employee_account('primary.user', 'saved-password')
+        self._login_primary()
+
+        class BeginResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    'error_code': 'BSS-00000000',
+                    'data': {'secretCode': 'new-secret-code'},
+                }
+
+        class ConfirmResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {
+                    'access_token': 'new-access-token',
+                    'refresh_token': 'new-refresh-token',
+                    'expires_in': 7200,
+                }
+
+        account_id = app_module._account_id('primary.user')
+        with patch.object(app_module.requests, 'post', side_effect=[BeginResponse(), ConfirmResponse()]):
+            begin = self.client.post('/api/accounts/begin', json={
+                'saved_account_id': account_id,
+            })
+            self.assertEqual(begin.status_code, 200)
+            pending_id = begin.get_json()['pending_id']
+            confirm = self.client.post('/api/accounts/confirm', json={
+                'pending_id': pending_id,
+                'otp': '123456',
+            })
+
+        payload = confirm.get_json()
+        self.assertEqual(confirm.status_code, 200)
+        self.assertTrue(payload['reauthenticated'])
+        self.assertTrue(payload['account']['primary'])
+        with self.client.session_transaction() as active_session:
+            self.assertEqual(active_session['username'], 'primary.user')
+            self.assertEqual(active_session['access_token'], 'new-access-token')
+            self.assertEqual(active_session['refresh_token'], 'new-refresh-token')
+            self.assertEqual(active_session.get('multi_accounts'), {})
+
+    def test_account_management_shows_relogin_and_hides_requested_tabs(self):
+        self._login_primary()
+
+        response = self.client.get('/dashboard')
+        source = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('<th>Đăng nhập lại</th>', source)
+        self.assertIn('onclick="reauthenticateManagedAccount(', source)
+        self.assertNotIn('onclick="showPanel(\'doisim\')" data-panel="doisim"', source)
+        self.assertNotIn('onclick="showPanel(\'deviceauth\')" data-panel="deviceauth"', source)
+        self.assertNotIn(':not([data-panel="doisim"])', source)
+        self.assertNotIn(':not([data-panel="deviceauth"])', source)
+
     def test_delete_removes_only_selected_saved_and_active_extra_account(self):
         app_module.save_employee_account('extra.user', 'encrypted-password-source')
         app_module.save_employee_account('keep.user', 'keep-password-source')

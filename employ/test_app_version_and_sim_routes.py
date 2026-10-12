@@ -448,6 +448,54 @@ class SimKitCustomerSelfRegistrationTemplateTests(unittest.TestCase):
         self.assertIn('await simBatchRefreshWalletBalance(wallet, shared.account)', batch_process)
         self.assertNotIn('wallet.balance = Math.max(0, balance - amount)', batch_process)
 
+    def test_low_wallet_calls_payment_then_holds_order_and_continues_queue(self):
+        batch_process = self.source[
+            self.source.index('async function simBatchProcessRow'):
+            self.source.index('function simHistoryTodayIso')
+        ]
+        self.assertNotIn('if (balance < amount)', batch_process)
+        payment_call = batch_process.index('`${SIM_SELF_REG_PREFIX}/xacnhan_thanhtoan`')
+        awaiting_payment = batch_process.index('error.batchAwaitingPayment = true')
+        self.assertLess(payment_call, awaiting_payment)
+        self.assertIn('simBatchIsInsufficientWalletFailure(error, wallet, amount)', batch_process)
+        self.assertIn('error.batchAwaitingPayment = true', batch_process)
+        self.assertIn("error.batchOrderId = orderId", batch_process)
+
+        legacy = self._function_source(
+            'simBatchRunLegacyExcel', 'simBatchRunTwoPhase')
+        two_phase = self.source[
+            self.source.index('async function simBatchRunTwoPhase()'):
+            self.source.index('async function simBatchRun(input=')
+        ]
+        multi_input = self.source[
+            self.source.index('async function simBatchRun(input='):
+            self.source.index('function simBatchRandomItem')
+        ]
+        for runner in (legacy, two_phase, multi_input):
+            with self.subTest(runner=runner[:80]):
+                self.assertIn('error.batchAwaitingPayment', runner)
+                self.assertIn('simBatchMarkAwaitingWalletOutcome(row, error)', runner)
+                self.assertIn('kế tiếp', runner)
+
+        outcome = self.source[
+            self.source.index('function simBatchMarkAwaitingWalletOutcome'):
+            self.source.index('function simBatchOutputRows')
+        ]
+        self.assertIn("row.status = 'pending_payment'", outcome)
+        self.assertIn('THÀNH CÔNG · ĐÃ GIỮ SỐ · DỪNG Ở BƯỚC THANH TOÁN', outcome)
+        self.assertIn('Ví không đủ tiền, chưa thu tiền', outcome)
+        self.assertIn('Chuyển sang số kế tiếp', outcome)
+
+    def test_batch_rechecks_order_step_before_marking_created_order_failed(self):
+        batch_process = self.source[
+            self.source.index('async function simBatchProcessRow'):
+            self.source.index('function simHistoryTodayIso')
+        ]
+        self.assertIn('const maxAttempts = 3;', batch_process)
+        self.assertIn('attempt <= maxAttempts', batch_process)
+        self.assertIn('isApiRateLimited(step)', batch_process)
+        self.assertIn('sau ${maxAttempts} lần đọc', batch_process)
+
     def test_excel_batch_checkpoints_every_finished_row_before_continuing(self):
         sim_batch = self.source[
             self.source.index('async function simBatchStartRunOutput'):

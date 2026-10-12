@@ -14,6 +14,7 @@ import requests
 import urllib3
 from urllib.parse import urlparse, parse_qsl, unquote
 from flask_session import Session
+from cachelib.file import FileSystemCache
 from onebss_report_batch import OneBssReportBatchManager, OneBssReportError
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -41,7 +42,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 DEFAULT_LOCAL_WEB_PORT = 59173
 
 # ─── Server-side session (tùy filesystem, không bị giới hạn 4KB cookie) ───
-app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_TYPE'] = 'cachelib'
 if getattr(sys, 'frozen', False):
     # Running in a PyInstaller bundle
     app_base_dir = sys._MEIPASS
@@ -65,7 +66,27 @@ else:
     session_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'flask_sessions')
 
 os.makedirs(session_dir, exist_ok=True)
-app.config['SESSION_FILE_DIR'] = session_dir
+
+
+class SessionFileCache(FileSystemCache):
+    """Ignore non-file artifacts while pruning the filesystem session cache.
+
+    Old tool versions could leave ``pid_<number>`` directories inside the
+    session directory.  CacheLib otherwise tries to open those directories as
+    cache files and logs an OSError traceback during an ordinary request.
+    """
+
+    def _list_dir(self):
+        return (
+            path for path in super()._list_dir()
+            if os.path.isfile(path)
+        )
+
+
+app.config['SESSION_CACHELIB'] = SessionFileCache(
+    cache_dir=session_dir,
+    threshold=500,
+)
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
 Session(app)
@@ -2501,8 +2522,12 @@ def api_accounts_list():
             context['id'] = str(account_id)
             context['primary'] = False
             accounts.append(_public_account_summary(context))
+    saved_summaries = saved_account_summaries()
+    saved_ids = {str(account.get('id') or '') for account in saved_summaries}
+    for account in accounts:
+        account['has_saved_credentials'] = str(account.get('id') or '') in saved_ids
     logged_ids = {account['id'] for account in accounts}
-    saved = [account for account in saved_account_summaries()
+    saved = [account for account in saved_summaries
              if account.get('id') not in logged_ids]
     return jsonify({'ok': True, 'accounts': accounts, 'saved_accounts': saved})
 
@@ -2593,7 +2618,7 @@ def api_accounts_token_login():
 @app.post('/api/accounts/begin')
 @login_required
 def api_accounts_begin():
-    """Start an independent OneBSS login without replacing the primary session."""
+    """Start an OTP login for a new account or reauthenticate an active one."""
     payload = request.get_json(silent=True) or {}
     saved_id = str(payload.get('saved_account_id') or '').strip()
     saved = get_saved_employee_account(saved_id) if saved_id else None
@@ -2602,10 +2627,10 @@ def api_accounts_begin():
     if not username or not password:
         return jsonify({'ok': False, 'error': 'Nhập đầy đủ tài khoản và mật khẩu'}), 400
     account_id = _account_id(username)
-    if account_id == _primary_account_context().get('id'):
-        return jsonify({'ok': False, 'error': 'Tài khoản này đang là phiên đăng nhập chính'}), 409
+    is_primary = account_id == _primary_account_context().get('id')
     extras = session.get('multi_accounts') or {}
-    if len(extras) >= 10 and account_id not in extras:
+    was_active = is_primary or (isinstance(extras, dict) and account_id in extras)
+    if not is_primary and len(extras) >= 10 and account_id not in extras:
         return jsonify({'ok': False, 'error': 'Chỉ cho phép tối đa 10 tài khoản trong một phiên'}), 400
 
     # Reuse the pending challenge during the cooldown.  OneBSS invalidates a
@@ -2652,6 +2677,8 @@ def api_accounts_begin():
         'account_id': account_id,
         'username': username,
         'password': password,
+        'primary': is_primary,
+        'reauthenticate': was_active,
         'device_id': device_id,
         'secret_code': secret_code,
         'created_at': time.time(),
@@ -2701,21 +2728,32 @@ def api_accounts_confirm():
         'app_secret': _build_app_secret_value(
             data.get('app_secret', ''), pending.get('device_id', '')),
     }
-    with _multi_account_lock:
-        extras = session.get('multi_accounts') or {}
-        extras = dict(extras) if isinstance(extras, dict) else {}
-        extras[account_id] = context
-        session['multi_accounts'] = extras
-        clean_pending = dict(pending_map)
-        clean_pending.pop(pending_id, None)
-        session['pending_extra_accounts'] = clean_pending
+    if pending.get('primary'):
+        for key in ('username', 'access_token', 'refresh_token', 'expires_in',
+                    'token_time', 'device_id', 'app_secret'):
+            session[key] = context.get(key)
+        context['phone'] = session.get('account_phone', '')
+        context['primary'] = True
+    else:
+        with _multi_account_lock:
+            extras = session.get('multi_accounts') or {}
+            extras = dict(extras) if isinstance(extras, dict) else {}
+            extras[account_id] = context
+            session['multi_accounts'] = extras
+        context['primary'] = False
+    clean_pending = dict(pending_map)
+    clean_pending.pop(pending_id, None)
+    session['pending_extra_accounts'] = clean_pending
     try:
         save_employee_account(pending.get('username'), pending.get('password'))
     except Exception as exc:
         print(f'[WARN] Could not save extra Employee account: {exc}')
     _save_persistent_session()
-    context['primary'] = False
-    return jsonify({'ok': True, 'account': _public_account_summary(context)})
+    return jsonify({
+        'ok': True,
+        'account': _public_account_summary(context),
+        'reauthenticated': bool(pending.get('reauthenticate')),
+    })
 
 
 @app.post('/api/accounts/remove')
